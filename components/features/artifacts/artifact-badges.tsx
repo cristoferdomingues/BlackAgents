@@ -1,10 +1,12 @@
+import type { ReactNode } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import type { Artifact } from "@/lib/artifacts/types"
 
 /** Render the type-specific frontmatter flags as small badges. */
 export function ArtifactBadges({ artifact }: { artifact: Artifact }) {
   const fm = artifact.frontmatter
-  const badges: React.ReactNode[] = []
+  const badges: ReactNode[] = []
 
   if (artifact.type === "agent" && fm.parallel) {
     badges.push(

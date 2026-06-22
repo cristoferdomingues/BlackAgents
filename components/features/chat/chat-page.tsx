@@ -58,6 +58,29 @@ const SUGGESTIONS = [
   "Write a command that orchestrates a release workflow.",
 ]
 
+// Remember the last provider + the last model id per provider, so the pickers
+// (especially the custom free-text model id) come back prefilled next time.
+const LAST_PROVIDER_KEY = "black-agents:last-provider"
+const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
+
+function readStored(key: string): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStored(key: string, value: string) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // storage may be unavailable (private mode) — non-fatal
+  }
+}
+
 export function ChatPage() {
   const router = useRouter()
   const { workspace } = useWorkspace()
@@ -74,14 +97,22 @@ export function ChatPage() {
       .then((data) => {
         setMeta(data)
         const configured = data.status.filter((s) => s.configured).map((s) => s.id)
+        const remembered = readStored(LAST_PROVIDER_KEY)
         const initial =
+          (remembered && data.providers.some((p) => p.id === remembered)
+            ? remembered
+            : null) ??
           (data.defaults.provider && configured.includes(data.defaults.provider)
             ? data.defaults.provider
-            : configured[0]) ?? data.providers[0]?.id
+            : configured[0]) ??
+          data.providers[0]?.id
         if (initial) {
           setProvider(initial)
           const desc = data.providers.find((p) => p.id === initial)
-          setModel(data.defaults.model || desc?.models[0] || "")
+          const storedModel = readStored(lastModelKey(initial))
+          const defaultModel =
+            initial === data.defaults.provider ? data.defaults.model : ""
+          setModel(storedModel || defaultModel || desc?.models[0] || "")
         }
       })
       .catch(() => {})
@@ -99,7 +130,7 @@ export function ChatPage() {
   function selectProvider(id: string) {
     setProvider(id)
     const desc = meta?.providers.find((p) => p.id === id)
-    setModel(desc?.models[0] || "")
+    setModel(readStored(lastModelKey(id)) || desc?.models[0] || "")
   }
 
   async function send(text: string) {
@@ -122,6 +153,9 @@ export function ChatPage() {
         }
       )
       setTurns((t) => [...t, { role: "assistant", content: result.content }])
+      // The model id was accepted — remember it locally for next time.
+      writeStored(LAST_PROVIDER_KEY, provider)
+      if (model) writeStored(lastModelKey(provider), model)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       setTurns((t) => t.slice(0, -1))

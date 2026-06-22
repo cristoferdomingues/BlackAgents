@@ -30,10 +30,32 @@ export interface LLMGenerateResult {
   model: string
 }
 
+export interface LLMCredentials {
+  apiKey: string
+  /** Custom (OpenAI-compatible) provider only: the endpoint base URL. */
+  baseUrl?: string
+}
+
 export interface LLMProvider {
   id: ProviderId
   label: string
   /** Default model identifiers offered to the user for this provider. */
   models: string[]
-  generate(request: LLMGenerateRequest, apiKey: string): Promise<LLMGenerateResult>
+  /** Whether this provider requires a user-supplied base URL (custom). */
+  requiresBaseUrl?: boolean
+  generate(
+    request: LLMGenerateRequest,
+    credentials: LLMCredentials
+  ): Promise<LLMGenerateResult>
+}
+
+/** Raised by providers on a non-2xx upstream response. */
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message)
+    this.name = "ProviderError"
+  }
 }

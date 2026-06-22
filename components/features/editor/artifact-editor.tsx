@@ -21,6 +21,7 @@ import { apiFetch, ApiError } from "@/lib/api"
 import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
+import { DRAFT_STORAGE_KEY, draftSchema, normalizeDraft } from "@/lib/llm/draft"
 import type { Artifact, ArtifactType, Platform } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
@@ -88,6 +89,32 @@ export function ArtifactEditor({
   })
 
   const body = form.watch("body")
+
+  // Chat → editor handoff: when the assistant proposes an artifact, the chat
+  // stashes it in sessionStorage and routes to /<type>/new. Consume it once.
+  React.useEffect(() => {
+    if (isEdit) return
+    const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
+    if (!raw) return
+    sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+    try {
+      const parsed = draftSchema.safeParse(JSON.parse(raw))
+      if (!parsed.success || parsed.data.type !== type) return
+      const draft = normalizeDraft(parsed.data)
+      form.reset({
+        name: draft.name,
+        description: draft.description,
+        parallel: draft.parallel,
+        alwaysApply: draft.alwaysApply,
+        globs: draft.globs,
+        body: draft.body,
+      })
+      toast.success("Draft loaded from the assistant — review and save")
+    } catch {
+      // ignore malformed drafts
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, type])
 
   React.useEffect(() => {
     if (!isEdit || !workspace) return

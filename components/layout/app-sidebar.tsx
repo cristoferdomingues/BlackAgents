@@ -6,11 +6,13 @@ import { usePathname } from "next/navigation"
 import {
   FileOutput,
   GitCompare,
+  KeyRound,
   LayoutDashboard,
   Network,
   Plus,
   ScrollText,
   Settings,
+  Sparkles,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -27,6 +29,7 @@ interface NavItem {
 
 const topNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/chat", label: "Assistant", icon: Sparkles },
 ]
 
 const bottomNav: NavItem[] = [
@@ -34,6 +37,7 @@ const bottomNav: NavItem[] = [
   { href: "/standards", label: "Standards", icon: ScrollText },
   { href: "/export", label: "Export", icon: FileOutput },
   { href: "/sync", label: "Sync", icon: GitCompare },
+  { href: "/providers", label: "AI Providers", icon: KeyRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

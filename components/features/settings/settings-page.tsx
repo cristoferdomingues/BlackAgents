@@ -3,7 +3,9 @@
 import * as React from "react"
 import {
   Check,
+  CircleCheck,
   FolderOpen,
+  FolderPlus,
   Loader2,
   Trash2,
   TriangleAlert,
@@ -23,7 +25,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 
 interface CheckResult {
   exists: boolean
@@ -33,11 +34,13 @@ interface CheckResult {
 }
 
 export function SettingsPage() {
-  const { workspace, recents, selectWorkspace } = useWorkspace()
+  const { workspace, workspaces, addWorkspace, setActive, removeWorkspace } =
+    useWorkspace()
   const [value, setValue] = React.useState("")
   const [check, setCheck] = React.useState<CheckResult | null>(null)
   const [checking, setChecking] = React.useState(false)
-  const [submitting, setSubmitting] = React.useState(false)
+  const [adding, setAdding] = React.useState(false)
+  const [busyPath, setBusyPath] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     const trimmed = value.trim()
@@ -61,26 +64,28 @@ export function SettingsPage() {
     return () => clearTimeout(handle)
   }, [value])
 
-  const valid = check?.exists && check.isDirectory
-  const noPlatform = valid && check.platforms.length === 0
+  const valid = Boolean(check?.exists && check.isDirectory)
+  const noPlatform = valid && check!.platforms.length === 0
+  const alreadyAdded =
+    valid && workspaces.some((w) => w.path === (check!.path ?? value.trim()))
 
-  async function open(path: string) {
-    setSubmitting(true)
-    const success = await selectWorkspace(path)
-    setSubmitting(false)
-    if (success) setValue("")
+  async function add() {
+    setAdding(true)
+    const okAdded = await addWorkspace(check!.path ?? value.trim())
+    setAdding(false)
+    if (okAdded) setValue("")
   }
 
-  async function removeRecent(path: string) {
-    try {
-      await apiFetch("/api/workspace", {
-        method: "DELETE",
-        body: JSON.stringify({ path }),
-      })
-    } finally {
-      // The provider refreshes recents on next select; force a soft reload.
-      window.location.reload()
-    }
+  async function activate(path: string) {
+    setBusyPath(path)
+    await setActive(path)
+    setBusyPath(null)
+  }
+
+  async function remove(path: string) {
+    setBusyPath(path)
+    await removeWorkspace(path)
+    setBusyPath(null)
   }
 
   return (
@@ -88,20 +93,20 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Choose the project folder BlackAgents manages.
+          Manage the project folders BlackAgents works with.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Workspace</CardTitle>
+          <CardTitle className="text-base">Add a workspace</CardTitle>
           <CardDescription>
             Enter the absolute path to a project (a folder containing a{" "}
             <code className="rounded bg-muted px-1">.cursor</code> or{" "}
             <code className="rounded bg-muted px-1">.claude</code> directory).
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="workspace-path">Project path</Label>
             <div className="flex gap-2">
@@ -110,24 +115,27 @@ export function SettingsPage() {
                 placeholder="/Users/you/Dev/my-project"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && valid && !alreadyAdded && !adding) add()
+                }}
                 spellCheck={false}
                 autoComplete="off"
               />
               <Button
-                disabled={!valid || submitting}
-                onClick={() => open(check!.path ?? value.trim())}
+                disabled={!valid || alreadyAdded || adding}
+                onClick={add}
               >
-                {submitting ? (
+                {adding ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <FolderOpen className="h-4 w-4" />
+                  <FolderPlus className="h-4 w-4" />
                 )}
-                Open
+                Add
               </Button>
             </div>
 
             {value.trim() ? (
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 {checking ? (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" /> Checking…
@@ -141,8 +149,8 @@ export function SettingsPage() {
                     <TriangleAlert className="h-3 w-3" /> Not a directory
                   </span>
                 )}
-                {valid && check
-                  ? check.platforms.map((p) => (
+                {valid
+                  ? check!.platforms.map((p) => (
                       <Badge key={p.id} variant="secondary">
                         {p.label}
                       </Badge>
@@ -153,63 +161,91 @@ export function SettingsPage() {
                     No .cursor/.claude found — you can still create artifacts.
                   </span>
                 ) : null}
+                {alreadyAdded ? (
+                  <span className="text-muted-foreground">
+                    Already in your workspaces.
+                  </span>
+                ) : null}
               </div>
             ) : null}
           </div>
-
-          {workspace ? (
-            <>
-              <Separator />
-              <div className="text-sm">
-                <span className="text-muted-foreground">Active workspace: </span>
-                <span className="font-medium">{workspace.name}</span>
-                <p className="truncate text-xs text-muted-foreground">
-                  {workspace.path}
-                </p>
-              </div>
-            </>
-          ) : null}
         </CardContent>
       </Card>
 
-      {recents.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent workspaces</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {recents.map((ws) => (
-              <div
-                key={ws.path}
-                className={cn(
-                  "group flex items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-muted",
-                  workspace?.path === ws.path && "bg-muted"
-                )}
-              >
-                <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => open(ws.path)}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Your workspaces</CardTitle>
+          <CardDescription>
+            Select which workspace is active. The active one is what every page
+            reads and writes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {workspaces.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No workspaces yet. Add one above to get started.
+            </p>
+          ) : (
+            workspaces.map((ws) => {
+              const isActive = workspace?.path === ws.path
+              const busy = busyPath === ws.path
+              return (
+                <div
+                  key={ws.path}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                    isActive
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-transparent hover:bg-muted"
+                  )}
                 >
-                  <p className="truncate text-sm font-medium">{ws.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {ws.path}
-                  </p>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
-                  aria-label="Remove from recents"
-                  onClick={() => removeRecent(ws.path)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
+                  {isActive ? (
+                    <CircleCheck className="h-4 w-4 shrink-0 text-primary" />
+                  ) : (
+                    <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">{ws.name}</p>
+                      {isActive ? (
+                        <Badge variant="default" className="h-5 px-1.5 text-[10px]">
+                          Active
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {ws.path}
+                    </p>
+                  </div>
+                  {!isActive ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => activate(ws.path)}
+                    >
+                      {busy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      Set active
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                    aria-label={`Remove ${ws.name}`}
+                    disabled={busy}
+                    onClick={() => remove(ws.path)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

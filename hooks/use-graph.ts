@@ -5,7 +5,12 @@ import * as React from "react"
 import { apiFetch } from "@/lib/api"
 import type { GraphData } from "@/lib/artifacts/types"
 
-export function useGraph(enabled: boolean) {
+/**
+ * Loads the artifact graph for the active workspace. Pass the workspace path so
+ * the graph refetches whenever the active workspace changes (not just when one
+ * is first selected) — otherwise switching workspaces leaves stale data.
+ */
+export function useGraph(workspacePath: string | null) {
   const [data, setData] = React.useState<GraphData>({ nodes: [], links: [] })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -23,8 +28,12 @@ export function useGraph(enabled: boolean) {
   }, [])
 
   React.useEffect(() => {
-    if (enabled) void load()
-  }, [enabled, load])
+    if (!workspacePath) {
+      setData({ nodes: [], links: [] })
+      return
+    }
+    void load()
+  }, [workspacePath, load])
 
   return { data, loading, error, reload: load }
 }

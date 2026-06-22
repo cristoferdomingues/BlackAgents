@@ -42,7 +42,7 @@ export function GraphView() {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
   const { workspace, loading: wsLoading } = useWorkspace()
-  const { data, loading, error } = useGraph(Boolean(workspace))
+  const { data, loading, error } = useGraph(workspace?.path ?? null)
 
   const containerRef = React.useRef<HTMLDivElement>(null)
   const fgRef = React.useRef<any>(null)

@@ -4,6 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  FileOutput,
+  GitCompare,
   LayoutDashboard,
   Network,
   Plus,
@@ -30,6 +32,8 @@ const topNav: NavItem[] = [
 const bottomNav: NavItem[] = [
   { href: "/graph", label: "Graph", icon: Network },
   { href: "/standards", label: "Standards", icon: ScrollText },
+  { href: "/export", label: "Export", icon: FileOutput },
+  { href: "/sync", label: "Sync", icon: GitCompare },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

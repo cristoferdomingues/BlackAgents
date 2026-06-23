@@ -1,5 +1,17 @@
 # BlackAgents
 
+<div align="center">
+  <img src="public/images/black-agents-logo.png" alt="BlackAgents" width="480" />
+
+  [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+  [![React](https://img.shields.io/badge/React-19-blue)](https://reactjs.org/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
+  [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38bdf8)](https://tailwindcss.com/)
+  [![Local-first](https://img.shields.io/badge/Local--first-7c3aed)](#)
+</div>
+
+---
+
 A **local-first** manager for AI agent artifacts — **agents, commands, rules, and skills** — with a graphical UI. BlackAgents reads and writes the real `.md` / `.mdc` files in a project folder on your machine, uses an editable **authoring-standards** baseline to guide creation, and visualizes how artifacts reference each other in an Obsidian-style relationship graph.
 
 It is a generic, multi-platform evolution of the `edu-sidekick` toolkit: the same `commands → agents → rules → skills` model, exposed through a GUI instead of hand-edited Markdown.

@@ -52,6 +52,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 type ExportStatus = "create" | "overwrite" | "unchanged"
 
@@ -88,6 +93,15 @@ const STATUS_STYLE: Record<ExportStatus, string> = {
   create: "border-transparent bg-skill/15 text-skill",
   overwrite: "border-transparent bg-rule/15 text-rule",
   unchanged: "text-muted-foreground",
+}
+
+const STATUS_DESCRIPTION: Record<ExportStatus, string> = {
+  create:
+    "This file doesn't exist in the destination yet — it will be created on export.",
+  overwrite:
+    "A file already exists and differs from the canonical artifact — it will be overwritten, but only while \u201cOverwrite changed files\u201d is on.",
+  unchanged:
+    "The destination file already matches the canonical artifact — it is skipped and never rewritten.",
 }
 
 export function ExportPage() {
@@ -320,13 +334,42 @@ export function ExportPage() {
 
           {summary ? (
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline" className={STATUS_STYLE.create}>
-                {summary.create} new
-              </Badge>
-              <Badge variant="outline" className={STATUS_STYLE.overwrite}>
-                {summary.overwrite} changed
-              </Badge>
-              <Badge variant="outline">{summary.unchanged} unchanged</Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className={cn("cursor-default", STATUS_STYLE.create)}
+                  >
+                    {summary.create} new
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {STATUS_DESCRIPTION.create}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className={cn("cursor-default", STATUS_STYLE.overwrite)}
+                  >
+                    {summary.overwrite} changed
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {STATUS_DESCRIPTION.overwrite}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="cursor-default">
+                    {summary.unchanged} unchanged
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {STATUS_DESCRIPTION.unchanged}
+                </TooltipContent>
+              </Tooltip>
               <span className="ml-auto flex items-center gap-1 text-muted-foreground">
                 {summary.total} files total
               </span>
@@ -396,12 +439,22 @@ export function ExportPage() {
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn("text-[11px]", STATUS_STYLE[f.status])}
-                        >
-                          {f.status}
-                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "cursor-default text-[11px]",
+                                STATUS_STYLE[f.status]
+                              )}
+                            >
+                              {f.status}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            {STATUS_DESCRIPTION[f.status]}
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}

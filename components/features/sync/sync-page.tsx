@@ -18,6 +18,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 type DriftStatus = "in-sync" | "drifted" | "missing"
 
@@ -40,6 +45,15 @@ const STATUS_STYLE: Record<DriftStatus, string> = {
   "in-sync": "text-muted-foreground",
   drifted: "border-transparent bg-rule/15 text-rule",
   missing: "border-transparent bg-skill/15 text-skill",
+}
+
+const STATUS_DESCRIPTION: Record<DriftStatus, string> = {
+  "in-sync":
+    "The on-disk file matches the canonical artifact — same managed frontmatter and body (formatting and extra keys are ignored).",
+  drifted:
+    "The file exists, but its body or one of the managed frontmatter keys has diverged from the canonical artifact. Resolve in Export to overwrite it.",
+  missing:
+    "No file exists for this artifact on this platform yet. Export to create it.",
 }
 
 export function SyncPage() {
@@ -112,13 +126,42 @@ export function SyncPage() {
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <Badge variant="outline" className={STATUS_STYLE.missing}>
-                    {p.summary.missing} missing
-                  </Badge>
-                  <Badge variant="outline" className={STATUS_STYLE.drifted}>
-                    {p.summary.drifted} drifted
-                  </Badge>
-                  <Badge variant="outline">{p.summary["in-sync"]} in sync</Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className={cn("cursor-default", STATUS_STYLE.missing)}
+                      >
+                        {p.summary.missing} missing
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      {STATUS_DESCRIPTION.missing}
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className={cn("cursor-default", STATUS_STYLE.drifted)}
+                      >
+                        {p.summary.drifted} drifted
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      {STATUS_DESCRIPTION.drifted}
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="cursor-default">
+                        {p.summary["in-sync"]} in sync
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      {STATUS_DESCRIPTION["in-sync"]}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </CardHeader>
               {!clean ? (
@@ -128,12 +171,22 @@ export function SyncPage() {
                       key={f.id}
                       className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                     >
-                      <Badge
-                        variant="outline"
-                        className={cn("text-[11px]", STATUS_STYLE[f.status])}
-                      >
-                        {f.status}
-                      </Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "cursor-default text-[11px]",
+                              STATUS_STYLE[f.status]
+                            )}
+                          >
+                            {f.status}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          {STATUS_DESCRIPTION[f.status]}
+                        </TooltipContent>
+                      </Tooltip>
                       <span className="font-mono text-xs text-muted-foreground">
                         {f.path}
                       </span>

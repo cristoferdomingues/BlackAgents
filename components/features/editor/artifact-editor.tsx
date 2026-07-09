@@ -12,6 +12,8 @@ import {
   Loader2,
   Pencil,
   Save,
+  ShieldCheck,
+  Sparkles,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -22,6 +24,7 @@ import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import { DRAFT_STORAGE_KEY, draftSchema, normalizeDraft } from "@/lib/llm/draft"
+import type { ValidationResult } from "@/lib/llm/validation"
 import type { Artifact, ArtifactType, Platform } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
@@ -54,6 +57,45 @@ const formSchema = z.object({
 })
 
 type FormValues = z.infer<typeof formSchema>
+
+const LAST_PROVIDER_KEY = "black-agents:last-provider"
+const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
+
+interface ProviderDescriptorLite {
+  id: string
+  label: string
+  models: string[]
+  requiresBaseUrl: boolean
+}
+
+interface ProviderStatusLite {
+  id: string
+  configured: boolean
+  baseUrl?: string
+}
+
+interface ProvidersState {
+  providers: ProviderDescriptorLite[]
+  status: ProviderStatusLite[]
+  defaults: { provider?: string; model?: string }
+}
+
+interface DraftBodyResponse {
+  body: string
+  extra: { parallel: boolean; alwaysApply: boolean; globs: string[] }
+  links: Array<{ to: ArtifactType; toName: string; kind: string }>
+}
+
+function severityClass(severity: "error" | "warning" | "info"): string {
+  switch (severity) {
+    case "error":
+      return "text-destructive"
+    case "warning":
+      return "text-amber-500"
+    default:
+      return "text-muted-foreground"
+  }
+}
 
 export function ArtifactEditor({
   type,
@@ -89,6 +131,152 @@ export function ArtifactEditor({
   })
 
   const body = form.watch("body")
+  const nameValue = form.watch("name")
+  const descriptionValue = form.watch("description")
+
+  const [providers, setProviders] = React.useState<ProvidersState | null>(null)
+  const [generating, setGenerating] = React.useState(false)
+  const [validating, setValidating] = React.useState(false)
+  const [validation, setValidation] = React.useState<ValidationResult | null>(
+    null
+  )
+  const [validateOpen, setValidateOpen] = React.useState(false)
+
+  // Load the provider catalog + redacted status to decide whether the assistant
+  // actions (draft in create, validate in both) are available.
+  React.useEffect(() => {
+    let active = true
+    apiFetch<ProvidersState>("/api/providers")
+      .then((data) => active && setProviders(data))
+      .catch(() => {
+        // Providers are optional; the assistant actions just stay disabled.
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const usableProviderIds = React.useMemo(() => {
+    if (!providers) return [] as string[]
+    return providers.status
+      .filter((s) => s.configured || Boolean(s.baseUrl))
+      .map((s) => s.id)
+  }, [providers])
+
+  const hasProvider = usableProviderIds.length > 0
+  const detailsValid =
+    hasProvider &&
+    nameSchema.safeParse(nameValue).success &&
+    (descriptionValue?.trim().length ?? 0) > 0
+  const canDraft = detailsValid
+  const canValidate = detailsValid && (body?.trim().length ?? 0) > 0
+
+  function resolveProviderModel(): { provider: string; model: string } | null {
+    if (!providers || usableProviderIds.length === 0) return null
+    const last =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LAST_PROVIDER_KEY)
+        : null
+    const provider =
+      last && usableProviderIds.includes(last) ? last : usableProviderIds[0]
+    const descriptor = providers.providers.find((p) => p.id === provider)
+    const lastModel =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(lastModelKey(provider))
+        : null
+    const defaultModel =
+      providers.defaults.provider === provider
+        ? providers.defaults.model
+        : undefined
+    const model = lastModel || defaultModel || descriptor?.models[0] || ""
+    return { provider, model }
+  }
+
+  async function onDraft() {
+    const resolved = resolveProviderModel()
+    if (!resolved) return
+    if (!resolved.model) {
+      const label =
+        providers?.providers.find((p) => p.id === resolved.provider)?.label ??
+        resolved.provider
+      toast.error(
+        `Pick a model for ${label} in the Assistant first, then try again`
+      )
+      return
+    }
+    setGenerating(true)
+    try {
+      const res = await apiFetch<DraftBodyResponse>("/api/artifacts/draft-body", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          name: form.getValues("name"),
+          description: form.getValues("description"),
+          provider: resolved.provider,
+          model: resolved.model,
+        }),
+      })
+      form.setValue("body", res.body, { shouldDirty: true })
+      if (type === "agent") form.setValue("parallel", res.extra.parallel)
+      if (type === "rule") {
+        form.setValue("alwaysApply", res.extra.alwaysApply)
+        if (res.extra.globs.length > 0) form.setValue("globs", res.extra.globs)
+      }
+      if (res.links.length > 0) {
+        const linked = res.links.map((l) => `${l.to}/${l.toName}`).join(", ")
+        toast.success(`Body drafted — linked: ${linked}`)
+      } else {
+        toast.success("Body drafted by the assistant — review and edit")
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Could not draft the body"
+      )
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function onValidate() {
+    const resolved = resolveProviderModel()
+    if (!resolved) return
+    if (!resolved.model) {
+      const label =
+        providers?.providers.find((p) => p.id === resolved.provider)?.label ??
+        resolved.provider
+      toast.error(
+        `Pick a model for ${label} in the Assistant first, then try again`
+      )
+      return
+    }
+    setValidating(true)
+    try {
+      const res = await apiFetch<ValidationResult>("/api/artifacts/validate", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          name: form.getValues("name"),
+          description: form.getValues("description"),
+          body: form.getValues("body"),
+          extra: {
+            parallel: form.getValues("parallel"),
+            alwaysApply: form.getValues("alwaysApply"),
+            globs: form.getValues("globs"),
+          },
+          provider: resolved.provider,
+          model: resolved.model,
+        }),
+      })
+      setValidation(res)
+      setValidateOpen(true)
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Could not validate the artifact"
+      )
+    } finally {
+      setValidating(false)
+    }
+  }
 
   // Chat → editor handoff: when the assistant proposes an artifact, the chat
   // stashes it in sessionStorage and routes to /<type>/new. Consume it once.
@@ -252,7 +440,50 @@ export function ArtifactEditor({
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onDraft}
+              disabled={!canDraft || generating}
+              title={
+                !hasProvider
+                  ? "Configure an AI provider in Settings to enable assistant drafting"
+                  : !canDraft
+                    ? "Enter a valid name and description first"
+                    : "Draft the body from the name and description"
+              }
+            >
+              {generating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Draft with assistant
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onValidate}
+            disabled={!canValidate || validating}
+            title={
+              !hasProvider
+                ? "Configure an AI provider in Settings to enable assistant validation"
+                : !canValidate
+                  ? "A valid name, description and body are required to validate"
+                  : "Review this artifact against the authoring standards"
+            }
+          >
+            {validating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" />
+            )}
+            Validate with assistant
+          </Button>
           <Button type="submit" size="sm" disabled={saving}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -444,6 +675,62 @@ export function ArtifactEditor({
                 <Trash2 className="h-4 w-4" />
               )}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={validateOpen} onOpenChange={setValidateOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Assistant review</DialogTitle>
+            <DialogDescription>
+              {validation?.summary
+                ? validation.summary
+                : "The assistant reviewed this artifact against the authoring standards. Findings are suggestions — nothing was changed."}
+            </DialogDescription>
+          </DialogHeader>
+          {validation && validation.findings.length > 0 ? (
+            <ul className="space-y-3">
+              {validation.findings.map((f, i) => (
+                <li key={i} className="rounded-md border p-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-[11px] font-semibold uppercase tracking-wide",
+                        severityClass(f.severity)
+                      )}
+                    >
+                      {f.severity}
+                    </span>
+                    {f.section ? (
+                      <span className="text-xs text-muted-foreground">
+                        · {f.section}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-sm">{f.message}</p>
+                  {f.suggestion ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Suggestion: {f.suggestion}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No issues found — the artifact looks consistent with the
+              standards.
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setValidateOpen(false)}
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

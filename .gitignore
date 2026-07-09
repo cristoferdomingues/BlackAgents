@@ -27,6 +27,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# testing
+/coverage
+/.e2e-tmp
+/test-results
+/playwright-report
+
 # editor
 .vscode/*
 !.vscode/extensions.json

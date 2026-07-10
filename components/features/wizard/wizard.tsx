@@ -9,11 +9,15 @@ import { cn } from "@/lib/utils"
 import { apiFetch, ApiError } from "@/lib/api"
 import { ARTIFACT_TYPE_LIST, metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
+import { applyMentions } from "@/lib/artifacts/mentions"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import type { ArtifactType } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
-import { MarkdownEditor } from "@/components/features/editor/markdown-editor"
+import {
+  MarkdownEditor,
+  type MentionItem,
+} from "@/components/features/editor/markdown-editor"
 import { GlobsInput } from "@/components/features/editor/globs-input"
 import { StandardsHints } from "@/components/features/editor/standards-hints"
 import { Button } from "@/components/ui/button"
@@ -28,7 +32,17 @@ const STEPS = ["Type", "Details", "Body", "Review"] as const
 
 export function Wizard({ initialType }: { initialType?: ArtifactType }) {
   const router = useRouter()
-  const { workspace, loading: wsLoading, refresh } = useWorkspace()
+  const { workspace, loading: wsLoading, refresh, artifacts } = useWorkspace()
+
+  const mentions = React.useMemo<MentionItem[]>(
+    () =>
+      artifacts.map((a) => ({
+        type: a.type,
+        name: a.name,
+        description: a.description,
+      })),
+    [artifacts]
+  )
 
   const [step, setStep] = React.useState(initialType ? 1 : 0)
   const [type, setType] = React.useState<ArtifactType | null>(
@@ -72,7 +86,7 @@ export function Wizard({ initialType }: { initialType?: ArtifactType }) {
           platform: "cursor",
           name,
           description,
-          body,
+          body: applyMentions(body),
           extra: { parallel, alwaysApply, globs },
         }),
       })
@@ -236,6 +250,10 @@ export function Wizard({ initialType }: { initialType?: ArtifactType }) {
                 setBody(v)
                 setBodyTouched(true)
               }}
+              placeholder="Write the artifact body in Markdown… Type @ to link another artifact."
+              mentions={mentions.filter(
+                (m) => !(m.type === type && m.name === name)
+              )}
             />
           </div>
           <div className="lg:border-l lg:pl-6">

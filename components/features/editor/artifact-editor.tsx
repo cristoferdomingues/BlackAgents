@@ -22,13 +22,17 @@ import { cn } from "@/lib/utils"
 import { apiFetch, ApiError } from "@/lib/api"
 import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
+import { applyMentions } from "@/lib/artifacts/mentions"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import { DRAFT_STORAGE_KEY, draftSchema, normalizeDraft } from "@/lib/llm/draft"
 import type { ValidationResult } from "@/lib/llm/validation"
 import type { Artifact, ArtifactType, Platform } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
-import { MarkdownEditor } from "@/components/features/editor/markdown-editor"
+import {
+  MarkdownEditor,
+  type MentionItem,
+} from "@/components/features/editor/markdown-editor"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { GlobsInput } from "@/components/features/editor/globs-input"
 import { StandardsHints } from "@/components/features/editor/standards-hints"
@@ -107,8 +111,22 @@ export function ArtifactEditor({
   const meta = metaForType(type)
   const Icon = meta.icon
   const router = useRouter()
-  const { workspace, loading: wsLoading, refresh } = useWorkspace()
+  const { workspace, loading: wsLoading, refresh, artifacts } = useWorkspace()
   const isEdit = Boolean(name)
+
+  // Artifacts the user can @-mention in the body — everything in the workspace
+  // except the one being edited (so it can't reference itself).
+  const mentions = React.useMemo<MentionItem[]>(
+    () =>
+      artifacts
+        .filter((a) => !(a.type === type && a.name === name))
+        .map((a) => ({
+          type: a.type,
+          name: a.name,
+          description: a.description,
+        })),
+    [artifacts, type, name]
+  )
 
   const [loading, setLoading] = React.useState(isEdit)
   const [notFound, setNotFound] = React.useState(false)
@@ -363,7 +381,7 @@ export function ArtifactEditor({
       platform: platformRef.current,
       name: values.name,
       description: values.description,
-      body: values.body,
+      body: applyMentions(values.body),
       extra: {
         parallel: values.parallel,
         alwaysApply: values.alwaysApply,
@@ -617,10 +635,11 @@ export function ArtifactEditor({
                   <MarkdownEditor
                     value={field.value}
                     onChange={field.onChange}
-                    placeholder="Write the artifact body in Markdown…"
+                    placeholder="Write the artifact body in Markdown… Type @ to link another artifact."
+                    mentions={mentions}
                   />
                 ) : (
-                  <MarkdownPreview content={field.value} />
+                  <MarkdownPreview content={applyMentions(field.value)} />
                 )
               }
             />

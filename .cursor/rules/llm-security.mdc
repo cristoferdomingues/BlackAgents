@@ -1,0 +1,15 @@
+---
+description: Credential and provider I/O security for BlackAgents' LLM layer.
+alwaysApply: false
+globs: lib/llm/**, lib/secrets.ts, app/api/chat/**, app/api/artifacts/draft-body/**, app/api/artifacts/validate/**
+---
+
+- API keys live only in `~/.black-agents/secrets.json` (mode `0600`) and in server memory; never send a key to the client, log it, or embed it in an error message.
+- Read secrets exclusively through `getProviderSecret` (`lib/secrets.ts`) inside route handlers — never in `lib/artifacts/**`, client components, or `describeProviders()`.
+- The only provider info that may cross to the client is the redacted `ProviderStatus` (`configured` + `last4` + `baseUrl`) via `toStatusList` — never the raw `apiKey`.
+- Missing or unconfigured credentials return **412** via `fail(...)`; a malformed request body returns **400**. Do not conflate the two.
+- Validate `provider` with `isProviderId` and resolve with `getProvider` before use; reject unknown providers. Fall back to `provider.models[0]` and reject an empty model.
+- Providers are pure I/O: map every non-2xx upstream response to `ProviderError(message, status)` and surface it with `fail(err.message, err.status)`; never leak the upstream response body or stack trace.
+- Send `systemContext` via the request field, not as a user turn, and never place secrets, other users' data, or filesystem contents outside the active workspace into a prompt.
+
+Related rules: llm-output-safety, api-response-format. See also: llm-integration skill.

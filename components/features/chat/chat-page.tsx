@@ -19,7 +19,6 @@ import { useWorkspace } from "@/components/providers/workspace-provider"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -28,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ModelCombobox } from "@/components/features/chat/model-combobox"
 
 interface ProviderDescriptor {
   id: string
@@ -87,6 +87,8 @@ export function ChatPage() {
   const [meta, setMeta] = React.useState<ProvidersState | null>(null)
   const [provider, setProvider] = React.useState<string>("")
   const [model, setModel] = React.useState<string>("")
+  const [availableModels, setAvailableModels] = React.useState<string[]>([])
+  const [modelsLoading, setModelsLoading] = React.useState(false)
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [input, setInput] = React.useState("")
   const [sending, setSending] = React.useState(false)
@@ -122,7 +124,34 @@ export function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [turns, sending])
 
-  const descriptor = meta?.providers.find((p) => p.id === provider)
+  // Load selectable models for the active provider (static + live when possible).
+  React.useEffect(() => {
+    if (!provider) {
+      setAvailableModels([])
+      return
+    }
+    const staticModels =
+      meta?.providers.find((p) => p.id === provider)?.models ?? []
+    setAvailableModels(staticModels)
+    let cancelled = false
+    setModelsLoading(true)
+    apiFetch<{ models: string[] }>(
+      `/api/providers/models?id=${encodeURIComponent(provider)}`
+    )
+      .then((data) => {
+        if (!cancelled) setAvailableModels(data.models)
+      })
+      .catch(() => {
+        // Keep the curated static list already shown.
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [provider, meta])
+
   const configured = Boolean(
     meta?.status.find((s) => s.id === provider)?.configured
   )
@@ -201,27 +230,12 @@ export function ChatPage() {
               })}
             </SelectContent>
           </Select>
-          {descriptor && descriptor.models.length > 0 ? (
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Model" />
-              </SelectTrigger>
-              <SelectContent>
-                {descriptor.models.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              className="w-48"
-              placeholder="model id"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-          )}
+          <ModelCombobox
+            value={model}
+            onChange={setModel}
+            models={availableModels}
+            loading={modelsLoading}
+          />
         </div>
       </div>
 

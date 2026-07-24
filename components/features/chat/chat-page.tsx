@@ -81,6 +81,31 @@ function writeStored(key: string, value: string) {
   }
 }
 
+/**
+ * Persist the Assistant selection to localStorage (same-origin browser cache)
+ * and to ~/.black-agents/secrets.json defaults (durable across Electron
+ * restarts, which use a fresh loopback port / origin each launch).
+ */
+async function persistSelection(
+  nextProvider: string,
+  nextModel: string
+): Promise<void> {
+  if (!nextProvider) return
+  writeStored(LAST_PROVIDER_KEY, nextProvider)
+  if (nextModel) writeStored(lastModelKey(nextProvider), nextModel)
+  try {
+    await apiFetch<ProvidersState>("/api/providers", {
+      method: "PUT",
+      body: JSON.stringify({
+        provider: nextProvider,
+        model: nextModel || undefined,
+      }),
+    })
+  } catch {
+    // localStorage still helps in the browser; Electron relies on the API
+  }
+}
+
 export function ChatPage() {
   const router = useRouter()
   const { workspace } = useWorkspace()
@@ -93,6 +118,10 @@ export function ChatPage() {
   const [input, setInput] = React.useState("")
   const [sending, setSending] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  // Skip the first persist after hydration so we don't rewrite unchanged
+  // defaults while restoring the previous selection.
+  const selectionReady = React.useRef(false)
+  const persistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
     apiFetch<ProvidersState>("/api/providers")
@@ -100,22 +129,27 @@ export function ChatPage() {
         setMeta(data)
         const configured = data.status.filter((s) => s.configured).map((s) => s.id)
         const remembered = readStored(LAST_PROVIDER_KEY)
+        // Prefer durable secrets defaults over localStorage. Electron assigns a
+        // new 127.0.0.1 port each launch, so localStorage is a new empty origin.
         const initial =
+          (data.defaults.provider &&
+          data.providers.some((p) => p.id === data.defaults.provider)
+            ? data.defaults.provider
+            : null) ??
           (remembered && data.providers.some((p) => p.id === remembered)
             ? remembered
             : null) ??
-          (data.defaults.provider && configured.includes(data.defaults.provider)
-            ? data.defaults.provider
-            : configured[0]) ??
+          configured[0] ??
           data.providers[0]?.id
         if (initial) {
           setProvider(initial)
           const desc = data.providers.find((p) => p.id === initial)
-          const storedModel = readStored(lastModelKey(initial))
           const defaultModel =
             initial === data.defaults.provider ? data.defaults.model : ""
-          setModel(storedModel || defaultModel || desc?.models[0] || "")
+          const storedModel = readStored(lastModelKey(initial))
+          setModel(defaultModel || storedModel || desc?.models[0] || "")
         }
+        selectionReady.current = true
       })
       .catch(() => {})
   }, [])
@@ -123,6 +157,18 @@ export function ChatPage() {
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [turns, sending])
+
+  // Debounce durable persistence while the user types a custom model id.
+  React.useEffect(() => {
+    if (!selectionReady.current || !provider) return
+    if (persistTimer.current) clearTimeout(persistTimer.current)
+    persistTimer.current = setTimeout(() => {
+      void persistSelection(provider, model)
+    }, 400)
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current)
+    }
+  }, [provider, model])
 
   // Load selectable models for the active provider (static + live when possible).
   React.useEffect(() => {
@@ -159,7 +205,12 @@ export function ChatPage() {
   function selectProvider(id: string) {
     setProvider(id)
     const desc = meta?.providers.find((p) => p.id === id)
-    setModel(readStored(lastModelKey(id)) || desc?.models[0] || "")
+    const nextModel =
+      (meta?.defaults.provider === id ? meta.defaults.model : "") ||
+      readStored(lastModelKey(id)) ||
+      desc?.models[0] ||
+      ""
+    setModel(nextModel)
   }
 
   async function send(text: string) {
@@ -182,9 +233,8 @@ export function ChatPage() {
         }
       )
       setTurns((t) => [...t, { role: "assistant", content: result.content }])
-      // The model id was accepted — remember it locally for next time.
-      writeStored(LAST_PROVIDER_KEY, provider)
-      if (model) writeStored(lastModelKey(provider), model)
+      // The model id was accepted — remember it for the next launch.
+      await persistSelection(provider, model)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       setTurns((t) => t.slice(0, -1))

@@ -195,8 +195,15 @@ export function ArtifactEditor({
       typeof window !== "undefined"
         ? window.localStorage.getItem(LAST_PROVIDER_KEY)
         : null
+    // Prefer durable secrets defaults — Electron uses a fresh loopback origin
+    // each launch, so localStorage alone does not survive restarts.
     const provider =
-      last && usableProviderIds.includes(last) ? last : usableProviderIds[0]
+      (providers.defaults.provider &&
+      usableProviderIds.includes(providers.defaults.provider)
+        ? providers.defaults.provider
+        : null) ??
+      (last && usableProviderIds.includes(last) ? last : null) ??
+      usableProviderIds[0]
     const descriptor = providers.providers.find((p) => p.id === provider)
     const lastModel =
       typeof window !== "undefined"
@@ -206,7 +213,7 @@ export function ArtifactEditor({
       providers.defaults.provider === provider
         ? providers.defaults.model
         : undefined
-    const model = lastModel || defaultModel || descriptor?.models[0] || ""
+    const model = defaultModel || lastModel || descriptor?.models[0] || ""
     return { provider, model }
   }
 

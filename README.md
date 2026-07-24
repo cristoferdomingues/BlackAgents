@@ -65,6 +65,32 @@ npm run dev
 
 Open <http://localhost:3000> and add a project folder (e.g. a repo containing a `.cursor/` directory) — from the workspace switcher in the header or under **Settings**. Switch the active workspace at any time from the header.
 
+### Desktop app (Electron)
+
+Run the Next.js development server inside an Electron window:
+
+```bash
+npm run desktop:dev
+```
+
+Build an unpacked desktop application for local testing:
+
+```bash
+npm run desktop:dir
+```
+
+Create distributable installers for the current operating system:
+
+```bash
+npm run desktop:pack
+```
+
+The packaged app starts a private Next.js standalone server on an available
+loopback port. It keeps the same local workspace and `~/.black-agents`
+configuration as the browser version. Distributables are written to
+`dist-electron/`. macOS packages are unsigned until signing credentials are
+configured.
+
 ### Using the chat assistant
 
 1. Go to **AI Providers** and add a key for **OpenAI**, **Anthropic**, or a **Custom** OpenAI-compatible endpoint (e.g. OpenRouter at `https://openrouter.ai/api/v1`, or a local Ollama / LM Studio server).
@@ -83,5 +109,8 @@ Open <http://localhost:3000> and add a project folder (e.g. a repo containing a 
 | `npm run dev` | Start the dev server |
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build |
+| `npm run desktop:dev` | Run the application in Electron during development |
+| `npm run desktop:dir` | Build an unpacked desktop application |
+| `npm run desktop:pack` | Build desktop installers for the current OS |
 | `npm run lint` | Lint |
 | `npm run type-check` | TypeScript check |

@@ -2,11 +2,16 @@
   "name": "black-agents",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first manager for AI agent artifacts",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "desktop:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
+    "desktop:dir": "npm run build && electron-builder --dir",
+    "desktop:pack": "npm run build && electron-builder",
+    "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -59,9 +64,76 @@
     "@types/react-dom": "^19.2.2",
     "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.11",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.blackagents.desktop",
+    "productName": "BlackAgents",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "app": "electron",
+      "output": "dist-electron"
+    },
+    "files": [
+      "**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!node_modules/**/*"
+        ]
+      },
+      {
+        "from": ".next/standalone/node_modules",
+        "to": "server/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "server/.next/static",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public",
+        "to": "server/public",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "electron/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        "AppImage"
+      ]
+    }
   }
 }

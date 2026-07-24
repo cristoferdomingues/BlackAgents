@@ -14,8 +14,6 @@
 
 A **local-first** manager for AI agent artifacts — **agents, commands, rules, and skills** — with a graphical UI. BlackAgents reads and writes the real `.md` / `.mdc` files in a project folder on your machine, uses an editable **authoring-standards** baseline to guide creation, and visualizes how artifacts reference each other in an Obsidian-style relationship graph.
 
-It is a generic, multi-platform evolution of the `edu-sidekick` toolkit: the same `commands → agents → rules → skills` model, exposed through a GUI instead of hand-edited Markdown.
-
 ## Features
 
 - **Artifact CRUD** — create, edit, rename, and delete agents, commands, rules, and skills with a Markdown editor (live preview) and type-aware frontmatter fields.

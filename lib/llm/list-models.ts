@@ -2,7 +2,6 @@ import { ProviderError } from "./types"
 
 interface OpenAIModelsResponse {
   data?: Array<{ id?: string }>
-  error?: { message?: string }
 }
 
 /**
@@ -13,16 +12,17 @@ export async function listOpenAICompatibleModels(
   baseUrl: string,
   apiKey: string
 ): Promise<string[]> {
+  const headers: Record<string, string> = {}
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
   })
 
   const json = (await res.json().catch(() => null)) as OpenAIModelsResponse | null
   if (!res.ok) {
     throw new ProviderError(
-      json?.error?.message ?? `Could not list models (${res.status})`,
+      `Could not list models (${res.status})`,
       res.status
     )
   }

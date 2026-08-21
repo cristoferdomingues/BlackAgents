@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 
 import type { ProviderId } from "./llm/types"
 
@@ -19,6 +20,16 @@ export interface ProviderSecret {
   apiKey: string
   /** Custom (OpenAI-compatible) provider only: the base URL of the endpoint. */
   baseUrl?: string
+  /** Server-maintained result of the most recent live verification. */
+  verification?: ProviderVerification
+}
+
+export type VerificationStatus = "valid" | "invalid" | "unverified"
+
+export interface ProviderVerification {
+  status: VerificationStatus
+  /** ISO-8601 timestamp; absent for legacy/unverified credentials. */
+  checkedAt?: string
 }
 
 export interface SecretsDefaults {
@@ -38,9 +49,37 @@ export interface ProviderStatus {
   /** Last 4 characters of the stored key, for recognition only. */
   last4?: string
   baseUrl?: string
+  verificationStatus: VerificationStatus
+  checkedAt?: string
 }
 
-const DEFAULT_SECRETS: SecretsFile = { providers: {} }
+const verificationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("unverified"), checkedAt: z.string().datetime().optional() }),
+  z.object({ status: z.literal("valid"), checkedAt: z.string().datetime() }),
+  z.object({ status: z.literal("invalid"), checkedAt: z.string().datetime() }),
+])
+
+const providerSecretSchema = z.object({
+  apiKey: z.string().default(""),
+  baseUrl: z.string().optional(),
+  verification: verificationSchema.optional(),
+})
+
+const secretsFileSchema = z.object({
+  providers: z
+    .object({
+      openai: providerSecretSchema.optional(),
+      anthropic: providerSecretSchema.optional(),
+      custom: providerSecretSchema.optional(),
+    })
+    .default({}),
+  defaults: z
+    .object({
+      provider: z.enum(["openai", "anthropic", "custom"]).optional(),
+      model: z.string().optional(),
+    })
+    .optional(),
+})
 
 function expandHome(p: string): string {
   if (p === "~") return os.homedir()
@@ -60,8 +99,9 @@ function secretsFile(): string {
 export async function readSecrets(): Promise<SecretsFile> {
   try {
     const raw = await fs.readFile(secretsFile(), "utf8")
-    const parsed = JSON.parse(raw) as Partial<SecretsFile>
-    return { providers: parsed.providers ?? {}, defaults: parsed.defaults }
+    const parsed = secretsFileSchema.safeParse(JSON.parse(raw) as unknown)
+    if (!parsed.success) return { providers: {}, defaults: undefined }
+    return parsed.data
   } catch {
     return { providers: {}, defaults: undefined }
   }
@@ -83,6 +123,30 @@ export async function setProviderSecret(
 ): Promise<SecretsFile> {
   const secrets = await readSecrets()
   secrets.providers[id] = secret
+  await writeSecrets(secrets)
+  return secrets
+}
+
+function sameCredentials(
+  current: ProviderSecret,
+  expected: ProviderSecret
+): boolean {
+  return current.apiKey === expected.apiKey && current.baseUrl === expected.baseUrl
+}
+
+/**
+ * Update only verification metadata. When expected credentials are supplied,
+ * avoid invalidating a newer credential after an in-flight request completes.
+ */
+export async function setProviderVerification(
+  id: ProviderId,
+  verification: ProviderVerification,
+  expected?: ProviderSecret
+): Promise<SecretsFile> {
+  const secrets = await readSecrets()
+  const current = secrets.providers[id]
+  if (!current || (expected && !sameCredentials(current, expected))) return secrets
+  secrets.providers[id] = { ...current, verification }
   await writeSecrets(secrets)
   return secrets
 }
@@ -118,11 +182,14 @@ export function toStatusList(
 ): ProviderStatus[] {
   return allIds.map((id) => {
     const secret = secrets.providers[id]
+    const verification = secret?.verification ?? { status: "unverified" as const }
     return {
       id,
-      configured: Boolean(secret?.apiKey),
+      configured: id === "custom" ? Boolean(secret?.baseUrl) : Boolean(secret?.apiKey),
       last4: secret?.apiKey ? secret.apiKey.slice(-4) : undefined,
       baseUrl: secret?.baseUrl,
+      verificationStatus: verification.status,
+      checkedAt: verification.checkedAt,
     }
   })
 }

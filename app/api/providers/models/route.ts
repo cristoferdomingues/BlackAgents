@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
     const baseUrl =
       id === "openai" ? "https://api.openai.com/v1" : secret!.baseUrl!
-    const apiKey = secret?.apiKey || "not-needed"
+    const apiKey = secret?.apiKey ?? ""
 
     try {
       const live = await listOpenAICompatibleModels(baseUrl, apiKey)

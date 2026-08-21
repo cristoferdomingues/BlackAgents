@@ -1,29 +1,35 @@
+import { z } from "zod"
+
 import { ok, fail, handle } from "@/lib/api-response"
+import { findArtifact } from "@/lib/artifacts/parser"
+import { nameSchema } from "@/lib/artifacts/schemas"
+import { readConfig } from "@/lib/config"
+import {
+  CredentialStateError,
+  getVerifiedCredentials,
+  markInvalidOnAuthFailure,
+} from "@/lib/llm/credentials"
 import { getProvider, isProviderId } from "@/lib/llm/registry"
-import { buildSystemContext } from "@/lib/llm/context"
-import { getProviderSecret } from "@/lib/secrets"
-import { ProviderError, type ChatMessage, type ChatRole } from "@/lib/llm/types"
+import {
+  buildAgentPersonaContext,
+  buildSystemContext,
+} from "@/lib/llm/context"
+import { ProviderError } from "@/lib/llm/types"
 
-interface ChatBody {
-  provider?: string
-  model?: string
-  messages?: Array<{ role?: string; content?: string }>
-  temperature?: number
-}
-
-const ROLES: ChatRole[] = ["system", "user", "assistant"]
-
-function sanitizeMessages(raw: ChatBody["messages"]): ChatMessage[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .filter(
-      (m): m is { role: ChatRole; content: string } =>
-        typeof m?.content === "string" &&
-        typeof m?.role === "string" &&
-        ROLES.includes(m.role as ChatRole)
+const chatRequestSchema = z.object({
+  provider: z.string().trim().min(1),
+  model: z.string().trim().optional(),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string(),
+      })
     )
-    .map((m) => ({ role: m.role, content: m.content }))
-}
+    .min(1, "At least one message is required"),
+  temperature: z.number().finite().min(0).max(2).optional(),
+  agent: nameSchema.optional(),
+})
 
 /**
  * Bring-your-own-key chat. The API key stays server-side: it is read from the
@@ -32,8 +38,15 @@ function sanitizeMessages(raw: ChatBody["messages"]): ChatMessage[] {
  */
 export async function POST(req: Request) {
   return handle(async () => {
-    const body = (await req.json().catch(() => null)) as ChatBody | null
-    if (!body?.provider || !isProviderId(body.provider)) {
+    const parsed = chatRequestSchema.safeParse(
+      await req.json().catch(() => null)
+    )
+    if (!parsed.success) {
+      return fail(parsed.error.issues[0]?.message ?? "Invalid request body")
+    }
+    const body = parsed.data
+
+    if (!isProviderId(body.provider)) {
       return fail("Unknown provider")
     }
     const provider = getProvider(body.provider)
@@ -42,27 +55,44 @@ export async function POST(req: Request) {
     const model = body.model?.trim() || provider.models[0]
     if (!model) return fail("A model is required for this provider")
 
-    const messages = sanitizeMessages(body.messages)
-    if (messages.length === 0) return fail("At least one message is required")
-
-    const secret = await getProviderSecret(provider.id)
-    if (provider.requiresBaseUrl && !secret?.baseUrl) {
-      return fail(`Configure a base URL for ${provider.label} first`, 412)
+    let systemContext: string
+    if (body.agent) {
+      const config = await readConfig()
+      const agent = config.currentPath
+        ? await findArtifact(config.currentPath, "agent", body.agent)
+        : null
+      if (!agent) return fail(`Agent "${body.agent}" was not found`, 404)
+      systemContext = buildAgentPersonaContext(agent)
+    } else {
+      systemContext = await buildSystemContext()
     }
-    if (!provider.requiresBaseUrl && !secret?.apiKey) {
-      return fail(`No API key configured for ${provider.label}`, 412)
-    }
 
-    const systemContext = await buildSystemContext()
+    let verified: Awaited<ReturnType<typeof getVerifiedCredentials>>
+    try {
+      verified = await getVerifiedCredentials(provider)
+    } catch (error) {
+      if (error instanceof CredentialStateError) {
+        return fail(error.message, error.status)
+      }
+      throw error
+    }
 
     try {
       const result = await provider.generate(
-        { model, messages, temperature: body.temperature, systemContext },
-        { apiKey: secret?.apiKey ?? "", baseUrl: secret?.baseUrl }
+        {
+          model,
+          messages: body.messages,
+          temperature: body.temperature,
+          systemContext,
+        },
+        verified.credentials
       )
       return ok(result)
     } catch (err) {
-      if (err instanceof ProviderError) return fail(err.message, err.status)
+      if (err instanceof ProviderError) {
+        await markInvalidOnAuthFailure(provider, err, verified.secret)
+        return fail(err.message, err.status)
+      }
       throw err
     }
   })

@@ -8,7 +8,27 @@ import {
 
 interface AnthropicMessage {
   content?: Array<{ type: string; text?: string }>
-  error?: { message?: string }
+}
+
+async function verifyAnthropic(apiKey: string): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch("https://api.anthropic.com/v1/models", {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+    })
+  } catch {
+    throw new ProviderError("Could not connect to Anthropic", 502)
+  }
+
+  if (!response.ok) {
+    throw new ProviderError(
+      `Anthropic credential verification failed (${response.status})`,
+      response.status
+    )
+  }
 }
 
 /**
@@ -24,6 +44,9 @@ export const anthropicProvider: LLMProvider = {
     "claude-3-5-haiku-latest",
     "claude-3-opus-latest",
   ],
+  verify(credentials: LLMCredentials): Promise<void> {
+    return verifyAnthropic(credentials.apiKey)
+  },
   async generate(
     request: LLMGenerateRequest,
     credentials: LLMCredentials
@@ -51,7 +74,7 @@ export const anthropicProvider: LLMProvider = {
     const json = (await res.json().catch(() => null)) as AnthropicMessage | null
     if (!res.ok) {
       throw new ProviderError(
-        json?.error?.message ?? `Anthropic request failed (${res.status})`,
+        `Anthropic request failed (${res.status})`,
         res.status
       )
     }

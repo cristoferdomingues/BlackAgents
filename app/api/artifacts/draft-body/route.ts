@@ -1,7 +1,11 @@
 import { ok, fail, handle } from "@/lib/api-response"
 import { getProvider, isProviderId } from "@/lib/llm/registry"
 import { buildSystemContext } from "@/lib/llm/context"
-import { getProviderSecret } from "@/lib/secrets"
+import {
+  CredentialStateError,
+  getVerifiedCredentials,
+  markInvalidOnAuthFailure,
+} from "@/lib/llm/credentials"
 import { readConfig } from "@/lib/config"
 import { scanWorkspace } from "@/lib/artifacts/parser"
 import { extractReferences } from "@/lib/artifacts/graph"
@@ -72,12 +76,14 @@ export async function POST(req: Request) {
     const model = body.model?.trim() || provider.models[0]
     if (!model) return fail("A model is required for this provider")
 
-    const secret = await getProviderSecret(provider.id)
-    if (provider.requiresBaseUrl && !secret?.baseUrl) {
-      return fail(`Configure a base URL for ${provider.label} first`, 412)
-    }
-    if (!provider.requiresBaseUrl && !secret?.apiKey) {
-      return fail(`No API key configured for ${provider.label}`, 412)
+    let verified: Awaited<ReturnType<typeof getVerifiedCredentials>>
+    try {
+      verified = await getVerifiedCredentials(provider)
+    } catch (error) {
+      if (error instanceof CredentialStateError) {
+        return fail(error.message, error.status)
+      }
+      throw error
     }
 
     const systemContext = await buildSystemContext()
@@ -92,11 +98,14 @@ export async function POST(req: Request) {
           ],
           systemContext,
         },
-        { apiKey: secret?.apiKey ?? "", baseUrl: secret?.baseUrl }
+        verified.credentials
       )
       content = result.content
     } catch (err) {
-      if (err instanceof ProviderError) return fail(err.message, err.status)
+      if (err instanceof ProviderError) {
+        await markInvalidOnAuthFailure(provider, err, verified.secret)
+        return fail(err.message, err.status)
+      }
       throw err
     }
 

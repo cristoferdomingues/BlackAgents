@@ -3,7 +3,17 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowUp, Bot, Loader2, Sparkles, User, Wand2 } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowUp,
+  Bot,
+  Loader2,
+  MessageCircle,
+  ShieldAlert,
+  Sparkles,
+  User,
+  Wand2,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
@@ -28,24 +38,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
-
-interface ProviderDescriptor {
-  id: string
-  label: string
-  models: string[]
-  requiresBaseUrl: boolean
-}
-
-interface ProviderStatus {
-  id: string
-  configured: boolean
-}
-
-interface ProvidersState {
-  providers: ProviderDescriptor[]
-  status: ProviderStatus[]
-  defaults: { provider?: string; model?: string }
-}
+import {
+  isProviderVerified,
+  type ProvidersState,
+} from "@/components/features/providers/provider-readiness"
 
 interface Turn {
   role: "user" | "assistant"
@@ -106,10 +102,21 @@ async function persistSelection(
   }
 }
 
-export function ChatPage() {
+export function ChatPage({
+  selectedAgentName,
+}: {
+  selectedAgentName?: string
+}) {
   const router = useRouter()
-  const { workspace } = useWorkspace()
+  const {
+    workspace,
+    byType,
+    loading: workspaceLoading,
+    loadingArtifacts,
+  } = useWorkspace()
   const [meta, setMeta] = React.useState<ProvidersState | null>(null)
+  const [metaLoading, setMetaLoading] = React.useState(true)
+  const [metaError, setMetaError] = React.useState<string | null>(null)
   const [provider, setProvider] = React.useState<string>("")
   const [model, setModel] = React.useState<string>("")
   const [availableModels, setAvailableModels] = React.useState<string[]>([])
@@ -122,24 +129,43 @@ export function ChatPage() {
   // defaults while restoring the previous selection.
   const selectionReady = React.useRef(false)
   const persistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const agents = byType("agent")
+  const selectedAgent = selectedAgentName
+    ? agents.find((agent) => agent.name === selectedAgentName)
+    : undefined
+  const agentNotFound = Boolean(
+    selectedAgentName &&
+      !workspaceLoading &&
+      !loadingArtifacts &&
+      !selectedAgent
+  )
+  const suggestions = selectedAgent
+    ? [
+        `What kinds of tasks are you best suited for as ${selectedAgent.name}?`,
+        `Help me with a task using your ${selectedAgent.name} persona.`,
+        `Guide me through this goal: ${selectedAgent.description}`,
+      ]
+    : SUGGESTIONS
 
   React.useEffect(() => {
     apiFetch<ProvidersState>("/api/providers")
       .then((data) => {
         setMeta(data)
-        const configured = data.status.filter((s) => s.configured).map((s) => s.id)
+        const verified = data.status
+          .filter((status) => status.verificationStatus === "valid")
+          .map((status) => status.id)
         const remembered = readStored(LAST_PROVIDER_KEY)
         // Prefer durable secrets defaults over localStorage. Electron assigns a
         // new 127.0.0.1 port each launch, so localStorage is a new empty origin.
         const initial =
           (data.defaults.provider &&
-          data.providers.some((p) => p.id === data.defaults.provider)
+          verified.includes(data.defaults.provider)
             ? data.defaults.provider
             : null) ??
-          (remembered && data.providers.some((p) => p.id === remembered)
+          (remembered && verified.includes(remembered)
             ? remembered
             : null) ??
-          configured[0] ??
+          verified[0] ??
           data.providers[0]?.id
         if (initial) {
           setProvider(initial)
@@ -151,7 +177,12 @@ export function ChatPage() {
         }
         selectionReady.current = true
       })
-      .catch(() => {})
+      .catch((err) => {
+        setMetaError(
+          err instanceof Error ? err.message : "Could not load providers"
+        )
+      })
+      .finally(() => setMetaLoading(false))
   }, [])
 
   React.useEffect(() => {
@@ -170,37 +201,42 @@ export function ChatPage() {
     }
   }, [provider, model])
 
-  // Load selectable models for the active provider (static + live when possible).
+  const providerVerified = isProviderVerified(meta, provider)
+  const hasVerifiedProvider = Boolean(
+    meta?.status.some((status) => status.verificationStatus === "valid")
+  )
+  const canChat = providerVerified && !agentNotFound
+
+  // Load selectable models for the active verified provider.
   React.useEffect(() => {
-    if (!provider) {
-      setAvailableModels([])
+    if (!provider || !providerVerified) {
       return
     }
-    const staticModels =
-      meta?.providers.find((p) => p.id === provider)?.models ?? []
-    setAvailableModels(staticModels)
     let cancelled = false
-    setModelsLoading(true)
-    apiFetch<{ models: string[] }>(
-      `/api/providers/models?id=${encodeURIComponent(provider)}`
-    )
-      .then((data) => {
+
+    async function loadModels(): Promise<void> {
+      await Promise.resolve()
+      const staticModels =
+        meta?.providers.find((p) => p.id === provider)?.models ?? []
+      setAvailableModels(staticModels)
+      setModelsLoading(true)
+      try {
+        const data = await apiFetch<{ models: string[] }>(
+          `/api/providers/models?id=${encodeURIComponent(provider)}`
+        )
         if (!cancelled) setAvailableModels(data.models)
-      })
-      .catch(() => {
+      } catch {
         // Keep the curated static list already shown.
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setModelsLoading(false)
-      })
+      }
+    }
+
+    void loadModels()
     return () => {
       cancelled = true
     }
-  }, [provider, meta])
-
-  const configured = Boolean(
-    meta?.status.find((s) => s.id === provider)?.configured
-  )
+  }, [provider, meta, providerVerified])
 
   function selectProvider(id: string) {
     setProvider(id)
@@ -216,8 +252,12 @@ export function ChatPage() {
   async function send(text: string) {
     const content = text.trim()
     if (!content || sending) return
-    if (!configured) {
-      toast.error("Add an API key for this provider first")
+    if (agentNotFound) {
+      toast.error(`Agent "${selectedAgentName}" was not found`)
+      return
+    }
+    if (!providerVerified) {
+      toast.error("Verify this provider before starting a chat")
       return
     }
     const next = [...turns, { role: "user" as const, content }]
@@ -229,7 +269,12 @@ export function ChatPage() {
         "/api/chat",
         {
           method: "POST",
-          body: JSON.stringify({ provider, model, messages: next }),
+          body: JSON.stringify({
+            provider,
+            model,
+            messages: next,
+            agent: selectedAgent?.name,
+          }),
         }
       )
       setTurns((t) => [...t, { role: "assistant", content: result.content }])
@@ -239,6 +284,11 @@ export function ChatPage() {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       setTurns((t) => t.slice(0, -1))
       setInput(content)
+      apiFetch<ProvidersState>("/api/providers")
+        .then(setMeta)
+        .catch(() => {
+          // Preserve the current controls when status refresh is unavailable.
+        })
     } finally {
       setSending(false)
     }
@@ -258,23 +308,55 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-4 border-b px-6 py-3">
-        <div className="flex items-center gap-2">
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {sending
+          ? `${selectedAgent?.name ?? "Assistant"} is thinking`
+          : turns.at(-1)?.role === "assistant"
+            ? `${selectedAgent?.name ?? "Assistant"} responded`
+            : ""}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">Assistant</h1>
+          {selectedAgent ? (
+            <Badge
+              variant="secondary"
+              className="max-w-52 gap-1.5 truncate"
+              title={selectedAgent.description}
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              {selectedAgent.name}
+            </Badge>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={provider} onValueChange={selectProvider}>
-            <SelectTrigger className="w-40">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-initial">
+          <Select
+            value={provider}
+            onValueChange={selectProvider}
+            disabled={metaLoading || Boolean(metaError)}
+          >
+            <SelectTrigger className="w-36 sm:w-40" aria-label="Provider">
               <SelectValue placeholder="Provider" />
             </SelectTrigger>
             <SelectContent>
               {meta?.providers.map((p) => {
-                const ready = meta.status.find((s) => s.id === p.id)?.configured
+                const verificationStatus = meta.status.find(
+                  (status) => status.id === p.id
+                )?.verificationStatus
                 return (
                   <SelectItem key={p.id} value={p.id}>
                     {p.label}
-                    {ready ? "" : " (no key)"}
+                    {verificationStatus === "valid"
+                      ? ""
+                      : verificationStatus === "invalid"
+                        ? " (invalid)"
+                        : " (unverified)"}
                   </SelectItem>
                 )
               })}
@@ -285,55 +367,146 @@ export function ChatPage() {
             onChange={setModel}
             models={availableModels}
             loading={modelsLoading}
+            disabled={!providerVerified}
+            className="w-52 sm:w-64"
           />
         </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-6 p-6">
+          {metaError ? (
+            <div
+              className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+              role="alert"
+            >
+              <div className="flex gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div>
+                  <p className="text-sm font-medium">Providers unavailable</p>
+                  <p className="text-xs text-muted-foreground">{metaError}</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {agentNotFound ? (
+            <div
+              className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+              role="alert"
+            >
+              <div className="flex gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div>
+                  <p className="text-sm font-medium">Agent not found</p>
+                  <p className="text-xs text-muted-foreground">
+                    The agent “{selectedAgentName}” is not available in this
+                    workspace. It may have been renamed or removed.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/agents">View agents</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/chat">Open generic chat</Link>
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {!metaLoading && !metaError && !hasVerifiedProvider ? (
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">
+                    Verify a provider to start chatting
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Chat stays disabled until a saved provider passes a live
+                    credential check.
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm">
+                <Link href="/providers">Open providers</Link>
+              </Button>
+            </div>
+          ) : !metaLoading &&
+            !metaError &&
+            hasVerifiedProvider &&
+            !providerVerified ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3">
+              <p className="text-sm text-muted-foreground">
+                This provider is not verified. Choose a verified provider or{" "}
+                <Link href="/providers" className="text-primary underline">
+                  verify it
+                </Link>
+                .
+              </p>
+            </div>
+          ) : null}
           {turns.length === 0 ? (
             <div className="space-y-6 py-10 text-center">
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {selectedAgent ? (
+                  <AgentAvatar name={selectedAgent.name} className="mx-auto" />
+                ) : null}
                 <h2 className="text-xl font-semibold">
-                  Describe the artifact you want
+                  {selectedAgent
+                    ? `Chat with ${selectedAgent.name}`
+                    : "Describe the artifact you want"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  The assistant follows your authoring standards
-                  {workspace ? ` and knows the artifacts in ${workspace.name}` : ""}.
-                  When it proposes one, open it straight in the editor.
+                  {selectedAgent
+                    ? selectedAgent.description
+                    : `The assistant follows your authoring standards${
+                        workspace
+                          ? ` and knows the artifacts in ${workspace.name}`
+                          : ""
+                      }. When it proposes one, open it straight in the editor.`}
                 </p>
               </div>
               <div className="flex flex-col items-center gap-2">
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => send(s)}
-                    className="w-full max-w-md rounded-md border px-4 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    disabled={!canChat || sending}
+                    className="w-full max-w-md rounded-md border px-4 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     {s}
                   </button>
                 ))}
               </div>
-              {!configured ? (
-                <p className="text-xs text-muted-foreground">
-                  No key for this provider yet.{" "}
-                  <Link href="/providers" className="text-primary underline">
-                    Add one
-                  </Link>
-                  .
-                </p>
-              ) : null}
             </div>
           ) : (
             turns.map((turn, i) => (
-              <Message key={i} turn={turn} onOpen={openInEditor} />
+              <Message
+                key={i}
+                turn={turn}
+                onOpen={openInEditor}
+                agentName={selectedAgent?.name}
+              />
             ))
           )}
           {sending ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+              aria-hidden="true"
+            >
               <Loader2 className="h-4 w-4 animate-spin" />
-              Thinking…
+              {selectedAgent
+                ? `${selectedAgent.name} is thinking…`
+                : "Thinking…"}
             </div>
           ) : null}
         </div>
@@ -347,17 +520,26 @@ export function ChatPage() {
             onKeyDown={onKeyDown}
             rows={1}
             placeholder={
-              configured
-                ? "Describe an agent, command, rule, or skill…"
-                : "Add an API key to start chatting"
+              agentNotFound
+                ? "Choose an available agent to start chatting"
+                : providerVerified
+                  ? selectedAgent
+                    ? `Message ${selectedAgent.name}…`
+                    : "Describe an agent, command, rule, or skill…"
+                  : "Verify a provider to start chatting"
             }
             className="max-h-40 min-h-[2.75rem] resize-none"
-            disabled={!configured || sending}
+            disabled={!canChat || sending}
+            aria-label={
+              selectedAgent
+                ? `Message ${selectedAgent.name}`
+                : "Message assistant"
+            }
           />
           <Button
             size="icon"
             onClick={() => send(input)}
-            disabled={!configured || sending || !input.trim()}
+            disabled={!canChat || sending || !input.trim()}
             aria-label="Send"
           >
             {sending ? (
@@ -375,9 +557,11 @@ export function ChatPage() {
 function Message({
   turn,
   onOpen,
+  agentName,
 }: {
   turn: Turn
   onOpen: (draft: NormalizedDraft) => void
+  agentName?: string
 }) {
   const isUser = turn.role === "user"
   const draft = isUser ? null : extractDraft(turn.content)
@@ -385,14 +569,17 @@ function Message({
 
   return (
     <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted"
-        )}
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-      </div>
+      {isUser ? (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <User className="h-4 w-4" />
+        </div>
+      ) : agentName ? (
+        <AgentAvatar name={agentName} />
+      ) : (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Bot className="h-4 w-4" />
+        </div>
+      )}
       <div className={cn("min-w-0 max-w-[85%] space-y-3", isUser && "text-right")}>
         {isUser ? (
           <div className="inline-block whitespace-pre-wrap rounded-lg bg-primary px-3 py-2 text-left text-sm text-primary-foreground">
@@ -406,6 +593,29 @@ function Message({
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
       </div>
+    </div>
+  )
+}
+
+function AgentAvatar({
+  name,
+  className,
+}: {
+  name: string
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20",
+        className
+      )}
+      aria-label={`${name} avatar`}
+      title={name}
+    >
+      <span className="text-xs font-semibold" aria-hidden="true">
+        {name.slice(0, 1).toUpperCase()}
+      </span>
     </div>
   )
 }

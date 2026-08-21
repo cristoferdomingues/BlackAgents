@@ -43,6 +43,8 @@ export interface LLMProvider {
   models: string[]
   /** Whether this provider requires a user-supplied base URL (custom). */
   requiresBaseUrl?: boolean
+  /** Verify credentials through a non-generating provider endpoint. */
+  verify(credentials: LLMCredentials): Promise<void>
   generate(
     request: LLMGenerateRequest,
     credentials: LLMCredentials

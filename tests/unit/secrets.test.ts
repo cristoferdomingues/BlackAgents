@@ -9,6 +9,7 @@ import {
   removeProviderSecret,
   setDefaults,
   setProviderSecret,
+  setProviderVerification,
   toStatusList,
 } from "@/lib/secrets"
 import { PROVIDER_IDS } from "@/lib/llm/registry"
@@ -31,6 +32,25 @@ describe("secrets storage", () => {
   it("stores and reads back a provider secret", async () => {
     await setProviderSecret("openai", { apiKey: "sk-test-1234" })
     expect(await getProviderSecret("openai")).toEqual({ apiKey: "sk-test-1234" })
+  })
+
+  it("treats legacy credentials as unverified and persists later checks", async () => {
+    await setProviderSecret("openai", { apiKey: "sk-test-1234" })
+    let status = toStatusList(await readSecrets(), PROVIDER_IDS).find(
+      (item) => item.id === "openai"
+    )
+    expect(status?.verificationStatus).toBe("unverified")
+    expect(status?.checkedAt).toBeUndefined()
+
+    await setProviderVerification("openai", {
+      status: "valid",
+      checkedAt: "2026-08-21T10:00:00.000Z",
+    })
+    status = toStatusList(await readSecrets(), PROVIDER_IDS).find(
+      (item) => item.id === "openai"
+    )
+    expect(status?.verificationStatus).toBe("valid")
+    expect(status?.checkedAt).toBe("2026-08-21T10:00:00.000Z")
   })
 
   it("writes the secrets file with 0600 permissions", async () => {
@@ -64,6 +84,7 @@ describe("toStatusList", () => {
     expect(custom.configured).toBe(true)
     expect(custom.last4).toBe("WXYZ")
     expect(custom.baseUrl).toBe("http://x/v1")
+    expect(custom.verificationStatus).toBe("unverified")
     // never leaks the full key
     expect(JSON.stringify(statuses)).not.toContain("abcd1234WXYZ")
 

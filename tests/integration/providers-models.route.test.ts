@@ -79,6 +79,6 @@ describe("GET /api/providers/models", () => {
     expect(json.success).toBe(true)
     expect(json.data.source).toBe("static")
     expect(json.data.models).toEqual([])
-    expect(json.data.warning).toBe("boom")
+    expect(json.data.warning).toBe("Could not list models (500)")
   })
 })

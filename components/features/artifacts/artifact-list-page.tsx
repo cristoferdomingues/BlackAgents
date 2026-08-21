@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Loader2, Plus, Search } from "lucide-react"
+import { Loader2, MessageCircle, Plus, Search, ShieldAlert } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
@@ -11,6 +11,7 @@ import type { ArtifactType } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { ArtifactBadges } from "@/components/features/artifacts/artifact-badges"
+import { useProviderReadiness } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -28,6 +29,9 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
   const router = useRouter()
   const { workspace, byType, loading, loadingArtifacts } = useWorkspace()
   const [query, setQuery] = React.useState("")
+  const providerReadiness = useProviderReadiness(type === "agent")
+  const showChatAction = type === "agent"
+  const columnCount = showChatAction ? 4 : 3
 
   const items = React.useMemo(() => {
     const list = byType(type)
@@ -83,19 +87,22 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
               <TableHead className="w-[240px]">Name</TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="w-[180px]">Tags</TableHead>
+              {showChatAction ? (
+                <TableHead className="w-[190px] text-right">Actions</TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {loadingArtifacts && items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="h-24 text-center">
+                <TableCell colSpan={columnCount} className="h-24 text-center">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={3}
+                  colSpan={columnCount}
                   className="h-28 text-center text-sm text-muted-foreground"
                 >
                   {query
@@ -124,6 +131,44 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
                   <TableCell>
                     <ArtifactBadges artifact={artifact} />
                   </TableCell>
+                  {showChatAction ? (
+                    <TableCell className="text-right">
+                      {providerReadiness.loading ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          aria-label={`Checking chat availability for ${artifact.name}`}
+                        >
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Checking
+                        </Button>
+                      ) : providerReadiness.hasVerifiedProvider ? (
+                        <Button asChild variant="outline" size="sm">
+                          <Link
+                            href={`/chat?agent=${encodeURIComponent(artifact.name)}`}
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Chat with ${artifact.name}`}
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                            Chat
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button asChild variant="outline" size="sm">
+                          <Link
+                            href="/providers"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Verify a provider to chat with ${artifact.name}`}
+                          >
+                            <ShieldAlert className="h-4 w-4" />
+                            Verify provider
+                          </Link>
+                        </Button>
+                      )}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))
             )}

@@ -74,7 +74,7 @@ describe("listOpenAICompatibleModels", () => {
       listOpenAICompatibleModels("https://api.example.com/v1", "bad")
     ).rejects.toMatchObject({
       name: "ProviderError",
-      message: "Invalid key",
+      message: "Could not list models (401)",
       status: 401,
     } satisfies Partial<ProviderError>)
   })

@@ -6,6 +6,7 @@ import {
   type LLMGenerateResult,
   type LLMProvider,
 } from "../types"
+import { verifyOpenAICompatibleConnection } from "../verification"
 
 /**
  * Builds the message array for an OpenAI-style /chat/completions call,
@@ -21,7 +22,6 @@ export function toOpenAIMessages(request: LLMGenerateRequest): ChatMessage[] {
 
 interface OpenAICompletion {
   choices?: Array<{ message?: { content?: string } }>
-  error?: { message?: string }
 }
 
 /** Shared OpenAI-compatible call used by both the OpenAI and custom providers. */
@@ -30,12 +30,14 @@ export async function openAICompatibleGenerate(
   request: LLMGenerateRequest,
   apiKey: string
 ): Promise<LLMGenerateResult> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
       model: request.model,
       messages: toOpenAIMessages(request),
@@ -46,7 +48,7 @@ export async function openAICompatibleGenerate(
   const json = (await res.json().catch(() => null)) as OpenAICompletion | null
   if (!res.ok) {
     throw new ProviderError(
-      json?.error?.message ?? `Provider request failed (${res.status})`,
+      `Provider request failed (${res.status})`,
       res.status
     )
   }
@@ -61,6 +63,13 @@ export const openAIProvider: LLMProvider = {
   id: "openai",
   label: "OpenAI",
   models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
+  verify(credentials: LLMCredentials): Promise<void> {
+    return verifyOpenAICompatibleConnection(
+      "https://api.openai.com/v1",
+      credentials.apiKey,
+      "OpenAI"
+    )
+  },
   generate(request: LLMGenerateRequest, credentials: LLMCredentials) {
     return openAICompatibleGenerate(
       "https://api.openai.com/v1",

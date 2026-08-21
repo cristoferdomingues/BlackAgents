@@ -1,5 +1,12 @@
 import { ok, fail, handle } from "@/lib/api-response"
-import { describeProviders, isProviderId, PROVIDER_IDS } from "@/lib/llm/registry"
+import { z } from "zod"
+import {
+  describeProviders,
+  getProvider,
+  isProviderId,
+  PROVIDER_IDS,
+} from "@/lib/llm/registry"
+import { verifyProviderCredentials } from "@/lib/llm/verification"
 import {
   readSecrets,
   removeProviderSecret,
@@ -8,6 +15,7 @@ import {
   toStatusList,
 } from "@/lib/secrets"
 import type { ProviderId } from "@/lib/llm/types"
+import { ProviderError } from "@/lib/llm/types"
 
 async function state() {
   const secrets = await readSecrets()
@@ -23,26 +31,56 @@ export async function GET() {
   return handle(async () => ok(await state()))
 }
 
-interface SetKeyBody {
-  id?: string
-  apiKey?: string
-  baseUrl?: string
-}
+const setCredentialSchema = z.object({
+  id: z.enum(["openai", "anthropic", "custom"]),
+  apiKey: z.string().trim().default(""),
+  baseUrl: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z
+      .string()
+      .trim()
+      .url("Base URL must be a valid URL")
+      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
+        message: "Base URL must use http or https",
+      })
+      .optional()
+  ),
+})
 
 /** Store (or replace) an API key for a provider. */
 export async function POST(req: Request) {
   return handle(async () => {
-    const body = (await req.json().catch(() => null)) as SetKeyBody | null
-    if (!body?.id || !isProviderId(body.id)) return fail("Unknown provider")
-    const apiKey = body.apiKey?.trim() ?? ""
-    const baseUrl = body.baseUrl?.trim()
-    if (body.id === "custom" && !baseUrl) {
+    const parsed = setCredentialSchema.safeParse(
+      await req.json().catch(() => null)
+    )
+    if (!parsed.success) {
+      return fail(parsed.error.issues[0]?.message ?? "Invalid request body")
+    }
+    const { id, apiKey, baseUrl } = parsed.data
+    if (!isProviderId(id)) return fail("Unknown provider")
+    if (id === "custom" && !baseUrl) {
       return fail("Custom provider requires a base URL")
     }
-    if (body.id !== "custom" && !apiKey) {
+    if (id !== "custom" && !apiKey) {
       return fail("API key is required")
     }
-    await setProviderSecret(body.id, { apiKey, baseUrl })
+
+    const adapter = getProvider(id)
+    if (!adapter) return fail("Unknown provider")
+
+    try {
+      await verifyProviderCredentials(adapter, { apiKey, baseUrl })
+    } catch (error) {
+      if (error instanceof ProviderError) return fail(error.message, error.status)
+      throw error
+    }
+
+    await setProviderSecret(id, {
+      apiKey,
+      baseUrl,
+      verification: { status: "valid", checkedAt: new Date().toISOString() },
+    })
     return ok(await state())
   })
 }

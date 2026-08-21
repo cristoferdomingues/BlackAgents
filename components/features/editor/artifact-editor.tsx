@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Eye,
   Loader2,
+  MessageCircle,
   Pencil,
   Save,
   ShieldCheck,
@@ -36,6 +37,7 @@ import {
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { GlobsInput } from "@/components/features/editor/globs-input"
 import { StandardsHints } from "@/components/features/editor/standards-hints"
+import type { ProvidersState } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -64,25 +66,6 @@ type FormValues = z.infer<typeof formSchema>
 
 const LAST_PROVIDER_KEY = "black-agents:last-provider"
 const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
-
-interface ProviderDescriptorLite {
-  id: string
-  label: string
-  models: string[]
-  requiresBaseUrl: boolean
-}
-
-interface ProviderStatusLite {
-  id: string
-  configured: boolean
-  baseUrl?: string
-}
-
-interface ProvidersState {
-  providers: ProviderDescriptorLite[]
-  status: ProviderStatusLite[]
-  defaults: { provider?: string; model?: string }
-}
 
 interface DraftBodyResponse {
   body: string
@@ -148,11 +131,14 @@ export function ArtifactEditor({
     },
   })
 
+  // React Hook Form intentionally exposes subscription-based watch values.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const body = form.watch("body")
   const nameValue = form.watch("name")
   const descriptionValue = form.watch("description")
 
   const [providers, setProviders] = React.useState<ProvidersState | null>(null)
+  const [providersLoaded, setProvidersLoaded] = React.useState(false)
   const [generating, setGenerating] = React.useState(false)
   const [validating, setValidating] = React.useState(false)
   const [validation, setValidation] = React.useState<ValidationResult | null>(
@@ -169,6 +155,7 @@ export function ArtifactEditor({
       .catch(() => {
         // Providers are optional; the assistant actions just stay disabled.
       })
+      .finally(() => active && setProvidersLoaded(true))
     return () => {
       active = false
     }
@@ -177,7 +164,7 @@ export function ArtifactEditor({
   const usableProviderIds = React.useMemo(() => {
     if (!providers) return [] as string[]
     return providers.status
-      .filter((s) => s.configured || Boolean(s.baseUrl))
+      .filter((s) => s.verificationStatus === "valid")
       .map((s) => s.id)
   }, [providers])
 
@@ -435,7 +422,7 @@ export function ArtifactEditor({
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-4 border-b px-6 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button asChild variant="ghost" size="icon" type="button">
             <Link href={`/${meta.route}`} aria-label="Back">
@@ -454,7 +441,36 @@ export function ArtifactEditor({
             ) : null}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {isEdit && type === "agent" ? (
+            hasProvider ? (
+              <Button asChild type="button" variant="outline" size="sm">
+                <Link href={`/chat?agent=${encodeURIComponent(name ?? "")}`}>
+                  <MessageCircle className="h-4 w-4" />
+                  Chat with this agent
+                </Link>
+              </Button>
+            ) : providersLoaded ? (
+              <Button asChild type="button" variant="outline" size="sm">
+                <Link
+                  href="/providers"
+                  title="Verify an AI provider to chat with this agent"
+                >
+                  Verify provider to chat
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking chat
+              </Button>
+            )
+          ) : null}
           {isEdit ? (
             <Button
               type="button"
@@ -474,7 +490,7 @@ export function ArtifactEditor({
               disabled={!canDraft || generating}
               title={
                 !hasProvider
-                  ? "Configure an AI provider in Settings to enable assistant drafting"
+                  ? "Verify an AI provider to enable assistant drafting"
                   : !canDraft
                     ? "Enter a valid name and description first"
                     : "Draft the body from the name and description"
@@ -496,7 +512,7 @@ export function ArtifactEditor({
             disabled={!canValidate || validating}
             title={
               !hasProvider
-                ? "Configure an AI provider in Settings to enable assistant validation"
+                ? "Verify an AI provider to enable assistant validation"
                 : !canValidate
                   ? "A valid name, description and body are required to validate"
                   : "Review this artifact against the authoring standards"

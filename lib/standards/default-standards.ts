@@ -6,10 +6,7 @@ import type { ArtifactType } from "../artifacts/types"
  * - `STANDARDS_SPEC` — a structured spec used by the editor/wizard to render
  *   field hints, required-section checks, and body templates.
  * - `DEFAULT_STANDARDS_MD` — the human-editable reference document shown on the
- *   Standards page and (in a later phase) fed to the LLM as generation context.
- *
- * Both are derived from the edu-sidekick "sidekick-authoring-standards" skill,
- * generalized so they apply to any project rather than a single organization.
+ *   Standards page and fed to the LLM as generation context.
  */
 
 export interface TypeSpec {

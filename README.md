@@ -16,14 +16,15 @@ A **local-first** manager for AI agent artifacts — **agents, commands, rules, 
 
 ## Features
 
+- **Workspace Studio & Domain Templates** — create fresh workspaces from scratch with built-in starter kits (**Crypto Assets Hub**, **Software Engineering**, or **Blank**), or open existing project folders on disk.
 - **Artifact CRUD** — create, edit, rename, and delete agents, commands, rules, and skills with a Markdown editor (live preview) and type-aware frontmatter fields.
 - **Authoring standards** — an editable, per-workspace standards baseline that drives inline hints (required sections, anti-patterns) as you write.
 - **Guided wizard** — a Type → Details → Body → Review flow for creating artifacts.
 - **Relationship graph** — an Obsidian-style force-directed graph of the cross-references between artifacts.
-- **Multiple workspaces** — save several project folders and switch the active one from the header; settings persist to `~/.black-agents/config.json`.
 - **Multi-platform export** — re-emit a workspace's artifacts in another platform's layout (`.cursor` / `.claude` / `.windsurf`) with a per-file diff (create / overwrite / unchanged), a cross-repo target folder, and a `.zip` download.
 - **Drift / sync view** — a read-only, per-platform report of which on-disk files are in-sync, drifted, or missing (semantic comparison, so cosmetic re-serialization isn't flagged).
-- **Chat assistant (bring your own key)** — describe an artifact in plain language and the assistant proposes a standards-compliant draft you can open straight in the editor. Keys are stored locally and never leave your machine.
+- **Chat with Agent Personas** — interact directly with any agent in your active workspace (e.g., chat with your `portfolio-rebalancer` or `feature-developer` agent) running with its specific persona, rules, and workflows.
+- **Assistant drafting (bring your own key)** — describe an artifact in plain language and the assistant proposes a standards-compliant draft you can open straight in the editor. Keys are stored locally (`0600`) and never leave your machine.
 
 ## Concepts
 
@@ -61,7 +62,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000> and add a project folder (e.g. a repo containing a `.cursor/` directory) — from the workspace switcher in the header or under **Settings**. Switch the active workspace at any time from the header.
+Open <http://localhost:3000> to initialize a new workspace using a starter kit (like **Crypto Assets Hub** or **Software Engineering**) or open an existing project folder from your disk. You can switch or manage workspaces at any time from the header.
 
 ### Desktop app (Electron)
 
@@ -89,16 +90,16 @@ configuration as the browser version. Distributables are written to
 `dist-electron/`. macOS packages are unsigned until signing credentials are
 configured.
 
-### Using the chat assistant
+### Using the chat assistant & agent personas
 
-1. Go to **AI Providers** and add a key for **OpenAI**, **Anthropic**, or a **Custom** OpenAI-compatible endpoint (e.g. OpenRouter at `https://openrouter.ai/api/v1`, or a local Ollama / LM Studio server).
-2. Open **Assistant**, pick the provider and model, and describe the artifact you want.
-3. When the assistant proposes a draft, click **Open in editor** to review and save it.
+1. Go to **AI Providers** and configure credentials for **OpenAI**, **Anthropic**, or a **Custom** OpenAI-compatible endpoint (e.g. OpenRouter, or a local Ollama / LM Studio server). Keys are stored locally at `~/.black-agents/secrets.json` with `0600` permissions.
+2. **Drafting New Artifacts**: Open **Assistant**, describe the artifact you want, and click **Open in editor** to review and save the generated draft.
+3. **Chatting with Workspace Agents**: In **Assistant**, select an agent from the persona dropdown (e.g. `portfolio-rebalancer` or `feature-developer`). The assistant adopts that agent's specific persona, constraints, and workflow to solve problems or give advisory recommendations.
 
 ## Roadmap
 
-- **Shipped:** multiple workspaces, artifact CRUD, authoring-standards baseline, guided creation wizard, relationship graph, multi-platform export (diff + `.zip` + cross-repo target), drift/sync view, and the bring-your-own-key chat assistant.
-- **Next:** streaming chat responses, multi-turn editing of existing artifacts in chat, and a default provider/model picker in the Providers UI.
+- **Shipped:** workspace creation with domain starter kits (Crypto Assets Hub, Software Engineering, Blank), chat interaction with active agent personas, multiple workspaces, artifact CRUD, authoring-standards baseline, guided creation wizard, relationship graph, multi-platform export (diff + `.zip` + cross-repo target), drift/sync view, and bring-your-own-key assistant.
+- **Next:** streaming chat responses, multi-turn editing of existing artifacts in chat, and tool calling / MCP integration for live data and actions.
 
 ## Scripts
 

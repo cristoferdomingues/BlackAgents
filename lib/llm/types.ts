@@ -8,13 +8,30 @@
  * here lets the model layer and the future chat UI evolve independently.
  */
 
+import type { ToolExecutionTrace } from "@/lib/mcp/types"
+
 export type ProviderId = "openai" | "anthropic" | "custom"
 
-export type ChatRole = "system" | "user" | "assistant"
+export type ChatRole = "system" | "user" | "assistant" | "tool"
+
+export interface ToolCall {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+}
 
 export interface ChatMessage {
   role: ChatRole
   content: string
+  name?: string
+  tool_call_id?: string
+  tool_calls?: ToolCall[]
+}
+
+export interface LLMToolDefinition {
+  name: string
+  description?: string
+  parameters: Record<string, unknown>
 }
 
 export interface LLMGenerateRequest {
@@ -23,11 +40,14 @@ export interface LLMGenerateRequest {
   temperature?: number
   /** Authoring standards + artifact registry injected as system context. */
   systemContext?: string
+  tools?: LLMToolDefinition[]
 }
 
 export interface LLMGenerateResult {
   content: string
   model: string
+  toolCalls?: ToolCall[]
+  toolExecutions?: ToolExecutionTrace[]
 }
 
 export interface LLMCredentials {

@@ -4,10 +4,19 @@ import {
   type LLMGenerateRequest,
   type LLMGenerateResult,
   type LLMProvider,
+  type ToolCall,
 } from "../types"
 
+interface AnthropicContentBlock {
+  type: string
+  text?: string
+  id?: string
+  name?: string
+  input?: Record<string, unknown>
+}
+
 interface AnthropicMessage {
-  content?: Array<{ type: string; text?: string }>
+  content?: AnthropicContentBlock[]
 }
 
 async function verifyAnthropic(apiKey: string): Promise<void> {
@@ -53,7 +62,50 @@ export const anthropicProvider: LLMProvider = {
   ): Promise<LLMGenerateResult> {
     const messages = request.messages
       .filter((m) => m.role !== "system")
-      .map((m) => ({ role: m.role, content: m.content }))
+      .map((m) => {
+        if (m.role === "tool") {
+          return {
+            role: "user" as const,
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: m.tool_call_id,
+                content: m.content,
+              },
+            ],
+          }
+        }
+        if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+          const contentBlocks: unknown[] = []
+          if (m.content) contentBlocks.push({ type: "text", text: m.content })
+          for (const tc of m.tool_calls) {
+            contentBlocks.push({
+              type: "tool_use",
+              id: tc.id,
+              name: tc.name,
+              input: tc.arguments,
+            })
+          }
+          return { role: "assistant" as const, content: contentBlocks }
+        }
+        return { role: m.role, content: m.content }
+      })
+
+    const bodyPayload: Record<string, unknown> = {
+      model: request.model,
+      max_tokens: 4096,
+      temperature: request.temperature ?? 0.4,
+      system: request.systemContext,
+      messages,
+    }
+
+    if (request.tools && request.tools.length > 0) {
+      bodyPayload.tools = request.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters,
+      }))
+    }
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -62,13 +114,7 @@ export const anthropicProvider: LLMProvider = {
         "x-api-key": credentials.apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({
-        model: request.model,
-        max_tokens: 4096,
-        temperature: request.temperature ?? 0.4,
-        system: request.systemContext,
-        messages,
-      }),
+      body: JSON.stringify(bodyPayload),
     })
 
     const json = (await res.json().catch(() => null)) as AnthropicMessage | null
@@ -78,13 +124,28 @@ export const anthropicProvider: LLMProvider = {
         res.status
       )
     }
-    const content = json?.content
-      ?.filter((block) => block.type === "text")
+
+    const content = (json?.content ?? [])
+      .filter((block) => block.type === "text")
       .map((block) => block.text ?? "")
       .join("")
-    if (!content) {
+
+    const toolCalls: ToolCall[] = (json?.content ?? [])
+      .filter((block) => block.type === "tool_use" && Boolean(block.id && block.name))
+      .map((block) => ({
+        id: block.id!,
+        name: block.name!,
+        arguments: block.input ?? {},
+      }))
+
+    if (!content && toolCalls.length === 0) {
       throw new ProviderError("Anthropic returned an empty response", 502)
     }
-    return { content, model: request.model }
+
+    return {
+      content,
+      model: request.model,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    }
   },
 }

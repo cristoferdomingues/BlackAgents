@@ -7,12 +7,18 @@ import {
   AlertCircle,
   ArrowUp,
   Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Loader2,
   MessageCircle,
   ShieldAlert,
   Sparkles,
+  Terminal,
   User,
   Wand2,
+  Wrench,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -42,10 +48,12 @@ import {
   isProviderVerified,
   type ProvidersState,
 } from "@/components/features/providers/provider-readiness"
+import type { ToolExecutionTrace } from "@/lib/mcp/types"
 
 interface Turn {
   role: "user" | "assistant"
   content: string
+  toolExecutions?: ToolExecutionTrace[]
 }
 
 const SUGGESTIONS = [
@@ -121,6 +129,7 @@ export function ChatPage({
   const [model, setModel] = React.useState<string>("")
   const [availableModels, setAvailableModels] = React.useState<string[]>([])
   const [modelsLoading, setModelsLoading] = React.useState(false)
+  const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [input, setInput] = React.useState("")
   const [sending, setSending] = React.useState(false)
@@ -184,6 +193,16 @@ export function ChatPage({
       })
       .finally(() => setMetaLoading(false))
   }, [])
+
+  React.useEffect(() => {
+    if (!workspace?.path) {
+      setMcpToolsCount(0)
+      return
+    }
+    apiFetch<{ totalTools: number }>("/api/mcp")
+      .then((res) => setMcpToolsCount(res.totalTools ?? 0))
+      .catch(() => setMcpToolsCount(0))
+  }, [workspace?.path])
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -265,19 +284,27 @@ export function ChatPage({
     setInput("")
     setSending(true)
     try {
-      const result = await apiFetch<{ content: string; model: string }>(
-        "/api/chat",
+      const result = await apiFetch<{
+        content: string
+        model: string
+        toolExecutions?: ToolExecutionTrace[]
+      }>("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          provider,
+          model,
+          messages: next,
+          agent: selectedAgent?.name,
+        }),
+      })
+      setTurns((t) => [
+        ...t,
         {
-          method: "POST",
-          body: JSON.stringify({
-            provider,
-            model,
-            messages: next,
-            agent: selectedAgent?.name,
-          }),
-        }
-      )
-      setTurns((t) => [...t, { role: "assistant", content: result.content }])
+          role: "assistant",
+          content: result.content,
+          toolExecutions: result.toolExecutions,
+        },
+      ])
       // The model id was accepted — remember it for the next launch.
       await persistSelection(provider, model)
     } catch (err) {
@@ -333,6 +360,22 @@ export function ChatPage({
               <MessageCircle className="h-3.5 w-3.5" />
               {selectedAgent.name}
             </Badge>
+          ) : null}
+          {mcpToolsCount > 0 ? (
+            <Link
+              href="/settings"
+              title={`${mcpToolsCount} MCP ${mcpToolsCount === 1 ? "tool" : "tools"} loaded in this workspace. Click to manage in Settings.`}
+            >
+              <Badge
+                variant="outline"
+                className="gap-1 border-primary/30 bg-primary/5 text-primary text-xs hover:bg-primary/10 transition-colors"
+              >
+                <Wrench className="h-3 w-3" />
+                <span>
+                  {mcpToolsCount} {mcpToolsCount === 1 ? "tool" : "tools"}
+                </span>
+              </Badge>
+            </Link>
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-initial">
@@ -586,13 +629,142 @@ function Message({
             {turn.content}
           </div>
         ) : (
-          <div className="prose prose-sm max-w-none dark:prose-invert">
-            <MarkdownPreview content={prose || "…"} />
-          </div>
+          <>
+            {turn.toolExecutions && turn.toolExecutions.length > 0 ? (
+              <ToolExecutionsSection traces={turn.toolExecutions} />
+            ) : null}
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <MarkdownPreview content={prose || "…"} />
+            </div>
+          </>
         )}
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
       </div>
+    </div>
+  )
+}
+
+function ToolExecutionsSection({ traces }: { traces: ToolExecutionTrace[] }) {
+  const [open, setOpen] = React.useState(false)
+  const totalDuration = traces.reduce((acc, t) => acc + (t.durationMs ?? 0), 0)
+  const hasError = traces.some((t) => t.error)
+
+  return (
+    <div className="rounded-lg border bg-muted/30 text-left text-xs overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-muted-foreground transition-colors hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2 font-medium">
+          <Terminal className="h-3.5 w-3.5 text-primary" />
+          <span className="text-foreground">
+            {traces.length === 1
+              ? `Executed tool: ${traces[0].tool}`
+              : `Executed ${traces.length} MCP tools`}
+          </span>
+          {totalDuration > 0 ? (
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+              {totalDuration}ms
+            </Badge>
+          ) : null}
+          {hasError ? (
+            <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+              Errors
+            </Badge>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <span>{open ? "Hide" : "Details"}</span>
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </div>
+      </button>
+
+      {open ? (
+        <div className="space-y-2 border-t bg-background/50 p-2.5">
+          {traces.map((trace, idx) => (
+            <ToolTraceCard key={trace.id ?? idx} trace={trace} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ToolTraceCard({ trace }: { trace: ToolExecutionTrace }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const isError = Boolean(trace.error)
+
+  return (
+    <div className="rounded border bg-card/60 p-2 font-mono text-[11px]">
+      <div
+        className="flex cursor-pointer items-center justify-between gap-2"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          {isError ? (
+            <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+          )}
+          <span className="font-semibold text-foreground truncate">
+            {trace.tool}
+          </span>
+          {trace.server ? (
+            <span className="text-muted-foreground text-[10px]">
+              ({trace.server})
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground shrink-0 text-[10px]">
+          {trace.durationMs !== undefined ? <span>{trace.durationMs}ms</span> : null}
+          {expanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </div>
+      </div>
+
+      {expanded ? (
+        <div className="mt-2 space-y-1.5 border-t pt-2 text-[10px]">
+          {trace.args && Object.keys(trace.args).length > 0 ? (
+            <div>
+              <span className="text-muted-foreground font-semibold block mb-0.5 font-sans">
+                Arguments:
+              </span>
+              <pre className="max-h-40 overflow-auto rounded bg-muted/60 p-1.5 text-foreground">
+                {JSON.stringify(trace.args, null, 2)}
+              </pre>
+            </div>
+          ) : null}
+
+          <div>
+            <span className="text-muted-foreground font-semibold block mb-0.5 font-sans">
+              {isError ? "Error:" : "Result:"}
+            </span>
+            <pre
+              className={cn(
+                "max-h-48 overflow-auto rounded p-1.5",
+                isError
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-muted/60 text-foreground"
+              )}
+            >
+              {isError
+                ? trace.error
+                : typeof trace.result === "string"
+                  ? trace.result
+                  : JSON.stringify(trace.result, null, 2)}
+            </pre>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

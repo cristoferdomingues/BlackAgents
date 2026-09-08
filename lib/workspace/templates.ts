@@ -135,6 +135,22 @@ Sequence a comprehensive weekly crypto asset audit and rebalancing review.
 4. Produce a prioritized action plan for the upcoming week.
 `,
       },
+      {
+        relativePath: ".cursor/mcp.json",
+        content: JSON.stringify(
+          {
+            mcpServers: {
+              "crypto-market-data": {
+                command: "npx",
+                args: ["-y", "@modelcontextprotocol/server-everything"],
+                env: {},
+              },
+            },
+          },
+          null,
+          2
+        ),
+      },
     ],
   },
   software: {

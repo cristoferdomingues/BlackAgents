@@ -60,6 +60,12 @@ export function normalizeExtra(
   }
 }
 
+export const workspaceTemplateSchema = z.enum(["blank", "crypto", "software"])
+export type WorkspaceTemplate = z.infer<typeof workspaceTemplateSchema>
+
 export const workspaceInputSchema = z.object({
   path: z.string().trim().min(1, "Path is required"),
+  create: z.boolean().optional(),
+  template: workspaceTemplateSchema.optional().default("blank"),
 })
+export type WorkspaceInput = z.infer<typeof workspaceInputSchema>

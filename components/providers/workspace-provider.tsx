@@ -4,6 +4,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import type { Artifact, ArtifactType, Workspace } from "@/lib/artifacts/types"
 
 interface WorkspaceState {
@@ -23,6 +24,11 @@ interface WorkspaceContextValue {
   error: string | null
   /** Add a workspace to the saved list (activates it if none is active). */
   addWorkspace: (path: string) => Promise<boolean>
+  /** Create a new workspace directory and scaffold starter artifacts from a template. */
+  createWorkspace: (
+    path: string,
+    template?: WorkspaceTemplate
+  ) => Promise<boolean>
   /** Switch the active workspace. */
   setActive: (path: string) => Promise<boolean>
   /** Remove a workspace from the saved list. */
@@ -119,6 +125,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [mutate, workspace?.path]
   )
 
+  const createWorkspace = React.useCallback(
+    async (path: string, template: WorkspaceTemplate = "blank") => {
+      try {
+        const state = await apiFetch<WorkspaceState>("/api/workspace", {
+          method: "POST",
+          body: JSON.stringify({ path, create: true, template }),
+        })
+        await applyState(state)
+        toast.success(`Created workspace "${state.active?.name ?? "workspace"}"`)
+        return true
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to create workspace"
+        )
+        return false
+      }
+    },
+    [applyState]
+  )
+
   const setActive = React.useCallback(
     (path: string) =>
       mutate("PUT", path, (s) =>
@@ -145,6 +171,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     loadingArtifacts,
     error,
     addWorkspace,
+    createWorkspace,
     setActive,
     removeWorkspace,
     refresh: loadArtifacts,

@@ -33,7 +33,24 @@ describe("POST /api/workspace", () => {
     )
   })
 
-  it("returns 404 for a non-existent path", async () => {
+  it("creates a new workspace directory with template and sets it active", async () => {
+    const freshPath = path.join(env.workspace, "..", "crypto-fresh-ws")
+    const res = await POST(
+      jsonRequest("http://t", "POST", {
+        path: freshPath,
+        create: true,
+        template: "crypto",
+      })
+    )
+    expect(res.status).toBe(201)
+    const json = await res.json()
+    expect(json.data.active.path).toBe(path.resolve(freshPath))
+    expect(json.data.workspaces.map((w: { path: string }) => w.path)).toContain(
+      path.resolve(freshPath)
+    )
+  })
+
+  it("returns 404 for a non-existent path when create is not specified", async () => {
     const res = await POST(
       jsonRequest("http://t", "POST", { path: path.join(env.workspace, "ghost") })
     )

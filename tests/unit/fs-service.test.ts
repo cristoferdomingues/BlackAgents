@@ -11,6 +11,7 @@ import {
   readText,
   removePath,
   resolveInWorkspace,
+  scaffoldWorkspace,
   walkFiles,
   workspaceRoot,
   writeText,
@@ -82,17 +83,48 @@ describe("checkDirectory / normalizeWorkspaceInput", () => {
     expect(await checkDirectory(env.workspace)).toEqual({
       exists: true,
       isDirectory: true,
+      canCreate: false,
     })
   })
 
-  it("reports a non-existent path", async () => {
+  it("reports a non-existent path and verifies parent exists", async () => {
     expect(await checkDirectory(path.join(env.workspace, "ghost"))).toEqual({
       exists: false,
       isDirectory: false,
+      canCreate: true,
     })
   })
 
   it("normalizes to an absolute path", () => {
     expect(path.isAbsolute(normalizeWorkspaceInput("  ./x  "))).toBe(true)
+  })
+})
+
+describe("scaffoldWorkspace", () => {
+  it("creates standard directories and seeds crypto starter artifacts", async () => {
+    const target = path.join(env.workspace, "new-crypto-ws")
+    const created = await scaffoldWorkspace(target, "crypto")
+    expect(created).toBe(path.resolve(target))
+
+    expect(await pathExists(path.join(target, ".cursor", "agents", "portfolio-rebalancer.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor", "rules", "risk-management.mdc"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor", "skills", "defi-lending-protocols", "SKILL.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor", "commands", "weekly-portfolio-review.md"))).toBe(true)
+  })
+
+  it("creates standard directories and seeds software starter artifacts", async () => {
+    const target = path.join(env.workspace, "new-software-ws")
+    await scaffoldWorkspace(target, "software")
+
+    expect(await pathExists(path.join(target, ".cursor", "agents", "feature-developer.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor", "rules", "typescript-strict.mdc"))).toBe(true)
+  })
+
+  it("creates blank workspace with readme", async () => {
+    const target = path.join(env.workspace, "new-blank-ws")
+    await scaffoldWorkspace(target, "blank")
+
+    expect(await pathExists(path.join(target, "README.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor", "agents"))).toBe(true)
   })
 })

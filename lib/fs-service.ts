@@ -3,6 +3,8 @@ import path from "node:path"
 
 import { expandHome, readConfig } from "./config"
 import type { Workspace } from "./artifacts/types"
+import type { WorkspaceTemplate } from "./artifacts/schemas"
+import { WORKSPACE_TEMPLATES } from "./workspace/templates"
 
 /**
  * Filesystem access confined to the active workspace root.
@@ -41,6 +43,7 @@ export function resolveInWorkspace(root: string, relativePath: string): string {
 export interface DirectoryCheck {
   exists: boolean
   isDirectory: boolean
+  canCreate: boolean
 }
 
 /** Validate an arbitrary absolute path the user typed in Settings. */
@@ -48,9 +51,15 @@ export async function checkDirectory(inputPath: string): Promise<DirectoryCheck>
   const abs = path.resolve(expandHome(inputPath))
   try {
     const stat = await fs.stat(abs)
-    return { exists: true, isDirectory: stat.isDirectory() }
+    return { exists: true, isDirectory: stat.isDirectory(), canCreate: false }
   } catch {
-    return { exists: false, isDirectory: false }
+    const parent = path.dirname(abs)
+    const parentStat = await fs.stat(parent).catch(() => null)
+    return {
+      exists: false,
+      isDirectory: false,
+      canCreate: Boolean(parentStat?.isDirectory()),
+    }
   }
 }
 
@@ -110,4 +119,37 @@ export async function walkFiles(absDir: string): Promise<string[]> {
   }
   await recurse(absDir, "")
   return out
+}
+
+/**
+ * Initialize a brand-new workspace directory on disk, creating the standard
+ * .cursor layout and seeding starter artifacts from a chosen template.
+ */
+export async function scaffoldWorkspace(
+  inputPath: string,
+  templateId: WorkspaceTemplate = "blank"
+): Promise<string> {
+  const absPath = normalizeWorkspaceInput(inputPath)
+
+  const standardDirs = [
+    absPath,
+    path.join(absPath, ".cursor", "agents"),
+    path.join(absPath, ".cursor", "rules"),
+    path.join(absPath, ".cursor", "skills"),
+    path.join(absPath, ".cursor", "commands"),
+  ]
+
+  for (const dir of standardDirs) {
+    await fs.mkdir(dir, { recursive: true })
+  }
+
+  const template = WORKSPACE_TEMPLATES[templateId] ?? WORKSPACE_TEMPLATES.blank
+  for (const artifact of template.artifacts) {
+    const fileAbs = resolveInWorkspace(absPath, artifact.relativePath)
+    if (!(await pathExists(fileAbs))) {
+      await writeText(fileAbs, artifact.content)
+    }
+  }
+
+  return absPath
 }

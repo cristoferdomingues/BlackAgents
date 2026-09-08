@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Check, ChevronsUpDown, FolderOpen, Plus, RefreshCw, Settings } from "lucide-react"
+import { Check, ChevronsUpDown, FolderOpen, Plus, RefreshCw, Settings, Sparkles } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST } from "@/lib/artifacts/constants"
@@ -70,7 +70,13 @@ export function AppHeader() {
               })}
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">
+                <Link href="/settings?tab=create" className="gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  New workspace…
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings?tab=open" className="gap-2">
                   <Settings className="h-4 w-4" />
                   Manage workspaces
                 </Link>
@@ -78,12 +84,20 @@ export function AppHeader() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <>
-            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <Button asChild variant="link" size="sm" className="px-0">
-              <Link href="/settings">Select a workspace</Link>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+              <Link href="/settings?tab=create">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                New workspace
+              </Link>
             </Button>
-          </>
+            <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
+              <Link href="/settings?tab=open">
+                <FolderOpen className="h-3.5 w-3.5" />
+                Open folder
+              </Link>
+            </Button>
+          </div>
         )}
       </div>
 

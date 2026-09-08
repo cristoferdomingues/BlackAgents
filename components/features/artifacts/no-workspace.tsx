@@ -13,14 +13,21 @@ export function NoWorkspace({ message }: { message?: string }) {
       </div>
       <h1 className="text-xl font-semibold">No workspace selected</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        {message ?? "Select a project folder to manage its artifacts."}
+        {message ?? "Create a new agent workspace or open an existing project folder."}
       </p>
-      <Button asChild className="mt-6">
-        <Link href="/settings">
-          Select a workspace
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </Button>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <Button asChild>
+          <Link href="/settings?tab=create">
+            Create workspace
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/settings?tab=open">
+            Open existing folder
+          </Link>
+        </Button>
+      </div>
     </div>
   )
 }

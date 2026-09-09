@@ -31,6 +31,29 @@ describe("typeLayout", () => {
   it("maps windsurf commands to the workflows dir", () => {
     expect(typeLayout("windsurf", "command").dir).toBe(".windsurf/workflows")
   })
+
+  it("maps antigravity artifacts to .agents layout", () => {
+    expect(typeLayout("antigravity", "skill")).toMatchObject({
+      dir: ".agents/skills",
+      nested: true,
+      entryFile: "SKILL.md",
+    })
+    expect(typeLayout("antigravity", "rule")).toMatchObject({
+      dir: ".agents/rules",
+      ext: ".md",
+      nested: false,
+    })
+    expect(typeLayout("antigravity", "command")).toMatchObject({
+      dir: ".agents/workflows",
+      ext: ".md",
+      nested: false,
+    })
+    expect(typeLayout("antigravity", "agent")).toMatchObject({
+      dir: ".agents/agents",
+      ext: ".md",
+      nested: false,
+    })
+  })
 })
 
 describe("artifactRelPath", () => {

@@ -8,7 +8,7 @@
 
 export type ArtifactType = "agent" | "command" | "rule" | "skill"
 
-export type Platform = "cursor" | "claude" | "windsurf"
+export type Platform = "cursor" | "claude" | "windsurf" | "antigravity"
 
 export interface ArtifactFrontmatter {
   name?: string

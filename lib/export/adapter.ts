@@ -72,6 +72,17 @@ export function frontmatterFor(
       return fm
     }
 
+    case "antigravity": {
+      if (type !== "rule") fm.name = name
+      if (description) fm.description = description
+      if (type === "agent" && frontmatter.parallel) fm.parallel = true
+      if (type === "rule") {
+        if (frontmatter.alwaysApply) fm.alwaysApply = true
+        if (globs.length > 0) fm.globs = globs
+      }
+      return fm
+    }
+
     default:
       return fm
   }

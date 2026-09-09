@@ -63,6 +63,28 @@ describe("frontmatterFor", () => {
   it("windsurf falls back to trigger manual with no activation", () => {
     expect(frontmatterFor("windsurf", artifact("rule", "r")).trigger).toBe("manual")
   })
+
+  it("antigravity sets canonical frontmatter for rules, agents, and skills", () => {
+    const ruleFm = frontmatterFor(
+      "antigravity",
+      artifact("rule", "r", { alwaysApply: true, globs: ["src/**"] })
+    )
+    expect(ruleFm.name).toBeUndefined()
+    expect(ruleFm).toMatchObject({
+      description: "r desc",
+      alwaysApply: true,
+      globs: ["src/**"],
+    })
+
+    const agentFm = frontmatterFor(
+      "antigravity",
+      artifact("agent", "a", { parallel: true })
+    )
+    expect(agentFm).toMatchObject({ name: "a", description: "a desc", parallel: true })
+
+    const skillFm = frontmatterFor("antigravity", artifact("skill", "s"))
+    expect(skillFm).toMatchObject({ name: "s", description: "s desc" })
+  })
 })
 
 describe("artifactToFile", () => {
@@ -70,6 +92,18 @@ describe("artifactToFile", () => {
     const file = artifactToFile(artifact("rule", "r", { alwaysApply: true }), "windsurf")
     expect(file.path).toBe(".windsurf/rules/r.md")
     expect(matter(file.content).data).toMatchObject({ trigger: "always_on" })
+  })
+
+  it("emits antigravity paths for skills, rules, and workflows", () => {
+    const skillFile = artifactToFile(artifact("skill", "my-skill"), "antigravity")
+    expect(skillFile.path).toBe(".agents/skills/my-skill/SKILL.md")
+    expect(matter(skillFile.content).data).toMatchObject({ name: "my-skill" })
+
+    const commandFile = artifactToFile(artifact("command", "my-workflow"), "antigravity")
+    expect(commandFile.path).toBe(".agents/workflows/my-workflow.md")
+
+    const ruleFile = artifactToFile(artifact("rule", "my-rule"), "antigravity")
+    expect(ruleFile.path).toBe(".agents/rules/my-rule.md")
   })
 })
 

@@ -17,11 +17,12 @@ interface RouteContext {
 export async function GET(_req: Request, ctx: RouteContext) {
   return handle(async () => {
     const { type, name } = await ctx.params
+    const decodedName = decodeURIComponent(name)
     const parsedType = artifactTypeSchema.safeParse(type)
     if (!parsedType.success) return fail(`Unknown artifact type: ${type}`, 404)
 
     const root = await workspaceRoot()
-    const artifact = await findArtifact(root, parsedType.data, name)
+    const artifact = await findArtifact(root, parsedType.data, decodedName)
     if (!artifact) return fail(`Not found: ${type}/${name}`, 404)
     return ok(artifact)
   })
@@ -30,6 +31,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
 export async function PUT(req: Request, ctx: RouteContext) {
   return handle(async () => {
     const { type, name } = await ctx.params
+    const decodedName = decodeURIComponent(name)
     const parsedType = artifactTypeSchema.safeParse(type)
     if (!parsedType.success) return fail(`Unknown artifact type: ${type}`, 404)
 
@@ -44,17 +46,20 @@ export async function PUT(req: Request, ctx: RouteContext) {
     }
 
     const root = await workspaceRoot()
-    const existing = await findArtifact(root, parsedType.data, name)
+    const existing = await findArtifact(root, parsedType.data, decodedName)
     if (!existing) return fail(`Not found: ${type}/${name}`, 404)
 
-    // Honor the platform of the existing artifact when rewriting.
-    const { relPath, content } = serializeArtifact({
-      ...input,
-      platform: existing.platform,
-    })
+    // Honor the platform of the existing artifact when rewriting and preserve unmanaged frontmatter.
+    const { relPath, content } = serializeArtifact(
+      {
+        ...input,
+        platform: existing.platform,
+      },
+      existing.frontmatter
+    )
     const targetAbs = resolveInWorkspace(root, relPath)
 
-    const renamed = input.name !== name
+    const renamed = input.name !== decodedName
     if (renamed && (await pathExists(targetAbs))) {
       return fail(`A ${input.type} named "${input.name}" already exists`, 409)
     }
@@ -78,11 +83,12 @@ export async function PUT(req: Request, ctx: RouteContext) {
 export async function DELETE(_req: Request, ctx: RouteContext) {
   return handle(async () => {
     const { type, name } = await ctx.params
+    const decodedName = decodeURIComponent(name)
     const parsedType = artifactTypeSchema.safeParse(type)
     if (!parsedType.success) return fail(`Unknown artifact type: ${type}`, 404)
 
     const root = await workspaceRoot()
-    const existing = await findArtifact(root, parsedType.data, name)
+    const existing = await findArtifact(root, parsedType.data, decodedName)
     if (!existing) return fail(`Not found: ${type}/${name}`, 404)
 
     const deletePath =

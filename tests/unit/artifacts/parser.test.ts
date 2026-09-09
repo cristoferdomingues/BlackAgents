@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import {
   detectPlatforms,
   findArtifact,
+  safeParseMatter,
   scanWorkspace,
 } from "@/lib/artifacts/parser"
 import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
@@ -98,5 +99,42 @@ describe("detectPlatforms", () => {
     expect(platforms).toContain("cursor")
     expect(platforms).not.toContain("claude")
     expect(platforms).not.toContain("windsurf")
+  })
+})
+
+describe("safeParseMatter", () => {
+  it("parses valid frontmatter correctly", () => {
+    const res = safeParseMatter("---\nname: my-agent\ndescription: Hello world\n---\n\n# Body")
+    expect(res.data).toEqual({ name: "my-agent", description: "Hello world" })
+    expect(res.content).toContain("# Body")
+  })
+
+  it("recovers gracefully from malformed YAML with unquoted colons and quotes", () => {
+    const raw =
+      '---\nname: new-relic\ndescription: Use when querying data. Triggers on: "check NR", "query APM".\n---\n\n# New Relic Guide'
+    const res = safeParseMatter(raw)
+    expect(res.data.name).toBe("new-relic")
+    expect(res.data.description).toContain("Triggers on:")
+    expect(res.content).toContain("# New Relic Guide")
+  })
+
+  it("handles markdown files without any frontmatter", () => {
+    const raw = "# Just Markdown\n\nNo frontmatter block here."
+    const res = safeParseMatter(raw)
+    expect(res.data).toEqual({})
+    expect(res.content).toBe(raw)
+  })
+
+  it("allows scanWorkspace to succeed even when an artifact has malformed frontmatter", async () => {
+    await seedArtifact(
+      env.workspace,
+      ".cursor/skills/malformed/SKILL.md",
+      '---\nname: malformed\ndescription: Triggers on: "unquoted colon"\n---\n\n# Malformed Skill Body\n'
+    )
+    const artifacts = await scanWorkspace(env.workspace)
+    expect(artifacts).toHaveLength(1)
+    expect(artifacts[0].name).toBe("malformed")
+    expect(artifacts[0].description).toContain("Triggers on:")
+    expect(artifacts[0].body).toContain("# Malformed Skill Body")
   })
 })

@@ -4,7 +4,7 @@ import * as React from "react"
 import dynamic from "next/dynamic"
 import { markdown } from "@codemirror/lang-markdown"
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github"
-import { EditorView } from "@codemirror/view"
+import { EditorView, keymap } from "@codemirror/view"
 import {
   autocompletion,
   type Completion,
@@ -68,11 +68,13 @@ function mentionSource(items: MentionItem[]) {
 export function MarkdownEditor({
   value,
   onChange,
+  onSave,
   placeholder,
   mentions = [],
 }: {
   value: string
   onChange: (value: string) => void
+  onSave?: () => void
   placeholder?: string
   mentions?: MentionItem[]
 }) {
@@ -83,13 +85,26 @@ export function MarkdownEditor({
     () => [
       markdown(),
       EditorView.lineWrapping,
+      ...(onSave
+        ? [
+            keymap.of([
+              {
+                key: "Mod-s",
+                run: () => {
+                  onSave()
+                  return true
+                },
+              },
+            ]),
+          ]
+        : []),
       autocompletion({
         override: [mentionSource(mentions)],
         icons: false,
         activateOnTyping: true,
       }),
     ],
-    [mentions]
+    [mentions, onSave]
   )
 
   return (

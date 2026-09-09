@@ -53,16 +53,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-const formSchema = z.object({
-  name: nameSchema,
-  description: z.string().trim().min(1, "Description is required"),
-  parallel: z.boolean(),
-  alwaysApply: z.boolean(),
-  globs: z.array(z.string()),
-  body: z.string(),
-})
+const createFormSchema = (isEdit: boolean) =>
+  z.object({
+    name: isEdit
+      ? z
+          .string()
+          .trim()
+          .min(1, "Name is required")
+          .max(80, "Name is too long")
+      : nameSchema,
+    description: z.string().trim().min(1, "Description is required"),
+    parallel: z.boolean().default(false),
+    alwaysApply: z.boolean().default(false),
+    globs: z.array(z.string()).default([]),
+    body: z.string().default(""),
+  })
 
-type FormValues = z.infer<typeof formSchema>
+type FormValues = z.infer<ReturnType<typeof createFormSchema>>
 
 const LAST_PROVIDER_KEY = "black-agents:last-provider"
 const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
@@ -119,8 +126,9 @@ export function ArtifactEditor({
   const [tab, setTab] = React.useState<"edit" | "preview">("edit")
   const platformRef = React.useRef<Platform>("cursor")
 
+  const schema = React.useMemo(() => createFormSchema(isEdit), [isEdit])
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: "",
       description: "",
@@ -169,9 +177,12 @@ export function ArtifactEditor({
   }, [providers])
 
   const hasProvider = usableProviderIds.length > 0
+  const isNameValid = isEdit
+    ? Boolean(nameValue?.trim())
+    : nameSchema.safeParse(nameValue).success
   const detailsValid =
     hasProvider &&
-    nameSchema.safeParse(nameValue).success &&
+    isNameValid &&
     (descriptionValue?.trim().length ?? 0) > 0
   const canDraft = detailsValid
   const canValidate = detailsValid && (body?.trim().length ?? 0) > 0
@@ -320,14 +331,14 @@ export function ArtifactEditor({
     if (!isEdit || !workspace) return
     let active = true
     setLoading(true)
-    apiFetch<Artifact>(`/api/artifacts/${type}/${name}`)
+    apiFetch<Artifact>(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`)
       .then((artifact) => {
         if (!active) return
         platformRef.current = artifact.platform
         const fm = artifact.frontmatter
         form.reset({
           name: artifact.name,
-          description: artifact.description,
+          description: artifact.description || artifact.name,
           parallel: Boolean(fm.parallel),
           alwaysApply: Boolean(fm.alwaysApply),
           globs: Array.isArray(fm.globs) ? (fm.globs as string[]) : [],
@@ -341,6 +352,73 @@ export function ArtifactEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, name, type, workspace])
+
+  const onInvalid = React.useCallback(
+    (errors: Record<string, { message?: string }>) => {
+      const first = Object.values(errors).find((e) => Boolean(e?.message))
+      toast.error(first?.message ?? "Please check the form fields before saving")
+    },
+    []
+  )
+
+  const onSubmit = React.useCallback(
+    async (values: FormValues) => {
+      setSaving(true)
+      const payload = {
+        type,
+        platform: platformRef.current,
+        name: values.name,
+        description: values.description,
+        body: applyMentions(values.body),
+        extra: {
+          parallel: values.parallel,
+          alwaysApply: values.alwaysApply,
+          globs: values.globs,
+        },
+      }
+      try {
+        if (isEdit) {
+          await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          })
+        } else {
+          await apiFetch("/api/artifacts", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          })
+        }
+        await refresh()
+        form.reset(values)
+        toast.success(`${meta.label} "${values.name}" saved`)
+        if (values.name !== name) {
+          router.push(`/${meta.route}/${encodeURIComponent(values.name)}`)
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError ? err.message : `Could not save ${meta.label}`
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [form, isEdit, meta.label, meta.route, name, refresh, router, type]
+  )
+
+  const triggerSubmit = React.useCallback(() => {
+    void form.handleSubmit(onSubmit, onInvalid)()
+  }, [form, onSubmit, onInvalid])
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault()
+        triggerSubmit()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [triggerSubmit])
 
   if (!workspace && !wsLoading) {
     return <NoWorkspace message={`Select a workspace to edit ${meta.labelPlural.toLowerCase()}.`} />
@@ -368,48 +446,12 @@ export function ArtifactEditor({
     )
   }
 
-  async function onSubmit(values: FormValues) {
-    setSaving(true)
-    const payload = {
-      type,
-      platform: platformRef.current,
-      name: values.name,
-      description: values.description,
-      body: applyMentions(values.body),
-      extra: {
-        parallel: values.parallel,
-        alwaysApply: values.alwaysApply,
-        globs: values.globs,
-      },
-    }
-    try {
-      if (isEdit) {
-        await apiFetch(`/api/artifacts/${type}/${name}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        })
-      } else {
-        await apiFetch("/api/artifacts", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        })
-      }
-      await refresh()
-      toast.success(`${meta.label} "${values.name}" saved`)
-      router.push(`/${meta.route}/${values.name}`)
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : `Could not save ${meta.label}`
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
-
   async function onDelete() {
     setDeleting(true)
     try {
-      await apiFetch(`/api/artifacts/${type}/${name}`, { method: "DELETE" })
+      await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, {
+        method: "DELETE",
+      })
       await refresh()
       toast.success(`${meta.label} "${name}" deleted`)
       router.push(`/${meta.route}`)
@@ -421,7 +463,7 @@ export function ArtifactEditor({
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
+    <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button asChild variant="ghost" size="icon" type="button">
@@ -658,6 +700,7 @@ export function ArtifactEditor({
                   <MarkdownEditor
                     value={field.value}
                     onChange={field.onChange}
+                    onSave={triggerSubmit}
                     placeholder="Write the artifact body in Markdown… Type @ to link another artifact."
                     mentions={mentions}
                   />

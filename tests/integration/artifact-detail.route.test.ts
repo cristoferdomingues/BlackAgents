@@ -98,6 +98,47 @@ describe("PUT /api/artifacts/[type]/[name]", () => {
     )
     expect(res.status).toBe(409)
   })
+
+  it("handles URL-encoded artifact names in the route parameter", async () => {
+    await create()
+    const res = await PUT(
+      jsonRequest("http://t", "PUT", { ...agent, description: "Updated via encoded param." }),
+      ctx("agent", encodeURIComponent("demo-agent"))
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.description).toBe("Updated via encoded param.")
+  })
+
+  it("saves complex markdown body with headers, horizontal rules, and code blocks", async () => {
+    await create()
+    const complexMarkdown = `# Agent Strategy
+
+Some introduction paragraph.
+
+---
+
+## Code Example
+\`\`\`typescript
+const x: number = 42
+console.log(x)
+\`\`\`
+
+- Bullet item 1
+- Bullet item 2
+
+---
+Final notes here.`
+    const res = await PUT(
+      jsonRequest("http://t", "PUT", { ...agent, body: complexMarkdown }),
+      ctx("agent", "demo-agent")
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.body).toContain("# Agent Strategy")
+    expect(json.data.body).toContain("const x: number = 42")
+    expect(json.data.body).toContain("Final notes here.")
+  })
 })
 
 describe("DELETE /api/artifacts/[type]/[name]", () => {

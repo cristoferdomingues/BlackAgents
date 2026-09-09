@@ -5,17 +5,27 @@ import { normalizeExtra, type ArtifactInput } from "./schemas"
 import type { ArtifactType } from "./types"
 
 /** Compose the ordered frontmatter object for an artifact type. */
-function frontmatterFor(input: ArtifactInput): Record<string, unknown> {
+function frontmatterFor(
+  input: ArtifactInput,
+  existingFrontmatter?: Record<string, unknown>
+): Record<string, unknown> {
   const extra = normalizeExtra(input.type, input.extra)
+  const base = existingFrontmatter ? { ...existingFrontmatter } : {}
+  delete base.name
+  delete base.description
+  delete base.parallel
+  delete base.alwaysApply
+  delete base.globs
+
   switch (input.type) {
     case "rule":
       // Rules conventionally omit `name`; keep description first.
-      return { description: input.description, ...extra }
+      return { description: input.description, ...extra, ...base }
     case "agent":
     case "command":
     case "skill":
     default:
-      return { name: input.name, description: input.description, ...extra }
+      return { name: input.name, description: input.description, ...extra, ...base }
   }
 }
 
@@ -28,8 +38,11 @@ export interface SerializedArtifact {
   content: string
 }
 
-export function serializeArtifact(input: ArtifactInput): SerializedArtifact {
-  const data = frontmatterFor(input)
+export function serializeArtifact(
+  input: ArtifactInput,
+  existingFrontmatter?: Record<string, unknown>
+): SerializedArtifact {
+  const data = frontmatterFor(input, existingFrontmatter)
   const body = input.body.trim()
   const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
   return {

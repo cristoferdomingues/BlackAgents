@@ -22,6 +22,58 @@ function toFrontmatter(data: Record<string, unknown>): ArtifactFrontmatter {
   return data as ArtifactFrontmatter
 }
 
+function cleanYamlValue(val: string): unknown {
+  let trimmed = val.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1)
+  } else if (trimmed === "true") {
+    return true
+  } else if (trimmed === "false") {
+    return false
+  }
+  return trimmed
+}
+
+export function safeParseMatter(raw: string): {
+  data: Record<string, unknown>
+  content: string
+} {
+  try {
+    return matter(raw)
+  } catch {
+    // Graceful fallback when YAML is malformed (e.g. unquoted colons or unescaped quotes in values)
+    const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
+    if (!match) {
+      return { data: {}, content: raw }
+    }
+    const [, fmText, body] = match
+    const data: Record<string, unknown> = {}
+    const lines = fmText.split(/\r?\n/)
+    let currentKey = ""
+    let currentValue = ""
+
+    for (const line of lines) {
+      const keyMatch = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/)
+      if (keyMatch) {
+        if (currentKey) {
+          data[currentKey] = cleanYamlValue(currentValue)
+        }
+        currentKey = keyMatch[1]
+        currentValue = keyMatch[2]
+      } else if (currentKey) {
+        currentValue += "\n" + line
+      }
+    }
+    if (currentKey) {
+      data[currentKey] = cleanYamlValue(currentValue)
+    }
+    return { data, content: body }
+  }
+}
+
 function buildArtifact(
   type: ArtifactType,
   platform: Platform,
@@ -30,7 +82,7 @@ function buildArtifact(
   raw: string,
   supportingFiles?: string[]
 ): Artifact {
-  const parsed = matter(raw)
+  const parsed = safeParseMatter(raw)
   const frontmatter = toFrontmatter(parsed.data)
   const description =
     typeof frontmatter.description === "string" ? frontmatter.description : ""

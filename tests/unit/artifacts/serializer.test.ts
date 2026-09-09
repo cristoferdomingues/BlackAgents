@@ -72,6 +72,28 @@ describe("serializeArtifact", () => {
     const { content } = serializeArtifact(input({ body: "" }))
     expect(matter(content).data).toMatchObject({ name: "demo" })
   })
+
+  it("preserves unmanaged frontmatter fields from existingFrontmatter", () => {
+    const existing = {
+      name: "old-name",
+      description: "old-desc",
+      customAuthor: "Alice",
+      customVersion: "1.2.0",
+      tags: ["crypto", "defi"],
+    }
+    const { content } = serializeArtifact(
+      input({ name: "demo", description: "New desc" }),
+      existing
+    )
+    const parsed = matter(content)
+    expect(parsed.data).toMatchObject({
+      name: "demo",
+      description: "New desc",
+      customAuthor: "Alice",
+      customVersion: "1.2.0",
+      tags: ["crypto", "defi"],
+    })
+  })
 })
 
 describe("artifactPaths", () => {

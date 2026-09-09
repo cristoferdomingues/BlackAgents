@@ -57,7 +57,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google*.list
+          npx playwright install --with-deps chromium
 
       - name: Run E2E tests
         run: npm run test:e2e

@@ -70,6 +70,21 @@ export const PLATFORM_LAYOUTS: Record<Platform, PlatformLayout> = {
       },
     },
   },
+  antigravity: {
+    root: ".agents",
+    label: "Antigravity",
+    types: {
+      agent: { dir: ".agents/agents", ext: ".md", nested: false },
+      command: { dir: ".agents/workflows", ext: ".md", nested: false },
+      rule: { dir: ".agents/rules", ext: ".md", nested: false },
+      skill: {
+        dir: ".agents/skills",
+        ext: ".md",
+        nested: true,
+        entryFile: "SKILL.md",
+      },
+    },
+  },
 }
 
 /** Platforms scanned/managed in v1 (Cursor is primary). */

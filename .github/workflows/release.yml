@@ -1,0 +1,141 @@
+name: Release
+
+# Push a tag such as v0.1.0. The tag must match the version in
+# package.json and electron/package.json.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check version, types, lint, and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Require the tag to match both package versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          root="$(node -p "require('./package.json').version")"
+          desktop="$(node -p "require('./electron/package.json').version")"
+          echo "tag=$tag root=$root desktop=$desktop"
+          if [ "$root" != "$tag" ] || [ "$desktop" != "$tag" ]; then
+            echo "Set package.json and electron/package.json to $tag before tagging."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type-check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit and integration tests
+        run: npm test
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS
+          - os: windows-latest
+            label: Windows
+          - os: ubuntu-latest
+            label: Linux
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install desktop shell dependencies
+        run: npm ci --prefix electron
+
+      - name: Package the desktop app
+        run: npm run desktop:pack
+        env:
+          # No Apple or Windows certificate in this workflow.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Build the Linux AppImage without FUSE on the runner.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+
+      - name: Show packaged files
+        shell: bash
+        run: ls -lh dist-electron
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.label }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/*.exe
+            dist-electron/*.AppImage
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: installers
+          merge-multiple: true
+
+      - name: Show installers
+        run: ls -lh installers
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: BlackAgents ${{ github.ref_name }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            Desktop installers for ${{ github.ref_name }}. These builds are not code-signed yet.
+
+            **macOS (Apple Silicon):** open the `.dmg` and drag BlackAgents to Applications. On the first open, macOS blocks the app. Right-click the app, choose **Open**, then **Open** again.
+
+            **Windows (64-bit):** run the `.exe` installer. If SmartScreen appears, choose **More info**, then **Run anyway**.
+
+            **Linux (64-bit):** mark the `.AppImage` as executable and run it: `chmod +x BlackAgents-*.AppImage`.
+          files: installers/*

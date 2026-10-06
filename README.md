@@ -163,6 +163,29 @@ The packaged app starts a private Next.js standalone server on an available loop
 | `npm run lint` | Lint |
 | `npm run type-check` | TypeScript check |
 
+## Desktop releases
+
+A version tag builds the desktop app and publishes the installers on [GitHub Releases](https://github.com/cristoferdomingues/BlackAgents/releases).
+
+1. Set the same version in `package.json` and `electron/package.json`.
+2. Commit that change.
+3. Tag and push it:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow publishes:
+
+| System | File |
+| --- | --- |
+| macOS (Apple Silicon) | `.dmg` and `.zip` |
+| Windows (64-bit) | installer `.exe` |
+| Linux (64-bit) | `.AppImage` |
+
+These builds are not code-signed yet. macOS and Windows show a warning the first time you open the app. The release notes explain how to continue.
+
 ## License
 
 [MIT](LICENSE) © 2026 Cristofer Domingues

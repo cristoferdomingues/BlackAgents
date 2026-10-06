@@ -82,7 +82,9 @@ jobs:
         run: npm ci --prefix electron
 
       - name: Package the desktop app
-        run: npm run desktop:pack
+        # Publish in the release job. On a tag, electron-builder would
+        # publish by itself and then ask for GH_TOKEN.
+        run: npm run build && npx electron-builder --publish never
         env:
           # No Apple or Windows certificate in this workflow.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

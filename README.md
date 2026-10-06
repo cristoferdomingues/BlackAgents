@@ -162,3 +162,7 @@ The packaged app starts a private Next.js standalone server on an available loop
 | `npm run desktop:pack` | Build desktop installers for the current OS |
 | `npm run lint` | Lint |
 | `npm run type-check` | TypeScript check |
+
+## License
+
+[MIT](LICENSE) © 2026 Cristofer Domingues

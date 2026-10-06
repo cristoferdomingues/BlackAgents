@@ -1,7 +1,8 @@
 {
   "name": "black-agents",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "license": "MIT",
   "description": "Local-first manager for AI agent artifacts",
   "main": "electron/main.cjs",
   "scripts": {

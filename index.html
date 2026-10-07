@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="BlackAgents is a local-first desktop app for authoring, connecting, and running AI agent artifacts."
+    />
+    <meta name="theme-color" content="#0d0d12" />
+    <meta
+      property="og:title"
+      content="BlackAgents — Local-first AI agent workspace"
+    />
+    <meta
+      property="og:description"
+      content="Author, connect, run, and improve agents, commands, rules, and skills from one local-first app."
+    />
+    <meta
+      property="og:image"
+      content="https://cristoferdomingues.github.io/BlackAgents/public/images/black-agents-logo.png"
+    />
+    <meta property="og:type" content="website" />
+    <title>BlackAgents — Local-first AI agent workspace</title>
+    <link rel="icon" href="public/images/black-agents-icon-transparent.png" />
+    <link rel="stylesheet" href="pages.css" />
+  </head>
+  <body>
+    <div class="page-glow page-glow-one" aria-hidden="true"></div>
+    <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="BlackAgents home">
+        <img src="public/images/black-agents-icon-transparent.png" alt="" />
+        <span>Black<span>Agents</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#features">Features</a>
+        <a href="#artifacts">Artifacts</a>
+        <a href="#how-it-works">How it works</a>
+      </nav>
+      <a
+        class="button button-ghost header-github"
+        href="https://github.com/cristoferdomingues/BlackAgents"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.68 0-1.26.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.75 0c2.19-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.82 1.19 3.08 0 4.41-2.71 5.38-5.28 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.79.56A11.5 11.5 0 0 0 12 .7Z"
+          />
+        </svg>
+        GitHub
+      </a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">
+            <span class="status-dot"></span>
+            Local-first · Open source · Desktop
+          </div>
+          <h1>Your AI agents.<br /><span>One workspace.</span></h1>
+          <p class="hero-lead">
+            Author, connect, run, and improve agents, commands, rules, and
+            skills without giving up control of your files.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button button-primary"
+              href="https://github.com/cristoferdomingues/BlackAgents/releases/latest"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M11 3h2v10.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17V3Zm-6 16h14v2H5v-2Z"
+                />
+              </svg>
+              Download v0.1.2
+            </a>
+            <a
+              class="button button-secondary"
+              href="https://github.com/cristoferdomingues/BlackAgents#readme"
+            >
+              Read the docs
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div
+            class="platforms"
+            aria-label="Available for macOS, Windows, and Linux"
+          >
+            <span>Available for</span>
+            <strong>macOS</strong>
+            <i></i>
+            <strong>Windows</strong>
+            <i></i>
+            <strong>Linux</strong>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="BlackAgents application preview">
+          <div class="orbital-mark" aria-hidden="true">
+            <img src="public/images/black-agents-icon-transparent.png" alt="" />
+          </div>
+          <div class="app-window">
+            <div class="window-bar">
+              <div class="traffic-lights" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="window-title">BlackAgents</div>
+              <div class="window-status"><span></span> Local</div>
+            </div>
+            <div class="app-shell">
+              <aside class="app-sidebar">
+                <div class="mini-brand">
+                  <img
+                    src="public/images/black-agents-icon-transparent.png"
+                    alt=""
+                  />
+                  <div>
+                    <strong>BlackAgents</strong><small>Agent toolkit</small>
+                  </div>
+                </div>
+                <div class="sidebar-link active">
+                  <span class="sidebar-icon">⌂</span> Dashboard
+                </div>
+                <div class="sidebar-link">
+                  <span class="sidebar-icon">✦</span> Assistant
+                </div>
+                <div class="sidebar-link">
+                  <span class="sidebar-icon">⌁</span> Workflows
+                </div>
+                <small class="sidebar-label">ARTIFACTS</small>
+                <div class="sidebar-link">
+                  <b class="dot agent"></b> Agents <em>12</em>
+                </div>
+                <div class="sidebar-link">
+                  <b class="dot command"></b> Commands <em>8</em>
+                </div>
+                <div class="sidebar-link">
+                  <b class="dot rule"></b> Rules <em>16</em>
+                </div>
+                <div class="sidebar-link">
+                  <b class="dot skill"></b> Skills <em>10</em>
+                </div>
+                <small class="sidebar-label">EXPLORE</small>
+                <div class="sidebar-link">
+                  <span class="sidebar-icon">⌬</span> Graph
+                </div>
+                <div class="sidebar-link">
+                  <span class="sidebar-icon">⇄</span> Sync
+                </div>
+              </aside>
+              <div class="app-content">
+                <div class="app-topbar">
+                  <div><strong>black-agents</strong><span>⌄</span></div>
+                  <button type="button" tabindex="-1">＋ New</button>
+                </div>
+                <div class="dashboard">
+                  <div class="dashboard-heading">
+                    <div>
+                      <h2>black-agents</h2>
+                      <p>46 artifacts across 4 types</p>
+                    </div>
+                    <span>Workspace ready</span>
+                  </div>
+                  <div class="stat-grid">
+                    <article>
+                      <b class="dot agent"></b><span>Agents</span
+                      ><strong>12</strong><small>Focused AI workers</small>
+                    </article>
+                    <article>
+                      <b class="dot command"></b><span>Commands</span
+                      ><strong>8</strong><small>Reusable orchestration</small>
+                    </article>
+                    <article>
+                      <b class="dot rule"></b><span>Rules</span
+                      ><strong>16</strong><small>Project guardrails</small>
+                    </article>
+                    <article>
+                      <b class="dot skill"></b><span>Skills</span
+                      ><strong>10</strong><small>Deep knowledge packs</small>
+                    </article>
+                  </div>
+                  <div class="dashboard-grid">
+                    <article class="recent-card">
+                      <div class="card-heading">
+                        <strong>Recent artifacts</strong><span>View all</span>
+                      </div>
+                      <div class="artifact-row">
+                        <b class="dot agent"></b
+                        ><strong>feature-developer</strong
+                        ><small>Builds full-stack features</small>
+                      </div>
+                      <div class="artifact-row">
+                        <b class="dot skill"></b
+                        ><strong>testing-patterns</strong
+                        ><small>Unit and E2E guidance</small>
+                      </div>
+                      <div class="artifact-row">
+                        <b class="dot rule"></b
+                        ><strong>typescript-strict</strong
+                        ><small>Strict type safety</small>
+                      </div>
+                    </article>
+                    <article class="graph-card">
+                      <strong>Relationship graph</strong>
+                      <div class="mini-graph" aria-hidden="true">
+                        <span class="node n1"></span
+                        ><span class="node n2"></span>
+                        <span class="node n3"></span
+                        ><span class="node n4"></span>
+                        <span class="line l1"></span
+                        ><span class="line l2"></span
+                        ><span class="line l3"></span>
+                      </div>
+                      <small>See how your artifacts connect</small>
+                    </article>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="BlackAgents values">
+        <div>
+          <strong>Your files stay yours</strong
+          ><span>Real Markdown on your disk</span>
+        </div>
+        <div>
+          <strong>Approval before action</strong
+          ><span>Writes and commands wait for you</span>
+        </div>
+        <div>
+          <strong>Bring your own model</strong
+          ><span>OpenAI, Anthropic, OpenRouter, or local</span>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <div>
+            <span class="kicker">A COMPLETE AGENT WORKSPACE</span>
+            <h2>From idea to working agent team</h2>
+          </div>
+          <p>
+            Build your agent system with visual tools, then keep full control of
+            every file and every action.
+          </p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card featured">
+            <div class="feature-icon violet">✦</div>
+            <span class="feature-tag">Assistant</span>
+            <h3>Chat with your workspace</h3>
+            <p>
+              Mention any artifact with <code>@</code>. BlackAgents loads its
+              context, linked rules, skills, and memory into the conversation.
+            </p>
+            <div class="chat-demo" aria-hidden="true">
+              <div class="chat-line user">
+                Review <b>@agent:feature-developer</b>
+              </div>
+              <div class="context-pills">
+                <span>agent/feature-developer</span
+                ><span>skill/testing-patterns</span>
+              </div>
+              <div class="chat-line assistant"><i></i><i></i><i></i></div>
+            </div>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon blue">⌁</div>
+            <h3>Agent workflows</h3>
+            <p>
+              Line up agents like a production team. Pass work from one step to
+              the next and review every result.
+            </p>
+            <div class="flow-demo" aria-hidden="true">
+              <span>Plan</span><i>→</i><span>Build</span><i>→</i
+              ><span>Review</span>
+            </div>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon green">⌘</div>
+            <h3>Tools with guardrails</h3>
+            <p>
+              Read files and call MCP tools. File writes and commands pause
+              until you approve them.
+            </p>
+            <div class="approval-demo" aria-hidden="true">
+              <small>Approval required</small><strong>Write src/api.ts</strong>
+              <div><span>Deny</span><b>Approve</b></div>
+            </div>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon amber">⌬</div>
+            <h3>Relationship graph</h3>
+            <p>
+              See how agents, commands, rules, and skills reference each other
+              across the workspace.
+            </p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon violet">◈</div>
+            <h3>Second brain</h3>
+            <p>
+              Turn feedback into proposed memory, skills, and rules. Nothing
+              changes before your review.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section artifacts-section" id="artifacts">
+        <div class="section-heading centered">
+          <span class="kicker">ONE MODEL, FOUR BUILDING BLOCKS</span>
+          <h2>A clear place for every kind of context</h2>
+          <p>Commands wire. Agents execute. Rules constrain. Skills educate.</p>
+        </div>
+        <div class="artifact-grid">
+          <article class="artifact-card agent-card">
+            <div><span>01</span><b class="dot agent"></b></div>
+            <h3>Agents</h3>
+            <p>Focused workers with one clear job, persona, and tool set.</p>
+            <code>.cursor/agents/</code>
+          </article>
+          <article class="artifact-card command-card">
+            <div><span>02</span><b class="dot command"></b></div>
+            <h3>Commands</h3>
+            <p>Reusable entry points that coordinate agents and actions.</p>
+            <code>.cursor/commands/</code>
+          </article>
+          <article class="artifact-card rule-card">
+            <div><span>03</span><b class="dot rule"></b></div>
+            <h3>Rules</h3>
+            <p>Short guardrails that keep work safe and consistent.</p>
+            <code>.cursor/rules/</code>
+          </article>
+          <article class="artifact-card skill-card">
+            <div><span>04</span><b class="dot skill"></b></div>
+            <h3>Skills</h3>
+            <p>Deep guides and reference files loaded only when needed.</p>
+            <code>.cursor/skills/</code>
+          </article>
+        </div>
+      </section>
+
+      <section class="section workflow-section" id="how-it-works">
+        <div class="workflow-copy">
+          <span class="kicker">LOCAL-FIRST BY DESIGN</span>
+          <h2>Your workspace is the source of truth.</h2>
+          <p>
+            BlackAgents works with the Markdown files already in your project.
+            There is no cloud database and no lock-in.
+          </p>
+          <ol>
+            <li>
+              <span>1</span>
+              <div>
+                <strong>Open a project folder</strong
+                ><small
+                  >Use an existing workspace or start from a template.</small
+                >
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <strong>Author with visual tools</strong
+                ><small
+                  >Edit Markdown, frontmatter, links, and standards in one
+                  place.</small
+                >
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <strong>Run with control</strong
+                ><small
+                  >Chat, call tools, approve actions, and build agent
+                  workflows.</small
+                >
+              </div>
+            </li>
+          </ol>
+        </div>
+        <div class="code-window">
+          <div class="code-bar">
+            <span></span><span></span><span></span><em>feature-developer.md</em>
+          </div>
+          <pre><code><span class="code-muted">---</span>
+<span class="code-key">name:</span> feature-developer
+<span class="code-key">description:</span> Builds full-stack features
+<span class="code-key">tools:</span>
+  - fs_read
+  - fs_write
+<span class="code-muted">---</span>
+
+<span class="code-title"># Feature Developer</span>
+
+Build tested, production-ready features.
+
+<span class="code-title">## Workflow</span>
+
+1. Read the linked <span class="code-green">`testing-patterns` skill</span>
+2. Follow the <span class="code-amber">`typescript-strict` rule</span>
+3. Implement and verify the change</code></pre>
+          <div class="code-footer">
+            <span><i></i> Saved locally</span><strong>Plain Markdown</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <img src="public/images/black-agents-icon-transparent.png" alt="" />
+        <span class="kicker">BUILD YOUR AGENT WORKSPACE</span>
+        <h2>Keep your agents close.<br />Keep your files closer.</h2>
+        <p>Free, open source, and local-first.</p>
+        <div class="hero-actions">
+          <a
+            class="button button-primary"
+            href="https://github.com/cristoferdomingues/BlackAgents/releases/latest"
+          >
+            Download BlackAgents
+          </a>
+          <a
+            class="button button-secondary"
+            href="https://github.com/cristoferdomingues/BlackAgents"
+          >
+            View source on GitHub
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#">
+        <img src="public/images/black-agents-icon-transparent.png" alt="" />
+        <span>Black<span>Agents</span></span>
+      </a>
+      <p>Local-first tools for people who build with AI agents.</p>
+      <div>
+        <a href="https://github.com/cristoferdomingues/BlackAgents">GitHub</a>
+        <a href="https://github.com/cristoferdomingues/BlackAgents/releases"
+          >Releases</a
+        >
+        <a
+          href="https://github.com/cristoferdomingues/BlackAgents/blob/main/LICENSE"
+          >MIT License</a
+        >
+      </div>
+    </footer>
+  </body>
+</html>

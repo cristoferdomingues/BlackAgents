@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { fulfillSse } from "./support/stubs"
+
 const tester = {
   name: "tester",
   type: "agent",
@@ -128,15 +130,11 @@ test.describe("agent persona chat", () => {
     await page.route("**/api/chat", async (route) => {
       chatBody = route.request().postDataJSON()
       await new Promise((resolve) => setTimeout(resolve, 300))
-      await route.fulfill({
-        json: {
-          success: true,
-          data: {
-            content: "I will test the observable behavior first.",
-            model: "gpt-4o-mini",
-          },
-        },
-      })
+      await fulfillSse(route, [
+        ["context", { artifacts: [], jev: "off", tools: 2 }],
+        ["token", { type: "token", content: "I will test the observable behavior first." }],
+        ["done", { content: "I will test the observable behavior first.", model: "gpt-4o-mini", toolExecutions: [] }],
+      ])
     })
 
     await page.goto("/chat?agent=tester")

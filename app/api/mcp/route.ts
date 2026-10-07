@@ -8,6 +8,7 @@ import {
   saveWorkspaceMcpServer,
 } from "@/lib/mcp/config"
 import { getWorkspaceServersStatus, testMcpServer } from "@/lib/mcp/client"
+import { readMcpPolicy, trustOf } from "@/lib/mcp/policy"
 import { mcpServerConfigSchema } from "@/lib/mcp/types"
 
 /**
@@ -20,9 +21,15 @@ export async function GET() {
       return ok({ servers: [], totalTools: 0 })
     }
 
-    const statuses = await getWorkspaceServersStatus(config.currentPath)
+    const [statuses, policy] = await Promise.all([
+      getWorkspaceServersStatus(config.currentPath),
+      readMcpPolicy(config.currentPath),
+    ])
     const totalTools = statuses.reduce((sum, s) => sum + s.tools.length, 0)
-    return ok({ servers: statuses, totalTools })
+    return ok({
+      servers: statuses.map((s) => ({ ...s, trust: trustOf(policy, s.name) })),
+      totalTools,
+    })
   })
 }
 

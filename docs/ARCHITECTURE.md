@@ -35,6 +35,24 @@ All filesystem access goes through `resolveInWorkspace`, which rejects any path
 that escapes the selected workspace root. The app is intended to run on the
 user's own machine; there is no remote storage in v1.
 
+## AI runtime
+
+- **Agent loop** (`lib/runtime/`): the Assistant, agent chats and workflow
+  steps share one bounded tool loop. Tools are built-in file/shell tools plus
+  MCP server tools. Each call has a risk (`read`, `write`, `exec`); `write` and
+  `exec` calls wait for the user in the approval registry (`/api/approvals`).
+  Chat streams events over SSE.
+- **Jev** (`lib/decision/`): optional, fail-open decisions through TypeSafe or
+  OpenRouter — which artifacts to load per message, step gates, schedule
+  preflight, what to learn. Without Jev everything still works.
+- **Workflows** (`lib/workflows/`): definitions in
+  `.black-agents/workflows/*.workflow.json`, runs in `.black-agents/runs/`.
+  An in-process runner (started from `instrumentation.ts`) runs one step after
+  another and handles interval/daily triggers while the app is open.
+- **Second Brain** (`lib/brain/`): feedback and self-assessment become
+  proposals in `.black-agents/brain/inbox/`. Nothing changes until the user
+  approves; approved notes go to per-agent brain files.
+
 ## Future phases (extension points already in place)
 
 ### Multi-platform export

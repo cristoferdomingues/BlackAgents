@@ -141,10 +141,13 @@ export async function testMcpServer(
 }
 
 export async function getWorkspaceServersStatus(
-  workspaceRoot: string
+  workspaceRoot: string,
+  onlyServers?: string[]
 ): Promise<McpServerStatus[]> {
   const mcpConfig = await readWorkspaceMcpConfig(workspaceRoot)
-  const names = Object.keys(mcpConfig.mcpServers)
+  const names = Object.keys(mcpConfig.mcpServers).filter(
+    (name) => !onlyServers || onlyServers.includes(name)
+  )
   if (names.length === 0) return []
 
   const statuses = await Promise.all(
@@ -157,9 +160,10 @@ export async function getWorkspaceServersStatus(
 }
 
 export async function loadWorkspaceTools(
-  workspaceRoot: string
+  workspaceRoot: string,
+  onlyServers?: string[]
 ): Promise<McpTool[]> {
-  const statuses = await getWorkspaceServersStatus(workspaceRoot)
+  const statuses = await getWorkspaceServersStatus(workspaceRoot, onlyServers)
   const tools: McpTool[] = []
   for (const s of statuses) {
     if (s.status === "connected") {

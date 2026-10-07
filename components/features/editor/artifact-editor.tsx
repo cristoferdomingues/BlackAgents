@@ -24,6 +24,12 @@ import { apiFetch, ApiError } from "@/lib/api"
 import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { applyMentions } from "@/lib/artifacts/mentions"
+import {
+  builtinToolNameSchema,
+  DEFAULT_AGENT_TOOLS,
+  isBuiltinToolName,
+} from "@/lib/runtime/tool-names"
+import { AgentToolsField } from "@/components/features/editor/agent-tools-field"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import { DRAFT_STORAGE_KEY, draftSchema, normalizeDraft } from "@/lib/llm/draft"
 import type { ValidationResult } from "@/lib/llm/validation"
@@ -66,6 +72,8 @@ const createFormSchema = (isEdit: boolean) =>
     parallel: z.boolean().default(false),
     alwaysApply: z.boolean().default(false),
     globs: z.array(z.string()).default([]),
+    tools: z.array(builtinToolNameSchema).default([...DEFAULT_AGENT_TOOLS]),
+    mcpServers: z.array(z.string()).default([]),
     body: z.string().default(""),
   })
 
@@ -135,6 +143,8 @@ export function ArtifactEditor({
       parallel: false,
       alwaysApply: false,
       globs: [],
+      tools: [...DEFAULT_AGENT_TOOLS],
+      mcpServers: [],
       body: isEdit ? "" : STANDARDS_SPEC[type].bodyTemplate("agent-name"),
     },
   })
@@ -318,6 +328,8 @@ export function ArtifactEditor({
         parallel: draft.parallel,
         alwaysApply: draft.alwaysApply,
         globs: draft.globs,
+        tools: [...DEFAULT_AGENT_TOOLS],
+        mcpServers: [],
         body: draft.body,
       })
       toast.success("Draft loaded from the assistant — review and save")
@@ -342,6 +354,12 @@ export function ArtifactEditor({
           parallel: Boolean(fm.parallel),
           alwaysApply: Boolean(fm.alwaysApply),
           globs: Array.isArray(fm.globs) ? (fm.globs as string[]) : [],
+          tools: Array.isArray(fm.tools)
+            ? fm.tools.filter(isBuiltinToolName)
+            : [...DEFAULT_AGENT_TOOLS],
+          mcpServers: Array.isArray(fm.mcpServers)
+            ? fm.mcpServers.filter((s): s is string => typeof s === "string")
+            : [],
           body: artifact.body,
         })
       })
@@ -374,6 +392,9 @@ export function ArtifactEditor({
           parallel: values.parallel,
           alwaysApply: values.alwaysApply,
           globs: values.globs,
+          ...(type === "agent"
+            ? { tools: values.tools, mcpServers: values.mcpServers }
+            : {}),
         },
       }
       try {
@@ -616,6 +637,17 @@ export function ArtifactEditor({
                   )}
                 />
               </div>
+            ) : null}
+
+            {type === "agent" ? (
+              <AgentToolsField
+                tools={form.watch("tools")}
+                mcpServers={form.watch("mcpServers")}
+                onToolsChange={(tools) => form.setValue("tools", tools, { shouldDirty: true })}
+                onMcpServersChange={(servers) =>
+                  form.setValue("mcpServers", servers, { shouldDirty: true })
+                }
+              />
             ) : null}
 
             {type === "rule" ? (

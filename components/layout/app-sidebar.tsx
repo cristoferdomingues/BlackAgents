@@ -10,6 +10,8 @@ import {
   LayoutDashboard,
   Network,
   Plus,
+  Brain,
+  Workflow,
   ScrollText,
   Settings,
   Sparkles,
@@ -30,6 +32,8 @@ interface NavItem {
 const topNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Assistant", icon: Sparkles },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/brain", label: "Brain", icon: Brain },
 ]
 
 const bottomNav: NavItem[] = [

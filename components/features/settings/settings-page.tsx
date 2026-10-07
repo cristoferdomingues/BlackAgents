@@ -19,6 +19,7 @@ import {
   TriangleAlert,
   Wrench,
   Zap,
+  Brain,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -26,8 +27,11 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import { WORKSPACE_TEMPLATES } from "@/lib/workspace/templates"
+import type { McpTrust } from "@/lib/mcp/policy"
 import type { McpServerStatus } from "@/lib/mcp/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
+import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
+import { McpTrustSelect } from "@/components/features/settings/mcp-trust-select"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -50,7 +54,7 @@ interface CheckResult {
 }
 
 interface McpListResponse {
-  servers: McpServerStatus[]
+  servers: Array<McpServerStatus & { trust: McpTrust }>
   totalTools: number
 }
 
@@ -74,7 +78,7 @@ export function SettingsPage() {
   const [tab, setTab] = React.useState<string>(() => {
     if (typeof window !== "undefined") {
       const param = new URLSearchParams(window.location.search).get("tab")
-      if (param === "open" || param === "create" || param === "mcp") return param
+      if (param === "open" || param === "create" || param === "mcp" || param === "ai") return param
     }
     return "create"
   })
@@ -93,7 +97,7 @@ export function SettingsPage() {
   const [creating, setCreating] = React.useState(false)
 
   // MCP Servers state
-  const [mcpServers, setMcpServers] = React.useState<McpServerStatus[]>([])
+  const [mcpServers, setMcpServers] = React.useState<McpListResponse["servers"]>([])
   const [totalMcpTools, setTotalMcpTools] = React.useState(0)
   const [loadingMcp, setLoadingMcp] = React.useState(false)
   const [expandedServer, setExpandedServer] = React.useState<string | null>(null)
@@ -306,7 +310,7 @@ export function SettingsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="create" className="gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
             Create Workspace
@@ -324,7 +328,15 @@ export function SettingsPage() {
               </Badge>
             ) : null}
           </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-2">
+            <Brain className="h-4 w-4 text-primary" />
+            AI
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="ai" className="space-y-4 pt-2">
+          <AiSettingsCard />
+        </TabsContent>
 
         {/* Tab 1: Create New Workspace */}
         <TabsContent value="create" className="space-y-4 pt-2">
@@ -586,6 +598,7 @@ export function SettingsPage() {
                             </div>
 
                             <div className="flex items-center gap-1">
+                              <McpTrustSelect server={s.name} value={s.trust} />
                               {s.tools.length > 0 ? (
                                 <Button
                                   variant="ghost"

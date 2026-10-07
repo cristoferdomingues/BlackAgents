@@ -34,7 +34,7 @@ function expandHome(p: string): string {
   return p
 }
 
-function configDir(): string {
+export function configDir(): string {
   const override = process.env.BLACK_AGENTS_CONFIG_DIR
   return override ? expandHome(override) : path.join(os.homedir(), ".black-agents")
 }

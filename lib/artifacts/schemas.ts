@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { builtinToolNameSchema } from "../runtime/tool-names"
+
 /** kebab-case identifier: lowercase letters, digits, single hyphens. */
 export const nameSchema = z
   .string()
@@ -32,6 +34,10 @@ export const artifactInputSchema = z.object({
       parallel: z.boolean().optional(),
       alwaysApply: z.boolean().optional(),
       globs: z.array(z.string().trim().min(1)).optional(),
+      /** Agents: built-in tools (fs_list, fs_read, fs_write, shell_run). */
+      tools: z.array(builtinToolNameSchema).optional(),
+      /** Agents: MCP servers the agent may use (absent = all). */
+      mcpServers: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
     })
     .partial()
     .default({}),
@@ -45,8 +51,15 @@ export function normalizeExtra(
   extra: ArtifactInput["extra"]
 ): Record<string, unknown> {
   switch (type) {
-    case "agent":
-      return extra.parallel ? { parallel: true } : {}
+    case "agent": {
+      const out: Record<string, unknown> = {}
+      if (extra.parallel) out.parallel = true
+      if (extra.tools) out.tools = [...new Set(extra.tools)]
+      if (extra.mcpServers && extra.mcpServers.length > 0) {
+        out.mcpServers = [...new Set(extra.mcpServers)]
+      }
+      return out
+    }
     case "rule": {
       const out: Record<string, unknown> = {}
       if (extra.alwaysApply) out.alwaysApply = true

@@ -7,22 +7,17 @@ import {
   AlertCircle,
   ArrowUp,
   Bot,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Loader2,
   MessageCircle,
   ShieldAlert,
   Sparkles,
-  Terminal,
   User,
-  Wand2,
   Wrench,
-  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { streamPost, type SseEvent } from "@/lib/sse-client"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import {
@@ -31,10 +26,24 @@ import {
   stripDraftBlock,
   type NormalizedDraft,
 } from "@/lib/llm/draft"
+import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
+import {
+  chatApprovalRequiredEventSchema,
+  chatApprovalResolvedEventSchema,
+  chatContextEventSchema,
+  chatDoneEventSchema,
+  chatErrorEventSchema,
+  chatTokenEventSchema,
+  chatToolResultEventSchema,
+} from "@/lib/assistant/chat-events"
+import type { TurnArtifact } from "@/lib/assistant/turn-artifacts"
+import type { ApprovalRequest, ToolExecutionTrace } from "@/lib/runtime/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -45,15 +54,61 @@ import {
 } from "@/components/ui/select"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
 import {
+  AgentAvatar,
+  DraftCard,
+  ToolExecutionsSection,
+} from "@/components/features/chat/message-parts"
+import { BundleCard } from "@/components/features/chat/bundle-card"
+import { FeedbackBar } from "@/components/features/chat/feedback-bar"
+import { ApprovalCard } from "@/components/features/approvals/approval-card"
+import {
   isProviderVerified,
   type ProvidersState,
 } from "@/components/features/providers/provider-readiness"
-import type { ToolExecutionTrace } from "@/lib/mcp/types"
 
 interface Turn {
   role: "user" | "assistant"
   content: string
   toolExecutions?: ToolExecutionTrace[]
+  artifacts?: TurnArtifact[]
+  stoppedAtLimit?: boolean
+}
+
+/** The assistant reply while it is still streaming. */
+interface LiveTurn {
+  content: string
+  toolExecutions: ToolExecutionTrace[]
+  approvals: ApprovalRequest[]
+  artifacts: TurnArtifact[]
+}
+
+const EMPTY_LIVE: LiveTurn = { content: "", toolExecutions: [], approvals: [], artifacts: [] }
+
+function applyEvent(live: LiveTurn, { event, data }: SseEvent): LiveTurn {
+  switch (event) {
+    case "context": {
+      const parsed = chatContextEventSchema.safeParse(data)
+      return parsed.success ? { ...live, artifacts: parsed.data.artifacts } : live
+    }
+    case "token": {
+      const parsed = chatTokenEventSchema.safeParse(data)
+      return parsed.success ? { ...live, content: parsed.data.content } : live
+    }
+    case "tool_result": {
+      const parsed = chatToolResultEventSchema.safeParse(data)
+      return parsed.success ? { ...live, toolExecutions: [...live.toolExecutions, parsed.data.trace] } : live
+    }
+    case "approval_required": {
+      const parsed = chatApprovalRequiredEventSchema.safeParse(data)
+      return parsed.success ? { ...live, approvals: [...live.approvals, parsed.data.approval] } : live
+    }
+    case "approval_resolved": {
+      const parsed = chatApprovalResolvedEventSchema.safeParse(data)
+      return parsed.success ? { ...live, approvals: live.approvals.filter((a) => a.id !== parsed.data.id) } : live
+    }
+    default:
+      return live
+  }
 }
 
 const SUGGESTIONS = [
@@ -133,6 +188,8 @@ export function ChatPage({
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [input, setInput] = React.useState("")
   const [sending, setSending] = React.useState(false)
+  const [live, setLive] = React.useState<LiveTurn>(EMPTY_LIVE)
+  const [allowWrites, setAllowWrites] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   // Skip the first persist after hydration so we don't rewrite unchanged
   // defaults while restoring the previous selection.
@@ -283,28 +340,52 @@ export function ChatPage({
     setTurns(next)
     setInput("")
     setSending(true)
+    setLive(EMPTY_LIVE)
     try {
-      const result = await apiFetch<{
-        content: string
-        model: string
-        toolExecutions?: ToolExecutionTrace[]
-      }>("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({
+      let current = EMPTY_LIVE
+      const outcome: { final: Turn | null; error: string | null } = {
+        final: null,
+        error: null,
+      }
+      await streamPost(
+        "/api/chat",
+        {
           provider,
           model,
-          messages: next,
+          messages: next.map(({ role, content: c }) => ({ role, content: c })),
           agent: selectedAgent?.name,
-        }),
-      })
-      setTurns((t) => [
-        ...t,
-        {
-          role: "assistant",
-          content: result.content,
-          toolExecutions: result.toolExecutions,
+          allowWrites,
         },
-      ])
+        (event) => {
+          if (event.event === "done") {
+            const parsed = chatDoneEventSchema.safeParse(event.data)
+            if (!parsed.success) {
+              outcome.error = "The assistant sent an unreadable reply"
+              return
+            }
+            const data = parsed.data
+            outcome.final = {
+              role: "assistant",
+              content: data.content,
+              toolExecutions: data.toolExecutions?.length ? data.toolExecutions : undefined,
+              artifacts: current.artifacts.length ? current.artifacts : undefined,
+              stoppedAtLimit: data.stoppedAtLimit,
+            }
+            return
+          }
+          if (event.event === "error") {
+            const parsed = chatErrorEventSchema.safeParse(event.data)
+            outcome.error = parsed.success ? parsed.data.message : "The assistant failed"
+            return
+          }
+          current = applyEvent(current, event)
+          setLive(current)
+        }
+      )
+      if (outcome.error) throw new Error(outcome.error)
+      const reply = outcome.final
+      if (!reply) throw new Error("The assistant stopped before answering")
+      setTurns((t) => [...t, reply])
       // The model id was accepted — remember it for the next launch.
       await persistSelection(provider, model)
     } catch (err) {
@@ -318,6 +399,7 @@ export function ChatPage({
         })
     } finally {
       setSending(false)
+      setLive(EMPTY_LIVE)
     }
   }
 
@@ -413,6 +495,17 @@ export function ChatPage({
             disabled={!providerVerified}
             className="w-52 sm:w-64"
           />
+          <div className="flex items-center gap-2">
+            <Switch
+              id="chat-allow-writes"
+              checked={allowWrites}
+              onCheckedChange={setAllowWrites}
+              disabled={sending}
+            />
+            <Label htmlFor="chat-allow-writes" className="text-xs text-muted-foreground">
+              Allow file writes
+            </Label>
+          </div>
         </div>
       </div>
 
@@ -538,18 +631,41 @@ export function ChatPage({
                 turn={turn}
                 onOpen={openInEditor}
                 agentName={selectedAgent?.name}
+                previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
+                provider={provider}
+                model={model}
               />
             ))
           )}
           {sending ? (
-            <div
-              className="flex items-center gap-2 text-sm text-muted-foreground"
-              aria-hidden="true"
-            >
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {selectedAgent
-                ? `${selectedAgent.name} is thinking…`
-                : "Thinking…"}
+            <div className="space-y-3">
+              {live.artifacts.length > 0 ? <LoadedArtifacts artifacts={live.artifacts} /> : null}
+              {live.toolExecutions.length > 0 ? (
+                <ToolExecutionsSection traces={live.toolExecutions} />
+              ) : null}
+              {live.approvals.map((approval) => (
+                <ApprovalCard
+                  key={approval.id}
+                  approval={approval}
+                  rememberLabel="Allow this exact call for this message"
+                />
+              ))}
+              {live.content ? (
+                <div className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">
+                  <MarkdownPreview content={stripBundleBlock(stripDraftBlock(live.content))} />
+                </div>
+              ) : null}
+              <div
+                className="flex items-center gap-2 text-sm text-muted-foreground"
+                aria-hidden="true"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {live.approvals.length > 0
+                  ? "Waiting for your approval…"
+                  : selectedAgent
+                    ? `${selectedAgent.name} is thinking…`
+                    : "Thinking…"}
+              </div>
             </div>
           ) : null}
         </div>
@@ -597,18 +713,50 @@ export function ChatPage({
   )
 }
 
+function LoadedArtifacts({ artifacts }: { artifacts: TurnArtifact[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span>Context:</span>
+      {artifacts.map((a) => (
+        <Badge
+          key={`${a.type}:${a.name}`}
+          variant="outline"
+          className="gap-1 font-normal"
+          title={
+            a.source === "auto"
+              ? "Picked by Jev for this message"
+              : a.source === "linked"
+                ? "Linked from a loaded artifact"
+                : "Mentioned in your message"
+          }
+        >
+          {metaForType(a.type).label.toLowerCase()}/{a.name}
+          <span className="text-[10px] opacity-70">{a.source}</span>
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
 function Message({
   turn,
   onOpen,
   agentName,
+  previousUser,
+  provider,
+  model,
 }: {
   turn: Turn
   onOpen: (draft: NormalizedDraft) => void
   agentName?: string
+  previousUser: string
+  provider: string
+  model: string
 }) {
   const isUser = turn.role === "user"
-  const draft = isUser ? null : extractDraft(turn.content)
-  const prose = isUser ? turn.content : stripDraftBlock(turn.content)
+  const bundle = isUser ? null : extractBundle(turn.content)
+  const draft = isUser || bundle ? null : extractDraft(turn.content)
+  const prose = isUser ? turn.content : stripBundleBlock(stripDraftBlock(turn.content))
 
   return (
     <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
@@ -630,201 +778,36 @@ function Message({
           </div>
         ) : (
           <>
+            {turn.artifacts && turn.artifacts.length > 0 ? (
+              <LoadedArtifacts artifacts={turn.artifacts} />
+            ) : null}
             {turn.toolExecutions && turn.toolExecutions.length > 0 ? (
               <ToolExecutionsSection traces={turn.toolExecutions} />
             ) : null}
             <div className="prose prose-sm max-w-none dark:prose-invert">
               <MarkdownPreview content={prose || "…"} />
             </div>
+            {turn.stoppedAtLimit ? (
+              <p className="text-xs text-muted-foreground">
+                Stopped at the tool-call limit. You can raise it in Settings.
+              </p>
+            ) : null}
           </>
         )}
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
+        {bundle ? <BundleCard bundle={bundle} /> : null}
+        {!isUser ? (
+          <FeedbackBar
+            source="chat"
+            agent={agentName}
+            userMessage={previousUser}
+            reply={turn.content}
+            provider={provider}
+            model={model}
+          />
+        ) : null}
       </div>
-    </div>
-  )
-}
-
-function ToolExecutionsSection({ traces }: { traces: ToolExecutionTrace[] }) {
-  const [open, setOpen] = React.useState(false)
-  const totalDuration = traces.reduce((acc, t) => acc + (t.durationMs ?? 0), 0)
-  const hasError = traces.some((t) => t.error)
-
-  return (
-    <div className="rounded-lg border bg-muted/30 text-left text-xs overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-muted-foreground transition-colors hover:bg-muted/50"
-      >
-        <div className="flex items-center gap-2 font-medium">
-          <Terminal className="h-3.5 w-3.5 text-primary" />
-          <span className="text-foreground">
-            {traces.length === 1
-              ? `Executed tool: ${traces[0].tool}`
-              : `Executed ${traces.length} MCP tools`}
-          </span>
-          {totalDuration > 0 ? (
-            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
-              {totalDuration}ms
-            </Badge>
-          ) : null}
-          {hasError ? (
-            <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-              Errors
-            </Badge>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1 text-xs">
-          <span>{open ? "Hide" : "Details"}</span>
-          {open ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
-        </div>
-      </button>
-
-      {open ? (
-        <div className="space-y-2 border-t bg-background/50 p-2.5">
-          {traces.map((trace, idx) => (
-            <ToolTraceCard key={trace.id ?? idx} trace={trace} />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function ToolTraceCard({ trace }: { trace: ToolExecutionTrace }) {
-  const [expanded, setExpanded] = React.useState(false)
-  const isError = Boolean(trace.error)
-
-  return (
-    <div className="rounded border bg-card/60 p-2 font-mono text-[11px]">
-      <div
-        className="flex cursor-pointer items-center justify-between gap-2"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-1.5 min-w-0">
-          {isError ? (
-            <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
-          ) : (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-          )}
-          <span className="font-semibold text-foreground truncate">
-            {trace.tool}
-          </span>
-          {trace.server ? (
-            <span className="text-muted-foreground text-[10px]">
-              ({trace.server})
-            </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2 text-muted-foreground shrink-0 text-[10px]">
-          {trace.durationMs !== undefined ? <span>{trace.durationMs}ms</span> : null}
-          {expanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-        </div>
-      </div>
-
-      {expanded ? (
-        <div className="mt-2 space-y-1.5 border-t pt-2 text-[10px]">
-          {trace.args && Object.keys(trace.args).length > 0 ? (
-            <div>
-              <span className="text-muted-foreground font-semibold block mb-0.5 font-sans">
-                Arguments:
-              </span>
-              <pre className="max-h-40 overflow-auto rounded bg-muted/60 p-1.5 text-foreground">
-                {JSON.stringify(trace.args, null, 2)}
-              </pre>
-            </div>
-          ) : null}
-
-          <div>
-            <span className="text-muted-foreground font-semibold block mb-0.5 font-sans">
-              {isError ? "Error:" : "Result:"}
-            </span>
-            <pre
-              className={cn(
-                "max-h-48 overflow-auto rounded p-1.5",
-                isError
-                  ? "bg-destructive/10 text-destructive"
-                  : "bg-muted/60 text-foreground"
-              )}
-            >
-              {isError
-                ? trace.error
-                : typeof trace.result === "string"
-                  ? trace.result
-                  : JSON.stringify(trace.result, null, 2)}
-            </pre>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function AgentAvatar({
-  name,
-  className,
-}: {
-  name: string
-  className?: string
-}) {
-  return (
-    <div
-      className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20",
-        className
-      )}
-      aria-label={`${name} avatar`}
-      title={name}
-    >
-      <span className="text-xs font-semibold" aria-hidden="true">
-        {name.slice(0, 1).toUpperCase()}
-      </span>
-    </div>
-  )
-}
-
-function DraftCard({
-  draft,
-  onOpen,
-}: {
-  draft: NormalizedDraft
-  onOpen: (draft: NormalizedDraft) => void
-}) {
-  const meta = metaForType(draft.type)
-  const Icon = meta.icon
-  return (
-    <div className="rounded-lg border bg-card p-3 text-left">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon className={cn("h-4 w-4 shrink-0", meta.colorClass)} />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{draft.name}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {draft.description}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline" className="shrink-0">
-          {meta.label}
-        </Badge>
-      </div>
-      <Button
-        size="sm"
-        className="mt-3 w-full"
-        onClick={() => onOpen(draft)}
-      >
-        <Wand2 className="h-4 w-4" />
-        Open in editor
-      </Button>
     </div>
   )
 }

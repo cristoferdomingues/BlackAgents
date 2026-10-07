@@ -16,6 +16,9 @@ function frontmatterFor(
   delete base.parallel
   delete base.alwaysApply
   delete base.globs
+  // Only replace tool scope when the editor sent it, so older clients keep it.
+  if (input.extra.tools !== undefined) delete base.tools
+  if (input.extra.mcpServers !== undefined) delete base.mcpServers
 
   switch (input.type) {
     case "rule":

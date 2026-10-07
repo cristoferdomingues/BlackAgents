@@ -37,9 +37,15 @@ export interface SecretsDefaults {
   model?: string
 }
 
+export interface JevSecret {
+  /** Direct TypeSafe API key for the Jev decision engine. */
+  apiKey: string
+}
+
 export interface SecretsFile {
   providers: Partial<Record<ProviderId, ProviderSecret>>
   defaults?: SecretsDefaults
+  jev?: JevSecret
 }
 
 /** Redacted view safe to send to the client. */
@@ -79,6 +85,7 @@ const secretsFileSchema = z.object({
       model: z.string().optional(),
     })
     .optional(),
+  jev: z.object({ apiKey: z.string().min(1) }).optional(),
 })
 
 function expandHome(p: string): string {
@@ -192,4 +199,19 @@ export function toStatusList(
       checkedAt: verification.checkedAt,
     }
   })
+}
+
+/** Store (or clear, with `null`) the direct TypeSafe key for Jev. */
+export async function setJevApiKey(apiKey: string | null): Promise<SecretsFile> {
+  const secrets = await readSecrets()
+  if (apiKey) secrets.jev = { apiKey }
+  else delete secrets.jev
+  await writeSecrets(secrets)
+  return secrets
+}
+
+/** Redacted Jev key status, safe for the client. */
+export function jevKeyStatus(secrets: SecretsFile): { configured: boolean; last4?: string } {
+  const key = secrets.jev?.apiKey
+  return key ? { configured: true, last4: key.slice(-4) } : { configured: false }
 }

@@ -19,9 +19,9 @@ export function fail(error: string, status = 400): NextResponse {
 }
 
 /** Wrap a route handler so thrown errors become a clean 500 envelope. */
-export async function handle<T>(
-  fn: () => Promise<NextResponse>
-): Promise<NextResponse> {
+export async function handle(
+  fn: () => Promise<Response>
+): Promise<Response> {
   try {
     return await fn()
   } catch (err) {

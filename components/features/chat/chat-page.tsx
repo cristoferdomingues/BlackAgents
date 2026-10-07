@@ -581,7 +581,7 @@ export function ChatPage({
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-6 p-6">
+        <div className="mx-auto w-full max-w-6xl space-y-6 p-6">
           {metaError ? (
             <div
               className="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -743,7 +743,7 @@ export function ChatPage({
       </div>
 
       <div className="border-t p-4">
-        <div className="relative mx-auto flex max-w-3xl items-end gap-2">
+        <div className="relative mx-auto flex w-full max-w-6xl items-end gap-2">
           {mentionOpen ? (
             <MentionMenu
               items={mentionItems}
@@ -871,7 +871,12 @@ function Message({
           <Bot className="h-4 w-4" />
         </div>
       )}
-      <div className={cn("min-w-0 max-w-[85%] space-y-3", isUser && "text-right")}>
+      <div
+        className={cn(
+          "min-w-0 space-y-3",
+          isUser ? "max-w-[85%] text-right" : "w-full"
+        )}
+      >
         {isUser ? (
           <div className="inline-block whitespace-pre-wrap rounded-lg bg-primary px-3 py-2 text-left text-sm text-primary-foreground">
             {turn.content}

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/layout/theme-provider"
 import { WorkspaceProvider } from "@/components/providers/workspace-provider"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
+import { SidebarProvider } from "@/components/layout/sidebar-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
@@ -33,15 +34,17 @@ export default function RootLayout({
         >
           <WorkspaceProvider>
             <TooltipProvider delayDuration={200}>
-              <div className="flex h-screen overflow-hidden">
-                <AppSidebar />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <AppHeader />
-                  <main className="flex-1 overflow-y-auto scrollbar-thin">
-                    {children}
-                  </main>
+              <SidebarProvider>
+                <div className="flex h-screen overflow-hidden">
+                  <AppSidebar />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <AppHeader />
+                    <main className="flex-1 overflow-y-auto scrollbar-thin">
+                      {children}
+                    </main>
+                  </div>
                 </div>
-              </div>
+              </SidebarProvider>
             </TooltipProvider>
           </WorkspaceProvider>
           <Toaster richColors position="bottom-right" />

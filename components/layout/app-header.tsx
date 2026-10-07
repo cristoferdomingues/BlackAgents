@@ -2,13 +2,19 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Check, ChevronsUpDown, FolderOpen, Plus, RefreshCw, Settings, Sparkles } from "lucide-react"
+import { Check, ChevronsUpDown, FolderOpen, PanelLeft, Plus, RefreshCw, Settings, Sparkles } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST } from "@/lib/artifacts/constants"
 import { useWorkspace } from "@/components/providers/workspace-provider"
+import { useSidebar } from "@/components/layout/sidebar-provider"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,10 +27,28 @@ import {
 export function AppHeader() {
   const { workspace, workspaces, setActive, loadingArtifacts, refresh } =
     useWorkspace()
+  const { open: sidebarOpen, toggle: toggleSidebar } = useSidebar()
+  const sidebarLabel = sidebarOpen ? "Hide sidebar" : "Show sidebar"
 
   return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b bg-background/80 px-6 backdrop-blur">
+    <header className="flex h-14 items-center justify-between gap-4 border-b bg-background/80 px-4 backdrop-blur sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden shrink-0 md:inline-flex"
+              aria-label={sidebarLabel}
+              aria-expanded={sidebarOpen}
+              aria-controls="app-sidebar"
+              onClick={toggleSidebar}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{sidebarLabel}</TooltipContent>
+        </Tooltip>
         {workspace ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

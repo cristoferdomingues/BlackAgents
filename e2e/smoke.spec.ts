@@ -21,4 +21,17 @@ test.describe("app shell", () => {
     await page.getByRole("link", { name: /Standards/ }).click()
     await expect(page).toHaveURL(/\/standards/)
   })
+
+  test("hides and shows the sidebar from the header", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto("/")
+    const dashboard = page.getByRole("link", { name: "Dashboard" })
+    await expect(dashboard).toBeVisible()
+
+    await page.getByRole("button", { name: "Hide sidebar" }).click()
+    await expect(dashboard).toBeHidden()
+
+    await page.getByRole("button", { name: "Show sidebar" }).click()
+    await expect(dashboard).toBeVisible()
+  })
 })

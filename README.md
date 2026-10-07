@@ -202,16 +202,9 @@ Still open:
 
 ## Desktop releases
 
-A version tag builds the desktop app and publishes the installers on [GitHub Releases](https://github.com/cristoferdomingues/BlackAgents/releases).
+A push to `main` opens a release pull request when there are user-facing changes. Merging that pull request tags the version and builds the desktop installers on [GitHub Releases](https://github.com/cristoferdomingues/BlackAgents/releases). The installers appear about 5 minutes after the tag.
 
-1. Set the same version in `package.json` and `electron/package.json`.
-2. Commit that change.
-3. Tag and push it:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+Use `feat:` for a new feature and `fix:` for a bug fix in the commit message. While the app is still `0.x`, a feature moves the second number (`0.1` to `0.2`) and a fix moves the third (`0.1.3` to `0.1.4`).
 
 The workflow publishes:
 

@@ -677,7 +677,7 @@ export function ChatPage({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            rows={1}
+            rows={4}
             placeholder={
               agentNotFound
                 ? "Choose an available agent to start chatting"
@@ -687,7 +687,7 @@ export function ChatPage({
                     : "Describe an agent, command, rule, or skill…"
                   : "Verify a provider to start chatting"
             }
-            className="max-h-40 min-h-[2.75rem] resize-none"
+            className="max-h-52 min-h-28 resize-none"
             disabled={!canChat || sending}
             aria-label={
               selectedAgent

@@ -40,6 +40,16 @@ test.describe("assistant tools and bundles", () => {
     expect(body).toMatchObject({ allowWrites: true, messages: [{ role: "user", content: "Check @rule:style" }] })
   })
 
+  test("inserts an artifact when @ is picked", async ({ page }) => {
+    await page.goto("/chat")
+    const input = page.getByRole("textbox", { name: "Message assistant" })
+    await expect(input).toBeEnabled()
+    await input.pressSequentially("@sty")
+    await expect(page.getByRole("option", { name: /style/ })).toBeVisible()
+    await input.press("Enter")
+    await expect(input).toHaveValue("@rule:style ")
+  })
+
   test("shows a stream error and keeps the message", async ({ page }) => {
     await page.route("**/api/chat", (route) =>
       fulfillSse(route, [["error", { message: "Upstream failed", status: 502 }]])

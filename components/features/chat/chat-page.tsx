@@ -21,6 +21,11 @@ import { streamPost, type SseEvent } from "@/lib/sse-client"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import {
+  activeMentionQuery,
+  filterMentions,
+  insertMention,
+} from "@/lib/artifacts/mentions"
+import {
   DRAFT_STORAGE_KEY,
   extractDraft,
   stripDraftBlock,
@@ -52,6 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { MentionMenu, type ChatMention } from "@/components/features/chat/mention-menu"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
 import {
   AgentAvatar,
@@ -173,6 +179,7 @@ export function ChatPage({
   const router = useRouter()
   const {
     workspace,
+    artifacts,
     byType,
     loading: workspaceLoading,
     loadingArtifacts,
@@ -187,6 +194,10 @@ export function ChatPage({
   const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [input, setInput] = React.useState("")
+  const [caret, setCaret] = React.useState(0)
+  const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
+  const [dismissedMentionKey, setDismissedMentionKey] = React.useState<string | null>(null)
+  const inputRef = React.useRef<HTMLTextAreaElement>(null)
   const [sending, setSending] = React.useState(false)
   const [live, setLive] = React.useState<LiveTurn>(EMPTY_LIVE)
   const [allowWrites, setAllowWrites] = React.useState(false)
@@ -339,6 +350,7 @@ export function ChatPage({
     const next = [...turns, { role: "user" as const, content }]
     setTurns(next)
     setInput("")
+    setCaret(0)
     setSending(true)
     setLive(EMPTY_LIVE)
     try {
@@ -408,7 +420,66 @@ export function ChatPage({
     router.push(`/${metaForType(draft.type).route}/new`)
   }
 
+  const mention = activeMentionQuery(input, caret)
+  const mentionKey = mention ? `${mention.start}:${mention.query}` : ""
+  const [mentionKeySeen, setMentionKeySeen] = React.useState(mentionKey)
+  if (mentionKey !== mentionKeySeen) {
+    setMentionKeySeen(mentionKey)
+    setActiveMentionIndex(0)
+  }
+  const mentionItems = filterMentions(
+    artifacts.map((artifact) => ({
+      type: artifact.type,
+      name: artifact.name,
+      description: artifact.description,
+    })),
+    mention?.query ?? ""
+  )
+  const mentionOpen = mention !== null && dismissedMentionKey !== mentionKey && !sending
+  const mentionIndex =
+    mentionItems.length === 0 ? 0 : activeMentionIndex % mentionItems.length
+
+  function rememberCaret(element: HTMLTextAreaElement) {
+    setCaret(element.selectionStart ?? element.value.length)
+  }
+
+  function pickMention(item: ChatMention) {
+    if (!mention) return
+    const next = insertMention(input, caret, mention, item.type, item.name)
+    setInput(next.text)
+    setCaret(next.caret)
+    requestAnimationFrame(() => {
+      const element = inputRef.current
+      if (!element) return
+      element.focus()
+      element.setSelectionRange(next.caret, next.caret)
+    })
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionOpen && mentionItems.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setActiveMentionIndex((index) => (index + 1) % mentionItems.length)
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setActiveMentionIndex((index) => (index - 1 + mentionItems.length) % mentionItems.length)
+        return
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault()
+        const item = mentionItems[mentionIndex]
+        if (item) pickMention(item)
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setDismissedMentionKey(mentionKey)
+        return
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       void send(input)
@@ -672,11 +743,40 @@ export function ChatPage({
       </div>
 
       <div className="border-t p-4">
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
+        <div className="relative mx-auto flex max-w-3xl items-end gap-2">
+          {mentionOpen ? (
+            <MentionMenu
+              items={mentionItems}
+              activeIndex={mentionIndex}
+              emptyLabel={
+                loadingArtifacts
+                  ? "Loading artifacts…"
+                  : workspace
+                    ? "No matching artifacts"
+                    : "Open a workspace to mention artifacts"
+              }
+              onPick={pickMention}
+              onHighlight={setActiveMentionIndex}
+            />
+          ) : null}
           <Textarea
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              rememberCaret(e.target)
+            }}
+            onSelect={(e) => rememberCaret(e.currentTarget)}
             onKeyDown={onKeyDown}
+            onKeyUp={(e) => rememberCaret(e.currentTarget)}
+            aria-autocomplete="list"
+            aria-expanded={mentionOpen}
+            aria-controls={mentionOpen ? "assistant-mentions" : undefined}
+            aria-activedescendant={
+              mentionOpen && mentionItems.length > 0
+                ? `assistant-mention-${mentionIndex}`
+                : undefined
+            }
             rows={4}
             placeholder={
               agentNotFound

@@ -43,6 +43,7 @@ import {
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { GlobsInput } from "@/components/features/editor/globs-input"
 import { StandardsHints } from "@/components/features/editor/standards-hints"
+import { SkillTriggerButton } from "@/components/features/skills/skill-trigger"
 import type { ProvidersState } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -567,6 +568,12 @@ export function ArtifactEditor({
               Draft with assistant
             </Button>
           )}
+          {type === "skill" ? (
+            <SkillTriggerButton
+              name={form.watch("name")}
+              description={form.watch("description")}
+            />
+          ) : null}
           <Button
             type="button"
             variant="outline"

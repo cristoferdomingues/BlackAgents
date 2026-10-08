@@ -32,7 +32,7 @@ Agents can also **act** on that folder: they read files, call MCP tools, and —
 - **Artifact bundles** — ask the assistant for a team and it proposes one agent plus up to three skills and three rules. **Create all** saves them after a standards check.
 - **Workflows** — a local production line. Each step runs one workspace agent and passes its result to the next. Run by hand, on an interval, or daily while the app is open.
 - **Second brain** — thumbs up or down on a chat reply or a finished run. BlackAgents may draft a memory note, skill, or rule. Nothing is saved until you approve it on **Brain**.
-- **Jev (optional)** — a fast classifier for small choices: which artifact to load, whether a workflow step should continue, whether a scheduled run is needed, and what is worth learning. The app still works with Jev off.
+- **Jev (optional)** — a fast classifier for small choices: which artifact to load, which skill fits a task, whether a skill description is too wide, whether a workflow step should continue, whether a scheduled run is needed, and what is worth learning. The app still works with Jev off.
 - **Model Context Protocol (MCP)** — configure standard `.cursor/mcp.json` servers (stdio commands or remote SSE endpoints) per workspace in **Settings → MCP Servers**. Each server is trusted, ask, or risky. Chat shows a trace for every tool call.
 - **Assistant drafting (bring your own key)** — describe an artifact in plain language and the assistant proposes a standards-compliant draft you can open straight in the editor. Keys are stored locally (`0600`) and never leave your machine.
 

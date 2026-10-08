@@ -10,6 +10,7 @@ import { metaForType } from "@/lib/artifacts/constants"
 import type { ArtifactType } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
+import { SkillSuggestBox } from "@/components/features/skills/skill-trigger"
 import { ArtifactBadges } from "@/components/features/artifacts/artifact-badges"
 import { useProviderReadiness } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
@@ -69,6 +70,8 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
           </Link>
         </Button>
       </div>
+
+      {type === "skill" ? <SkillSuggestBox /> : null}
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

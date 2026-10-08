@@ -1,6 +1,5 @@
 const path = require("node:path")
-const { spawn } = require("node:child_process")
-const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } = require("electron")
+const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, utilityProcess } = require("electron")
 const log = require("electron-log/main")
 
 const {
@@ -18,9 +17,8 @@ let openingWindow = null
 log.initialize()
 
 function stopApplicationServer() {
-  if (applicationServer && !applicationServer.killed) {
-    applicationServer.kill()
-  }
+  if (!applicationServer) return
+  applicationServer.kill()
   applicationServer = null
 }
 
@@ -32,24 +30,27 @@ async function startApplicationServer() {
   const url = `http://127.0.0.1:${port}`
   const serverEntry = path.join(process.resourcesPath, "server", "server.js")
 
-  applicationServer = spawn(process.execPath, [serverEntry], {
+  // Spawning the Electron binary makes macOS show the Next server as a second Dock icon.
+  // A utility process uses the hidden helper app, so only BlackAgents stays visible.
+  applicationServer = utilityProcess.fork(serverEntry, [], {
+    cwd: path.dirname(serverEntry),
+    serviceName: "BlackAgents Server",
+    stdio: "inherit",
     env: {
       ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
       HOSTNAME: "127.0.0.1",
       NODE_ENV: "production",
       PORT: String(port),
     },
-    stdio: "inherit",
   })
 
-  applicationServer.once("exit", (code, signal) => {
+  applicationServer.once("exit", (code) => {
     applicationServer = null
     if (!app.isQuitting) {
-      log.error("Application server exited unexpectedly", { code, signal })
+      log.error("Application server exited unexpectedly", { code })
       dialog.showErrorBox(
         "BlackAgents server stopped",
-        `The local application server exited unexpectedly (${signal ?? code ?? "unknown"}).`
+        `The local application server exited unexpectedly (${code ?? "unknown"}).`
       )
       app.quit()
     }

@@ -1,7 +1,11 @@
 import { TypeSafeClient } from "@typesafe-ai/sdk"
 
-import { readSecrets } from "@/lib/secrets"
-import { readAiSettings, type JevProviderPreference } from "@/lib/settings"
+import { readSecrets, type SecretsFile } from "@/lib/secrets"
+import {
+  readAiSettings,
+  type JevOpenRouterKeySource,
+  type JevProviderPreference,
+} from "@/lib/settings"
 
 /**
  * Jev (TypeSafe "System One") is an optional, fast classifier. Only files in
@@ -14,8 +18,11 @@ export type DecisionProvider = "direct" | "openrouter"
 export interface DecisionCredentials {
   enabled: boolean
   providerPreference: JevProviderPreference
+  openRouterKeySource: JevOpenRouterKeySource
   directApiKey: string | null
   openRouterApiKey: string | null
+  /** True when AI Providers → Custom points at openrouter.ai (key may be reused). */
+  aiOpenRouterAvailable: boolean
 }
 
 export interface ResolvedDecisionClient {
@@ -75,19 +82,41 @@ export function resolveDecisionClient(
   return null
 }
 
+/** OpenRouter key from AI Providers → Custom, only when the host is openrouter.ai. */
+export function aiOpenRouterApiKey(secrets: SecretsFile): string | null {
+  const custom = secrets.providers.custom
+  if (!custom?.apiKey || !isOpenRouterBaseUrl(custom.baseUrl)) return null
+  return custom.apiKey
+}
+
 /**
- * Read Jev settings + keys. The OpenRouter key is reused only when the custom
- * provider points exactly at openrouter.ai.
+ * Resolve which OpenRouter key Jev should use.
+ * - `reuse` — AI Custom key when it is OpenRouter (Custom alone is not enough).
+ * - `dedicated` — Jev-only OpenRouter key in secrets.jev.
+ */
+export function resolveOpenRouterApiKey(
+  secrets: SecretsFile,
+  source: JevOpenRouterKeySource
+): string | null {
+  if (source === "dedicated") return secrets.jev?.openRouterApiKey ?? null
+  return aiOpenRouterApiKey(secrets)
+}
+
+/**
+ * Read Jev settings + keys. OpenRouter may come from a dedicated Jev key or
+ * from AI Providers → Custom when that provider is actually OpenRouter.
  */
 export async function getDecisionCredentials(): Promise<DecisionCredentials> {
   const [settings, secrets] = await Promise.all([readAiSettings(), readSecrets()])
-  const custom = secrets.providers.custom
+  const openRouterKeySource = settings.jev.openRouterKeySource
+  const reused = aiOpenRouterApiKey(secrets)
   return {
     enabled: settings.jev.enabled,
     providerPreference: settings.jev.provider,
+    openRouterKeySource,
     directApiKey: secrets.jev?.apiKey ?? null,
-    openRouterApiKey:
-      custom?.apiKey && isOpenRouterBaseUrl(custom.baseUrl) ? custom.apiKey : null,
+    openRouterApiKey: resolveOpenRouterApiKey(secrets, openRouterKeySource),
+    aiOpenRouterAvailable: Boolean(reused),
   }
 }
 

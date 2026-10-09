@@ -39,13 +39,21 @@ export interface SecretsDefaults {
 
 export interface JevSecret {
   /** Direct TypeSafe API key for the Jev decision engine. */
-  apiKey: string
+  apiKey?: string
+  /** OpenRouter API key used only by Jev (independent of AI Providers). */
+  openRouterApiKey?: string
 }
 
 export interface SecretsFile {
   providers: Partial<Record<ProviderId, ProviderSecret>>
   defaults?: SecretsDefaults
   jev?: JevSecret
+}
+
+/** Redacted key status safe to send to the client. */
+export interface KeyStatus {
+  configured: boolean
+  last4?: string
 }
 
 /** Redacted view safe to send to the client. */
@@ -85,7 +93,15 @@ const secretsFileSchema = z.object({
       model: z.string().optional(),
     })
     .optional(),
-  jev: z.object({ apiKey: z.string().min(1) }).optional(),
+  jev: z
+    .object({
+      apiKey: z.string().min(1).optional(),
+      openRouterApiKey: z.string().min(1).optional(),
+    })
+    .refine((v) => Boolean(v.apiKey || v.openRouterApiKey), {
+      message: "At least one Jev key is required",
+    })
+    .optional(),
 })
 
 function expandHome(p: string): string {
@@ -201,17 +217,54 @@ export function toStatusList(
   })
 }
 
+function pruneJevSecret(secrets: SecretsFile): void {
+  const jev = secrets.jev
+  if (!jev) return
+  if (!jev.apiKey && !jev.openRouterApiKey) delete secrets.jev
+}
+
+function withoutJevField(current: JevSecret, field: keyof JevSecret): JevSecret {
+  const next: JevSecret = { ...current }
+  delete next[field]
+  return next
+}
+
 /** Store (or clear, with `null`) the direct TypeSafe key for Jev. */
 export async function setJevApiKey(apiKey: string | null): Promise<SecretsFile> {
   const secrets = await readSecrets()
-  if (apiKey) secrets.jev = { apiKey }
-  else delete secrets.jev
+  const current = secrets.jev ?? {}
+  if (apiKey) secrets.jev = { ...current, apiKey }
+  else {
+    secrets.jev = withoutJevField(current, "apiKey")
+    pruneJevSecret(secrets)
+  }
   await writeSecrets(secrets)
   return secrets
 }
 
-/** Redacted Jev key status, safe for the client. */
-export function jevKeyStatus(secrets: SecretsFile): { configured: boolean; last4?: string } {
-  const key = secrets.jev?.apiKey
+/** Store (or clear, with `null`) a Jev-only OpenRouter API key. */
+export async function setJevOpenRouterApiKey(apiKey: string | null): Promise<SecretsFile> {
+  const secrets = await readSecrets()
+  const current = secrets.jev ?? {}
+  if (apiKey) secrets.jev = { ...current, openRouterApiKey: apiKey }
+  else {
+    secrets.jev = withoutJevField(current, "openRouterApiKey")
+    pruneJevSecret(secrets)
+  }
+  await writeSecrets(secrets)
+  return secrets
+}
+
+function keyStatus(key: string | undefined): KeyStatus {
   return key ? { configured: true, last4: key.slice(-4) } : { configured: false }
+}
+
+/** Redacted TypeSafe Jev key status, safe for the client. */
+export function jevKeyStatus(secrets: SecretsFile): KeyStatus {
+  return keyStatus(secrets.jev?.apiKey)
+}
+
+/** Redacted dedicated Jev OpenRouter key status, safe for the client. */
+export function jevOpenRouterKeyStatus(secrets: SecretsFile): KeyStatus {
+  return keyStatus(secrets.jev?.openRouterApiKey)
 }

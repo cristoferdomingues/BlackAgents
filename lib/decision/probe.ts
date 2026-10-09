@@ -31,7 +31,8 @@ export async function probeDecisionEngine(
       return {
         ok: false,
         code: "JEV_NOT_CONFIGURED",
-        message: "No TypeSafe key or OpenRouter custom provider is available for Jev.",
+        message:
+          "No TypeSafe key or OpenRouter key is available for Jev. Add a TypeSafe key, reuse an AI Providers Custom key pointed at OpenRouter, or set a dedicated OpenRouter key for Jev.",
       }
     }
     const result = await resolved.client.systemOne(

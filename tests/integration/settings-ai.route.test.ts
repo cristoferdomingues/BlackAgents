@@ -19,8 +19,13 @@ describe("/api/settings/ai", () => {
   it("returns defaults without keys", async () => {
     const body = await (await GET()).json()
     expect(body.data).toEqual({
-      settings: { assistant: { maxToolTurns: 8 }, jev: { enabled: false, provider: "auto" } },
+      settings: {
+        assistant: { maxToolTurns: 8 },
+        jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
+      },
       jevKey: { configured: false },
+      jevOpenRouterKey: { configured: false },
+      aiOpenRouter: { available: false },
       openRouterAvailable: false,
       activeProvider: null,
     })
@@ -45,9 +50,45 @@ describe("/api/settings/ai", () => {
     expect((await readSecrets()).jev).toBeUndefined()
   })
 
+  it("saves a dedicated OpenRouter key for Jev without treating it as TypeSafe", async () => {
+    const res = await PUT(
+      jsonRequest("http://t/api/settings/ai", "PUT", {
+        jev: { enabled: true, provider: "openrouter", openRouterKeySource: "dedicated" },
+        jevOpenRouterApiKey: "sk-or-jev-only-9999",
+      })
+    )
+    const body = await res.json()
+    expect(body.data.jevKey).toEqual({ configured: false })
+    expect(body.data.jevOpenRouterKey).toEqual({ configured: true, last4: "9999" })
+    expect(body.data.openRouterAvailable).toBe(true)
+    expect(body.data.activeProvider).toBe("openrouter")
+    expect(JSON.stringify(body)).not.toContain("sk-or-jev")
+    expect((await readSecrets()).jev).toEqual({ openRouterApiKey: "sk-or-jev-only-9999" })
+
+    // Clearing dedicated key must not leave a TypeSafe-shaped secret.
+    await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevOpenRouterApiKey: null }))
+    expect((await readSecrets()).jev).toBeUndefined()
+  })
+
+  it("keeps TypeSafe and dedicated OpenRouter keys independent", async () => {
+    await PUT(
+      jsonRequest("http://t/api/settings/ai", "PUT", {
+        jevApiKey: "ts-secret-1234",
+        jevOpenRouterApiKey: "sk-or-jev-only-9999",
+      })
+    )
+    expect((await readSecrets()).jev).toEqual({
+      apiKey: "ts-secret-1234",
+      openRouterApiKey: "sk-or-jev-only-9999",
+    })
+    await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevApiKey: null }))
+    expect((await readSecrets()).jev).toEqual({ openRouterApiKey: "sk-or-jev-only-9999" })
+  })
+
   it("rejects invalid values", async () => {
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { assistant: { maxToolTurns: 99 } }))).status).toBe(400)
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevApiKey: "x" }))).status).toBe(400)
+    expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevOpenRouterApiKey: "x" }))).status).toBe(400)
   })
 
   it("tests Jev and reports a disabled engine as 412", async () => {

@@ -13,6 +13,10 @@ import { DEFAULT_MAX_TURNS, MAX_TURNS_LIMIT } from "./runtime/agent-loop"
 export const jevProviderPreferenceSchema = z.enum(["auto", "direct", "openrouter"])
 export type JevProviderPreference = z.infer<typeof jevProviderPreferenceSchema>
 
+/** Where Jev gets its OpenRouter key when the OpenRouter path is used. */
+export const jevOpenRouterKeySourceSchema = z.enum(["reuse", "dedicated"])
+export type JevOpenRouterKeySource = z.infer<typeof jevOpenRouterKeySourceSchema>
+
 export const aiSettingsSchema = z.object({
   assistant: z
     .object({
@@ -23,6 +27,12 @@ export const aiSettingsSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       provider: jevProviderPreferenceSchema.default("auto"),
+      /**
+       * `reuse` — use AI Providers → Custom key only when its base URL is OpenRouter.
+       * `dedicated` — use `secrets.jev.openRouterApiKey` (Jev-only; Custom need not be OpenRouter).
+       * Default `reuse` preserves the previous “share Custom OpenRouter key” behavior.
+       */
+      openRouterKeySource: jevOpenRouterKeySourceSchema.default("reuse"),
     })
     .default({}),
 })
@@ -34,7 +44,11 @@ export const aiSettingsPatchSchema = z.object({
     .partial()
     .optional(),
   jev: z
-    .object({ enabled: z.boolean(), provider: jevProviderPreferenceSchema })
+    .object({
+      enabled: z.boolean(),
+      provider: jevProviderPreferenceSchema,
+      openRouterKeySource: jevOpenRouterKeySourceSchema,
+    })
     .partial()
     .optional(),
 })

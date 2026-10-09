@@ -10,7 +10,7 @@ import {
   type DecisionCredentials,
 } from "@/lib/decision/client"
 import { probeDecisionEngine } from "@/lib/decision/probe"
-import { setJevApiKey, setProviderSecret } from "@/lib/secrets"
+import { setJevApiKey, setJevOpenRouterApiKey, setProviderSecret } from "@/lib/secrets"
 import { updateAiSettings } from "@/lib/settings"
 
 import { choiceAnswer, fakeJev } from "../../helpers/jev"
@@ -27,8 +27,10 @@ afterEach(async () => {
 const creds = (over: Partial<DecisionCredentials>): DecisionCredentials => ({
   enabled: true,
   providerPreference: "auto",
+  openRouterKeySource: "reuse",
   directApiKey: null,
   openRouterApiKey: null,
+  aiOpenRouterAvailable: false,
   ...over,
 })
 
@@ -55,10 +57,76 @@ describe("decision client", () => {
     expect(await loadDecisionClient()).toBeNull()
     await updateAiSettings({ jev: { enabled: true } })
     await setProviderSecret("custom", { apiKey: "or-key", baseUrl: "https://openrouter.ai/api/v1" })
-    expect(await getDecisionCredentials()).toMatchObject({ enabled: true, openRouterApiKey: "or-key", directApiKey: null })
+    expect(await getDecisionCredentials()).toMatchObject({
+      enabled: true,
+      openRouterApiKey: "or-key",
+      directApiKey: null,
+      aiOpenRouterAvailable: true,
+      openRouterKeySource: "reuse",
+    })
     expect((await loadDecisionClient())?.provider).toBe("openrouter")
     await setJevApiKey("ts-direct-key")
     expect((await loadDecisionClient())?.provider).toBe("direct")
+  })
+
+  it("uses a dedicated Jev OpenRouter key without requiring AI Custom to be OpenRouter", async () => {
+    await updateAiSettings({
+      jev: { enabled: true, provider: "openrouter", openRouterKeySource: "dedicated" },
+    })
+    await setProviderSecret("custom", {
+      apiKey: "ollama-local",
+      baseUrl: "http://127.0.0.1:11434/v1",
+    })
+    expect(await getDecisionCredentials()).toMatchObject({
+      openRouterApiKey: null,
+      aiOpenRouterAvailable: false,
+    })
+    expect(await loadDecisionClient()).toBeNull()
+
+    await setJevOpenRouterApiKey("sk-or-dedicated")
+    expect(await getDecisionCredentials()).toMatchObject({
+      openRouterApiKey: "sk-or-dedicated",
+      aiOpenRouterAvailable: false,
+    })
+    expect((await loadDecisionClient())?.provider).toBe("openrouter")
+
+    // TypeSafe key alone must not activate OpenRouter-only mode.
+    await setJevOpenRouterApiKey(null)
+    await setJevApiKey("ts-only")
+    expect(await getDecisionCredentials()).toMatchObject({
+      directApiKey: "ts-only",
+      openRouterApiKey: null,
+    })
+    expect(await loadDecisionClient()).toBeNull()
+  })
+
+  it("does not treat a non-OpenRouter Custom key as reusable for Jev", async () => {
+    await updateAiSettings({
+      jev: { enabled: true, provider: "openrouter", openRouterKeySource: "reuse" },
+    })
+    await setProviderSecret("custom", {
+      apiKey: "groq-key",
+      baseUrl: "https://api.groq.com/openai/v1",
+    })
+    expect(await getDecisionCredentials()).toMatchObject({
+      openRouterApiKey: null,
+      aiOpenRouterAvailable: false,
+    })
+  })
+
+  it("prefers dedicated over reuse only when source is dedicated", async () => {
+    await updateAiSettings({
+      jev: { enabled: true, provider: "openrouter", openRouterKeySource: "reuse" },
+    })
+    await setProviderSecret("custom", {
+      apiKey: "or-shared",
+      baseUrl: "https://openrouter.ai/api/v1",
+    })
+    await setJevOpenRouterApiKey("or-dedicated")
+    expect(await getDecisionCredentials()).toMatchObject({ openRouterApiKey: "or-shared" })
+
+    await updateAiSettings({ jev: { openRouterKeySource: "dedicated" } })
+    expect(await getDecisionCredentials()).toMatchObject({ openRouterApiKey: "or-dedicated" })
   })
 })
 

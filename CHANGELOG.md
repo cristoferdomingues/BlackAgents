@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.2.0...v0.3.0) (2026-10-09)
+
+
+### Features
+
+* add Obsidian conventions skill and log recording ([1febe56](https://github.com/cristoferdomingues/BlackAgents/commit/1febe56dd5cdeab1d2db111e2635e4cf6915d770))
+* enhance file write permissions and approval process ([3557560](https://github.com/cristoferdomingues/BlackAgents/commit/35575604664fd774fb1fb7e5c083629647d12a74))
+* implement conversation history management in chat component ([bf1f1dd](https://github.com/cristoferdomingues/BlackAgents/commit/bf1f1ddb38724a19360f9f1d7791cf95a2454478))
+* update existing artifacts from the assistant ([38f0a6b](https://github.com/cristoferdomingues/BlackAgents/commit/38f0a6b2fa9f8172267f868d17a129b5fb3abc5d))
+
+
+### Bug Fixes
+
+* let Jev use OpenRouter without requiring AI Custom ([1a23a28](https://github.com/cristoferdomingues/BlackAgents/commit/1a23a288b15c44724f94ba6b4af80bf244b98ed9))
+
 ## [0.2.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.1.3...v0.2.0) (2026-10-08)
 
 

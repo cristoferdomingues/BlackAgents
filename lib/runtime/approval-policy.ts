@@ -2,14 +2,16 @@ import type { RuntimeTool, ToolRisk } from "./types"
 
 /** Per-request (chat) or per-run (workflow) approval state. */
 export interface ApprovalPolicy {
-  /** Auto-approve `write` calls. `exec` calls still need approval. */
+  /** Auto-approve every `write` call. `exec` calls still need approval. */
   allowWrites: boolean
+  /** Auto-approve builtin `fs_write` calls that are still `write` risk. */
+  allowFileWrites: boolean
   /** Exact `exec` calls the user allowed for the rest of this run. */
   allowedCalls: Set<string>
 }
 
-export function createApprovalPolicy(allowWrites = false): ApprovalPolicy {
-  return { allowWrites, allowedCalls: new Set() }
+export function createApprovalPolicy(allowWrites = false, allowFileWrites = false): ApprovalPolicy {
+  return { allowWrites, allowFileWrites, allowedCalls: new Set() }
 }
 
 function stableStringify(value: unknown): string {
@@ -40,6 +42,7 @@ export function needsApproval(
   const risk = riskOf(tool, args)
   if (risk === "read") return false
   if (risk === "write" && policy.allowWrites) return false
+  if (risk === "write" && policy.allowFileWrites && tool.originalName === "fs_write") return false
   return !policy.allowedCalls.has(callKey(tool, args))
 }
 

@@ -57,10 +57,16 @@ export interface ApprovalRequest {
   createdAt: string
 }
 
+/** How far a granted `fs_write` may go. `message` is this reply. `session` is the rest of this chat. */
+export const FILE_WRITE_PERMISSIONS = ["message", "session"] as const
+export type FileWritePermission = (typeof FILE_WRITE_PERMISSIONS)[number]
+
 export interface ApprovalDecision {
   approved: boolean
   /** Exec only: allow this exact call again for the rest of the run. */
   remember?: boolean
+  /** `fs_write` only: allow later file writes for this reply, or this chat. */
+  fileWritePermission?: FileWritePermission
   /** Why the call was denied (shown to the model). */
   reason?: string
 }

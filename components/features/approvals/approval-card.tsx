@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { ApprovalRequest } from "@/lib/runtime/types"
+import type { ApprovalRequest, FileWritePermission } from "@/lib/runtime/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
@@ -25,19 +25,37 @@ export function ApprovalCard({
 }: {
   approval: ApprovalRequest
   rememberLabel?: string
-  onResolved?: (approved: boolean) => void
+  onResolved?: (approved: boolean, fileWritePermission?: FileWritePermission) => void
   className?: string
 }) {
-  const [busy, setBusy] = React.useState<"approve" | "deny" | "remember" | null>(null)
+  const [busy, setBusy] = React.useState<"approve" | "deny" | "remember" | "message" | "session" | null>(null)
+  const fileWriteChoice =
+    approval.scope.kind === "chat" && approval.tool === "fs_write" && approval.risk === "write"
 
-  async function decide(approved: boolean, remember = false) {
-    setBusy(approved ? (remember ? "remember" : "approve") : "deny")
+  async function decide(
+    approved: boolean,
+    remember = false,
+    fileWritePermission?: FileWritePermission
+  ) {
+    const action = !approved
+      ? "deny"
+      : fileWritePermission === "session"
+        ? "session"
+        : fileWritePermission === "message"
+          ? "message"
+          : remember
+            ? "remember"
+            : "approve"
+    setBusy(action)
     try {
-      await apiFetch(`/api/approvals/${encodeURIComponent(approval.id)}`, {
-        method: "POST",
-        body: JSON.stringify({ approved, remember }),
-      })
-      onResolved?.(approved)
+      const result = await apiFetch<{ fileWritePermission?: FileWritePermission }>(
+        `/api/approvals/${encodeURIComponent(approval.id)}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ approved, remember, fileWritePermission }),
+        }
+      )
+      onResolved?.(approved, result.fileWritePermission)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not send the decision")
     } finally {
@@ -66,21 +84,41 @@ export function ApprovalCard({
         {approval.summary}
       </pre>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => decide(true)} disabled={busy !== null}>
-          {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          Approve
-        </Button>
-        {approval.risk === "exec" ? (
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => decide(true, true)}
-            disabled={busy !== null}
-          >
-            {busy === "remember" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {rememberLabel}
-          </Button>
-        ) : null}
+        {fileWriteChoice ? (
+          <>
+            <Button size="sm" onClick={() => decide(true, false, "message")} disabled={busy !== null}>
+              {busy === "message" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Allow for this message
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => decide(true, false, "session")}
+              disabled={busy !== null}
+            >
+              {busy === "session" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Allow for this session
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button size="sm" onClick={() => decide(true)} disabled={busy !== null}>
+              {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Approve
+            </Button>
+            {approval.risk === "exec" ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => decide(true, true)}
+                disabled={busy !== null}
+              >
+                {busy === "remember" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {rememberLabel}
+              </Button>
+            ) : null}
+          </>
+        )}
         <Button size="sm" variant="outline" onClick={() => decide(false)} disabled={busy !== null}>
           {busy === "deny" ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
           Deny

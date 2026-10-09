@@ -31,6 +31,8 @@ export async function buildSystemContext(): Promise<string> {
 
 Be concise and concrete. Ask a clarifying question only when the request is genuinely ambiguous; otherwise propose a well-structured artifact. Follow the cross-reference conventions (reference agents/rules/skills by name) and keep each artifact in its correct type per the decision guide.
 
+You can list and read workspace files, and create or overwrite a text file with fs_write. A file write waits until the user allows it, unless file writes are already allowed. Do not write .git, .cursor, .claude, .black-agents, or .agents.
+
 ## Authoring standards
 
 ${standards.content}

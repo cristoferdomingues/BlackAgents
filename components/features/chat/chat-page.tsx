@@ -44,6 +44,7 @@ import {
   chatToolResultEventSchema,
 } from "@/lib/assistant/chat-events"
 import type { TurnArtifact } from "@/lib/assistant/turn-artifacts"
+import type { AiSettings } from "@/lib/settings"
 import type { ApprovalRequest, ToolExecutionTrace } from "@/lib/runtime/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
@@ -51,6 +52,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
@@ -217,7 +219,8 @@ export function ChatPage({
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
   const [sending, setSending] = React.useState(false)
   const [live, setLive] = React.useState<LiveTurn>(EMPTY_LIVE)
-  const [allowWrites, setAllowWrites] = React.useState(false)
+  const [allowFileWrites, setAllowFileWrites] = React.useState(false)
+  const [settingsAutoFileWrites, setSettingsAutoFileWrites] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   // Skip the first persist after hydration so we don't rewrite unchanged
   // defaults while restoring the previous selection.
@@ -242,6 +245,20 @@ export function ChatPage({
         `Guide me through this goal: ${selectedAgent.description}`,
       ]
     : SUGGESTIONS
+
+  React.useEffect(() => {
+    let cancelled = false
+    apiFetch<{ settings: AiSettings }>("/api/settings/ai")
+      .then((data) => {
+        if (!cancelled) setSettingsAutoFileWrites(data.settings.assistant.autoApproveFileWrites)
+      })
+      .catch(() => {
+        if (!cancelled) setSettingsAutoFileWrites(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Restore the last matching conversation from localStorage (max 5 kept).
   React.useEffect(() => {
@@ -403,7 +420,7 @@ export function ChatPage({
           model,
           messages: next.map(({ role, content: c }) => ({ role, content: c })),
           agent: selectedAgent?.name,
-          allowWrites,
+          allowFileWrites,
         },
         (event) => {
           if (event.event === "done") {
@@ -476,6 +493,7 @@ export function ChatPage({
     setTurns([])
     setInput("")
     setLive(EMPTY_LIVE)
+    setAllowFileWrites(false)
     setRecentConversations(store.conversations)
   }
 
@@ -493,6 +511,7 @@ export function ChatPage({
     const current = selectedAgentName
       ? `/chat?agent=${encodeURIComponent(selectedAgentName)}`
       : "/chat"
+    setAllowFileWrites(false)
     if (target !== current) {
       router.push(target)
       return
@@ -695,17 +714,26 @@ export function ChatPage({
             disabled={!providerVerified}
             className="w-52 sm:w-64"
           />
-          <div className="flex items-center gap-2">
-            <Switch
-              id="chat-allow-writes"
-              checked={allowWrites}
-              onCheckedChange={setAllowWrites}
-              disabled={sending}
-            />
-            <Label htmlFor="chat-allow-writes" className="text-xs text-muted-foreground">
-              Allow file writes
-            </Label>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="chat-allow-writes"
+                  checked={settingsAutoFileWrites || allowFileWrites}
+                  onCheckedChange={setAllowFileWrites}
+                  disabled={sending || settingsAutoFileWrites}
+                />
+                <Label htmlFor="chat-allow-writes" className="text-xs text-muted-foreground">
+                  Auto-approve file writes
+                </Label>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              {settingsAutoFileWrites
+                ? "File writes are allowed in Settings, under AI. Turn that off there to ask again."
+                : "Allow file writes for this chat without asking. A new chat asks again. Commands still ask."}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -830,6 +858,8 @@ export function ChatPage({
                 key={i}
                 turn={turn}
                 onOpen={openInEditor}
+                onFixIssues={(request) => void send(request)}
+                fixDisabled={sending || !canChat}
                 agentName={selectedAgent?.name}
                 previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
                 provider={provider}
@@ -848,6 +878,9 @@ export function ChatPage({
                   key={approval.id}
                   approval={approval}
                   rememberLabel="Allow this exact call for this message"
+                  onResolved={(_approved, permission) => {
+                    if (permission === "session") setAllowFileWrites(true)
+                  }}
                 />
               ))}
               {live.content ? (
@@ -970,6 +1003,8 @@ function LoadedArtifacts({ artifacts }: { artifacts: TurnArtifact[] }) {
 function Message({
   turn,
   onOpen,
+  onFixIssues,
+  fixDisabled,
   agentName,
   previousUser,
   provider,
@@ -977,6 +1012,8 @@ function Message({
 }: {
   turn: Turn
   onOpen: (draft: NormalizedDraft) => void
+  onFixIssues: (request: string) => void
+  fixDisabled: boolean
   agentName?: string
   previousUser: string
   provider: string
@@ -1030,7 +1067,13 @@ function Message({
         )}
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
-        {bundle ? <BundleCard bundle={bundle} /> : null}
+        {bundle ? (
+          <BundleCard
+            bundle={bundle}
+            onFixIssues={onFixIssues}
+            fixDisabled={fixDisabled}
+          />
+        ) : null}
         {!isUser ? (
           <FeedbackBar
             source="chat"

@@ -21,6 +21,7 @@ describe("buildSystemContext", () => {
     expect(context).toContain(DEFAULT_STANDARDS_MD.slice(0, 40))
     expect(context).toContain("```artifact")
     expect(context).toContain("Authoring standards")
+    expect(context).toContain("fs_write")
   })
 
   it("notes when the workspace has no artifacts", async () => {

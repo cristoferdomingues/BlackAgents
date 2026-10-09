@@ -141,6 +141,7 @@ export async function executeRun(
       })
       if (brain) sections.push(brain)
       policy.allowWrites = step.allowWrites
+      policy.allowFileWrites = false
 
       let retryNote: string | undefined
       let gate: StepGateResult | undefined

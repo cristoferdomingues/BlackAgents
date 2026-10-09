@@ -39,6 +39,14 @@ describe("approval policy", () => {
     expect(needsApproval(fakeTool("x", "exec"), {}, createApprovalPolicy(true))).toBe(true)
   })
 
+  it("auto-approves only fs_write when file writes are allowed", () => {
+    const policy = createApprovalPolicy(false, true)
+    expect(needsApproval(fakeTool("fs_write", "write"), {}, policy)).toBe(false)
+    expect(needsApproval(fakeTool("other", "write"), {}, policy)).toBe(true)
+    const protectedWrite = { ...fakeTool("fs_write", "write"), riskFor: () => "exec" as const }
+    expect(needsApproval(protectedWrite, {}, policy)).toBe(true)
+  })
+
   it("uses per-call risk and remembers exact calls", () => {
     const tool = { ...fakeTool("fs", "write"), riskFor: () => "exec" as const }
     const policy = createApprovalPolicy(true)

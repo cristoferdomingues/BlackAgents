@@ -84,6 +84,26 @@ describe("runAgentLoop", () => {
     expect(approve).toHaveBeenCalledTimes(1)
   })
 
+  it("allows later file writes in the same reply after one approval", async () => {
+    const write = fakeTool("fs_write", "write")
+    const other = fakeTool("mcp_write", "write")
+    const provider = scriptedProvider([
+      {
+        toolCalls: [
+          call("a", "fs_write", { path: "a.md" }),
+          call("b", "fs_write", { path: "b.md" }),
+          call("c", "mcp_write"),
+        ],
+      },
+      { content: "ok" },
+    ])
+    const approve = vi.fn().mockResolvedValue({ approved: true, fileWritePermission: "message" as const })
+    await runAgentLoop(options({ provider, tools: [write, other], approve }))
+    expect(approve).toHaveBeenCalledTimes(2)
+    expect(write.calls).toHaveLength(2)
+    expect(other.calls).toHaveLength(1)
+  })
+
   it("remembers an exact exec call for the rest of the run", async () => {
     const exec = fakeTool("exec", "exec")
     const provider = scriptedProvider([

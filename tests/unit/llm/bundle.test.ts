@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import type { Artifact } from "@/lib/artifacts/types"
-import { extractBundle, stripBundleBlock, validateBundle } from "@/lib/llm/bundle"
+import {
+  buildBundleFixRequest,
+  extractBundle,
+  stripBundleBlock,
+  validateBundle,
+} from "@/lib/llm/bundle"
 import { buildSystemContext } from "@/lib/llm/context"
 import { checkArtifactStandards } from "@/lib/standards/checks"
 
@@ -75,6 +80,28 @@ describe("validateBundle", () => {
         "pr-reviewer: Agent body must reference `short-comments` rule",
       ])
     )
+  })
+
+  it("builds a repair request with the current bundle and its findings", () => {
+    const bundle = extractBundle(
+      reply({
+        skills: [
+          {
+            name: "release-notes",
+            description: "Writes release notes",
+            body: "Missing the required section",
+          },
+        ],
+      })
+    )
+    if (!bundle) throw new Error("bundle expected")
+    const report = validateBundle(bundle, [])
+    const request = buildBundleFixRequest(bundle, report)
+
+    expect(request).toContain('skill/release-notes — error: Missing "## When to Apply" section')
+    expect(request).toContain("```bundle")
+    expect(request).toContain('"name": "release-notes"')
+    expect(request).toContain("Return the complete corrected bundle")
   })
 })
 

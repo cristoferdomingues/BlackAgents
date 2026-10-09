@@ -8,7 +8,12 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import type { Artifact } from "@/lib/artifacts/types"
-import { validateBundle, type BundleItem, type NormalizedBundle } from "@/lib/llm/bundle"
+import {
+  buildBundleFixRequest,
+  validateBundle,
+  type BundleItem,
+  type NormalizedBundle,
+} from "@/lib/llm/bundle"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,7 +26,15 @@ import { Textarea } from "@/components/ui/textarea"
  * each item; "Create all" saves them one by one through /api/artifacts.
  * Skills and rules are saved first so the agent's links resolve.
  */
-export function BundleCard({ bundle }: { bundle: NormalizedBundle }) {
+export function BundleCard({
+  bundle,
+  onFixIssues,
+  fixDisabled = false,
+}: {
+  bundle: NormalizedBundle
+  onFixIssues: (request: string) => void
+  fixDisabled?: boolean
+}) {
   const { artifacts, refresh } = useWorkspace()
   const [items, setItems] = React.useState<BundleItem[]>(bundle.items)
   const [saving, setSaving] = React.useState(false)
@@ -74,9 +87,18 @@ export function BundleCard({ bundle }: { bundle: NormalizedBundle }) {
             <CheckCircle2 className="h-3 w-3" /> Valid
           </Badge>
         ) : (
-          <Badge variant="destructive" className="gap-1">
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="h-6 gap-1 px-2 text-xs"
+            disabled={fixDisabled}
+            onClick={() =>
+              onFixIssues(buildBundleFixRequest({ summary: bundle.summary, items }, report))
+            }
+          >
             <AlertTriangle className="h-3 w-3" /> Fix issues
-          </Badge>
+          </Button>
         )}
       </div>
       {bundle.summary ? <p className="text-xs text-muted-foreground">{bundle.summary}</p> : null}

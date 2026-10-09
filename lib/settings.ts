@@ -21,6 +21,8 @@ export const aiSettingsSchema = z.object({
   assistant: z
     .object({
       maxToolTurns: z.number().int().min(1).max(MAX_TURNS_LIMIT).default(DEFAULT_MAX_TURNS),
+      /** Generic assistant: run `fs_write` without an approval card. */
+      autoApproveFileWrites: z.boolean().default(false),
     })
     .default({}),
   jev: z
@@ -40,7 +42,10 @@ export type AiSettings = z.infer<typeof aiSettingsSchema>
 
 export const aiSettingsPatchSchema = z.object({
   assistant: z
-    .object({ maxToolTurns: z.number().int().min(1).max(MAX_TURNS_LIMIT) })
+    .object({
+      maxToolTurns: z.number().int().min(1).max(MAX_TURNS_LIMIT),
+      autoApproveFileWrites: z.boolean(),
+    })
     .partial()
     .optional(),
   jev: z

@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { POST } from "@/app/api/chat/route"
 import { POST as DECIDE } from "@/app/api/approvals/[id]/route"
 import { GET as LIST } from "@/app/api/approvals/route"
-import { listPendingApprovals } from "@/lib/runtime/approvals"
+import { listPendingApprovals, requestApproval } from "@/lib/runtime/approvals"
 import { setProviderSecret } from "@/lib/secrets"
+import { updateAiSettings } from "@/lib/settings"
 import { parseSseFrames } from "@/lib/sse-client"
 
 import { jsonRequest, makeTempEnv, seedArtifact, type TempEnv } from "../helpers/workspace"
@@ -113,6 +114,124 @@ describe("POST /api/chat streaming", () => {
     }
     expect(system.messages[0].content).toContain("Use short sentences.")
     expect(system.tools.map((t) => t.function.name)).toEqual(["fs_write"])
+  })
+
+  it("gives the assistant fs_write and allows the rest of the message after one yes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        openAIReply({
+          content: null,
+          tool_calls: [
+            {
+              id: "c1",
+              type: "function",
+              function: { name: "fs_write", arguments: JSON.stringify({ path: "a.md", content: "a" }) },
+            },
+            {
+              id: "c2",
+              type: "function",
+              function: { name: "fs_write", arguments: JSON.stringify({ path: "b.md", content: "b" }) },
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(openAIReply({ content: "Saved both." }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const response = await POST(streamRequest({}))
+    const textPromise = response.text()
+    const id = await waitForApproval()
+    const decided = await DECIDE(
+      jsonRequest(`http://t/api/approvals/${id}`, "POST", { approved: true, fileWritePermission: "message" }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect((await decided.json()).data.fileWritePermission).toBe("message")
+
+    const { events } = parseSseFrames(await textPromise)
+    expect(events.filter((event) => event.event === "approval_required")).toHaveLength(1)
+    expect(await readFile(path.join(env.workspace, "a.md"), "utf8")).toBe("a")
+    expect(await readFile(path.join(env.workspace, "b.md"), "utf8")).toBe("b")
+    const system = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      tools: Array<{ function: { name: string } }>
+    }
+    expect(system.tools.map((tool) => tool.function.name)).toEqual(["fs_list", "fs_read", "fs_write"])
+  })
+
+  it("skips the file-write ask when the Assistant setting is on", async () => {
+    await updateAiSettings({ assistant: { autoApproveFileWrites: true } })
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(openAIReply(writeCall("c1")))
+        .mockResolvedValueOnce(openAIReply({ content: "done" }))
+    )
+    const response = await POST(streamRequest({}))
+    const { events } = parseSseFrames(await response.text())
+    expect(events.some((event) => event.event === "approval_required")).toBe(false)
+    expect(await readFile(path.join(env.workspace, "notes.md"), "utf8")).toBe("hi")
+  })
+
+  it("still asks an agent to write when the Assistant setting is on", async () => {
+    await updateAiSettings({ assistant: { autoApproveFileWrites: true } })
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(openAIReply(writeCall("c1")))
+        .mockResolvedValueOnce(openAIReply({ content: "done" }))
+    )
+    const response = await POST(streamRequest({ agent: "writer" }))
+    const textPromise = response.text()
+    const id = await waitForApproval()
+    await DECIDE(jsonRequest(`http://t/api/approvals/${id}`, "POST", { approved: true }), {
+      params: Promise.resolve({ id }),
+    })
+    const { events } = parseSseFrames(await textPromise)
+    expect(events.some((event) => event.event === "approval_required")).toBe(true)
+  })
+
+  it("accepts file-write permission only for a chat fs_write", async () => {
+    const write = requestApproval({
+      tool: "fs_write",
+      server: "builtin",
+      risk: "write",
+      summary: "Write a.md",
+      args: { path: "a.md" },
+      scope: { kind: "chat" },
+    })
+    const allowed = await DECIDE(
+      jsonRequest(`http://t/api/approvals/${write.request.id}`, "POST", {
+        approved: true,
+        fileWritePermission: "session",
+      }),
+      { params: Promise.resolve({ id: write.request.id }) }
+    )
+    expect((await allowed.json()).data).toMatchObject({
+      approved: true,
+      remember: false,
+      fileWritePermission: "session",
+    })
+    await expect(write.decision).resolves.toMatchObject({ fileWritePermission: "session" })
+
+    const shell = requestApproval({
+      tool: "shell_run",
+      server: "builtin",
+      risk: "exec",
+      summary: "$ ls",
+      args: { command: "ls" },
+      scope: { kind: "chat" },
+    })
+    const ignored = await DECIDE(
+      jsonRequest(`http://t/api/approvals/${shell.request.id}`, "POST", {
+        approved: true,
+        fileWritePermission: "session",
+      }),
+      { params: Promise.resolve({ id: shell.request.id }) }
+    )
+    expect((await ignored.json()).data.fileWritePermission).toBeUndefined()
+    await expect(shell.decision).resolves.toEqual({ approved: true, remember: false })
   })
 
   it("auto-approves writes when allowWrites is set", async () => {

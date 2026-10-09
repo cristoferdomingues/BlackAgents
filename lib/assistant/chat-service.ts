@@ -28,8 +28,10 @@ export const chatRequestSchema = z.object({
     .min(1, "At least one message is required"),
   temperature: z.number().finite().min(0).max(2).optional(),
   agent: nameSchema.optional(),
-  /** Auto-approve file writes for this message (exec still asks). */
+  /** Auto-approve every write-risk call for this message (exec still asks). */
   allowWrites: z.boolean().optional(),
+  /** Auto-approve builtin file writes for this message (protected paths still ask). */
+  allowFileWrites: z.boolean().optional(),
 })
 export type ChatRequest = z.infer<typeof chatRequestSchema>
 
@@ -43,6 +45,8 @@ export interface PreparedChat {
   workspaceRoot: string | null
   selection: TurnArtifactSelection
   maxTurns: number
+  /** Builtin `fs_write` may run without an approval card. */
+  allowFileWrites: boolean
   request: ChatRequest
 }
 
@@ -125,6 +129,9 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
       workspaceRoot: root,
       selection,
       maxTurns: settings.assistant.maxToolTurns,
+      allowFileWrites:
+        Boolean(request.allowFileWrites) ||
+        (!persona && settings.assistant.autoApproveFileWrites),
       request,
     },
   }
@@ -148,7 +155,7 @@ export function runChat(
     tools: chat.tools,
     maxTurns: chat.maxTurns,
     workspaceRoot: chat.workspaceRoot ?? process.cwd(),
-    policy: createApprovalPolicy(Boolean(chat.request.allowWrites)),
+    policy: createApprovalPolicy(Boolean(chat.request.allowWrites), chat.allowFileWrites),
     approve: options.approve,
     onEvent: options.onEvent,
     signal: options.signal,

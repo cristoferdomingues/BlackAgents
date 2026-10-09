@@ -3,7 +3,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { fsListTool, fsReadTool, fsWriteTool } from "@/lib/runtime/tools/fs"
-import { agentToolScope, builtinTools, buildToolset } from "@/lib/runtime/tools"
+import { agentToolScope, ASSISTANT_TOOL_SCOPE, builtinTools, buildToolset } from "@/lib/runtime/tools"
 import { mcpToolName, toRuntimeTool } from "@/lib/runtime/tools/mcp"
 import { runProcess, shellRunTool } from "@/lib/runtime/tools/shell"
 import type { Artifact } from "@/lib/artifacts/types"
@@ -90,6 +90,10 @@ describe("tool scope", () => {
     frontmatter,
     body: "",
     relativePath: "",
+  })
+
+  it("gives the generic assistant file writes and keeps agents read-only", () => {
+    expect(ASSISTANT_TOOL_SCOPE.builtins).toEqual(["fs_list", "fs_read", "fs_write"])
   })
 
   it("defaults to read-only files and all MCP servers", () => {

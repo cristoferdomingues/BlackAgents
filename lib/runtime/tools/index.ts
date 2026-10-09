@@ -44,8 +44,10 @@ export function agentToolScope(agent: Artifact): ToolScope {
   }
 }
 
-/** The generic assistant: read-only files plus every MCP server. */
-export const ASSISTANT_TOOL_SCOPE: ToolScope = { builtins: [...DEFAULT_AGENT_TOOLS] }
+/** The generic assistant: read files, write files, and every MCP server. */
+export const ASSISTANT_TOOL_SCOPE: ToolScope = {
+  builtins: [...DEFAULT_AGENT_TOOLS, "fs_write"],
+}
 
 export async function buildToolset(
   workspaceRoot: string,

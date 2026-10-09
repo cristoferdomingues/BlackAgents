@@ -129,6 +129,60 @@ export interface BundleReport {
   items: BundleItemReport[]
 }
 
+/** Build a user turn that asks the assistant to repair its current bundle. */
+export function buildBundleFixRequest(
+  bundle: NormalizedBundle,
+  report: BundleReport
+): string {
+  const findings = report.items.flatMap((item) =>
+    item.issues.map(
+      (issue) => `- ${item.type}/${item.name} — ${issue.severity}: ${issue.message}`
+    )
+  )
+  const payload: ArtifactBundle = {
+    summary: bundle.summary || undefined,
+    agent: bundle.items
+      .filter((item) => item.type === "agent")
+      .map((item) => ({
+        name: item.name,
+        description: item.description,
+        body: item.body,
+        parallel: item.extra.parallel,
+        tools: item.extra.tools,
+        mcpServers: item.extra.mcpServers,
+      }))[0],
+    skills: bundle.items
+      .filter((item) => item.type === "skill")
+      .map((item) => ({
+        name: item.name,
+        description: item.description,
+        body: item.body,
+      })),
+    rules: bundle.items
+      .filter((item) => item.type === "rule")
+      .map((item) => ({
+        name: item.name,
+        description: item.description,
+        body: item.body,
+        alwaysApply: item.extra.alwaysApply,
+        globs: item.extra.globs,
+      })),
+  }
+
+  return `Fix every validation issue in this artifact bundle.
+
+Validation issues:
+${findings.join("\n")}
+
+Current bundle:
+
+\`\`\`${BUNDLE_FENCE}
+${JSON.stringify(payload, null, 2)}
+\`\`\`
+
+Return the complete corrected bundle in exactly one \`\`\`${BUNDLE_FENCE}\` JSON block. Keep valid content unchanged. Do not only explain the fixes.`
+}
+
 function asArtifact(item: BundleItem): Artifact {
   return {
     type: item.type,

@@ -126,6 +126,7 @@ async function runTool(
       }
     }
     if (decision.remember) rememberCall(options.policy, tool, args)
+    if (decision.fileWritePermission) options.policy.allowFileWrites = true
   }
 
   try {

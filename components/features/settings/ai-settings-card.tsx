@@ -1,13 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { Brain, CheckCircle2, Loader2, Plug, Trash2 } from "lucide-react"
+import { Brain, CheckCircle2, Loader2, Plug, Trash2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import type { AiSettings, JevOpenRouterKeySource, JevProviderPreference } from "@/lib/settings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Card,
   CardContent,
@@ -54,6 +62,7 @@ export function AiSettingsCard() {
   const [openRouterKeyInput, setOpenRouterKeyInput] = React.useState("")
   const [turns, setTurns] = React.useState("")
   const [busy, setBusy] = React.useState<"save" | "test" | "key" | "or-key" | null>(null)
+  const [writeWarningOpen, setWriteWarningOpen] = React.useState(false)
 
   const load = React.useCallback((): void => {
     apiFetch<AiSettingsSnapshot>("/api/settings/ai")
@@ -136,30 +145,95 @@ export function AiSettingsCard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Assistant</CardTitle>
-          <CardDescription>How many tool rounds one reply may use before it must answer.</CardDescription>
+          <CardDescription>
+            How many tool rounds one reply may use, and whether file writes ask you first.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex items-end gap-2">
-          <div className="space-y-1">
-            <Label htmlFor="max-tool-turns">Tool-call limit per reply (1–20)</Label>
-            <Input
-              id="max-tool-turns"
-              type="number"
-              min={1}
-              max={20}
-              value={turns}
-              onChange={(e) => setTurns(e.target.value)}
-              className="w-32"
-            />
+        <CardContent className="space-y-4">
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="max-tool-turns">Tool-call limit per reply (1–20)</Label>
+              <Input
+                id="max-tool-turns"
+                type="number"
+                min={1}
+                max={20}
+                value={turns}
+                onChange={(e) => setTurns(e.target.value)}
+                className="w-32"
+              />
+            </div>
+            <Button
+              size="sm"
+              disabled={!turnsValid || busy !== null || turnsValue === data.settings.assistant.maxToolTurns}
+              onClick={() => void save({ assistant: { maxToolTurns: turnsValue } })}
+            >
+              Save
+            </Button>
           </div>
-          <Button
-            size="sm"
-            disabled={!turnsValid || busy !== null || turnsValue === data.settings.assistant.maxToolTurns}
-            onClick={() => void save({ assistant: { maxToolTurns: turnsValue } })}
-          >
-            Save
-          </Button>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="assistant-auto-file-writes"
+                checked={data.settings.assistant.autoApproveFileWrites}
+                disabled={busy !== null}
+                onCheckedChange={(enabled) => {
+                  if (enabled) setWriteWarningOpen(true)
+                  else void save({ assistant: { autoApproveFileWrites: false } })
+                }}
+              />
+              <Label htmlFor="assistant-auto-file-writes">Allow file writes without asking</Label>
+            </div>
+            {data.settings.assistant.autoApproveFileWrites ? (
+              <div
+                role="alert"
+                className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              >
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <p>
+                  File writes run with no approval. The assistant can create and overwrite files in
+                  your workspace, including files you did not mean to change. Check the files after
+                  a chat. Writes into config folders still ask.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Off: each file write asks you to deny it, allow it for that message, or allow it for
+                the chat.
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
+
+      <Dialog open={writeWarningOpen} onOpenChange={setWriteWarningOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Allow file writes without asking?</DialogTitle>
+            <DialogDescription>
+              The assistant can create and change files in your workspace without asking you. It can
+              overwrite a file you did not want to change. Check the files after each chat. Writes
+              into config folders still ask.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWriteWarningOpen(false)} disabled={busy !== null}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy !== null}
+              onClick={() => {
+                void save({ assistant: { autoApproveFileWrites: true } }).then((saved) => {
+                  if (saved) setWriteWarningOpen(false)
+                })
+              }}
+            >
+              {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Allow writes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

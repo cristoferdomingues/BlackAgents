@@ -20,7 +20,7 @@ describe("/api/settings/ai", () => {
     const body = await (await GET()).json()
     expect(body.data).toEqual({
       settings: {
-        assistant: { maxToolTurns: 8 },
+        assistant: { maxToolTurns: 8, autoApproveFileWrites: false },
         jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
       },
       jevKey: { configured: false },
@@ -41,6 +41,7 @@ describe("/api/settings/ai", () => {
     )
     const body = await res.json()
     expect(body.data.settings.assistant.maxToolTurns).toBe(12)
+    expect(body.data.settings.assistant.autoApproveFileWrites).toBe(false)
     expect(body.data.jevKey).toEqual({ configured: true, last4: "1234" })
     expect(JSON.stringify(body)).not.toContain("ts-secret")
     expect(body.data.activeProvider).toBe("direct")

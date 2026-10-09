@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   composeArtifactPrompt,
   linkedArtifacts,
+  matchArtifactNames,
   parseMentions,
   selectTurnArtifacts,
 } from "@/lib/assistant/turn-artifacts"
@@ -42,7 +43,25 @@ describe("composeArtifactPrompt", () => {
   })
 })
 
+describe("matchArtifactNames", () => {
+  it("loads a uniquely named artifact written in plain text", () => {
+    expect(matchArtifactNames("Please update checklist", all)).toEqual([checklist])
+    expect(matchArtifactNames("checklist-extra", all)).toEqual([])
+  })
+})
+
 describe("selectTurnArtifacts", () => {
+  it("loads a named artifact without Jev", async () => {
+    const result = await selectTurnArtifacts({
+      message: "Please update checklist",
+      all,
+      resolved: null,
+    })
+    expect(result.jev).toBe("off")
+    expect(result.artifacts).toEqual([{ type: "skill", name: "checklist", source: "mention" }])
+    expect(result.prompt).toContain("## When to Apply")
+  })
+
   it("uses mentions first and does not call Jev", async () => {
     const jev = fakeJev({ artifact: choiceAnswer("C0", 0.99) })
     const result = await selectTurnArtifacts({ message: "@agent:reviewer go", all, resolved: jev })

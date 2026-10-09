@@ -22,7 +22,10 @@ export async function buildSystemContext(): Promise<string> {
       registry = "The active workspace has no artifacts yet."
     } else {
       registry = artifacts
-        .map((a) => `- ${a.type}/${a.name}: ${a.description || "(no description)"}`)
+        .map(
+          (a) =>
+            `- ${a.type}/${a.name} — ${a.relativePath} — ${a.description || "(no description)"}`
+        )
         .join("\n")
     }
   }
@@ -61,6 +64,8 @@ Rules for the draft block:
 - Include only fields relevant to the type ("parallel" for agents, "alwaysApply"/"globs" for rules).
 - "body" is the markdown body only — never include YAML frontmatter; the platform adds it on export.
 - Put a short natural-language explanation before the block. Emit at most one draft block per reply.
+- To update an artifact already in the workspace, keep its type and name and return the full new body. Read its file with fs_read first. Saving that draft updates the existing artifact.
+- To create an artifact, choose a name that is not already listed above.
 
 ## Bundle protocol
 
@@ -76,7 +81,7 @@ When the request needs an agent together with the skills and rules it depends on
 \`\`\`
 
 Rules for the bundle block:
-- At most ${MAX_BUNDLE_SKILLS} skills and ${MAX_BUNDLE_RULES} rules. Reuse an existing workspace artifact instead of creating a duplicate, and never reuse an existing name.
+- At most ${MAX_BUNDLE_SKILLS} skills and ${MAX_BUNDLE_RULES} rules. Reuse an existing name only to update that artifact. A new artifact needs a new name.
 - The agent body must reference every bundled skill as \`name\` skill and every bundled rule as \`name\` rule.
 - Optional agent "tools" may list: ${BUILTIN_TOOL_NAMES.join(", ")}. Leave it out for read-only file access.
 - Bodies are markdown only, never YAML frontmatter. Emit either one draft block or one bundle block per reply, never both.`

@@ -4,7 +4,7 @@ import * as React from "react"
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Package } from "lucide-react"
 import { toast } from "sonner"
 
-import { apiFetch } from "@/lib/api"
+import { ApiError, apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import type { Artifact } from "@/lib/artifacts/types"
@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 /**
  * Review card for a drafted bundle (agent + skills + rules). The user can edit
- * each item; "Create all" saves them one by one through /api/artifacts.
+ * each item. New artifacts are created. Existing artifacts are updated.
  * Skills and rules are saved first so the agent's links resolve.
  */
 export function BundleCard({
@@ -44,34 +44,60 @@ export function BundleCard({
     [artifacts, items, bundle.summary, created]
   )
   const done = created.length === items.length
+  const updateCount = items.filter((item) =>
+    artifacts.some((artifact) => artifact.type === item.type && artifact.name === item.name)
+  ).length
 
   function update(index: number, patch: Partial<BundleItem>) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
 
-  async function createAll() {
+  async function saveItem(item: BundleItem): Promise<void> {
+    const payload = {
+      type: item.type,
+      platform: "cursor" as const,
+      name: item.name,
+      description: item.description,
+      body: item.body,
+      extra: item.extra,
+    }
+    const exists = artifacts.some(
+      (artifact) => artifact.type === item.type && artifact.name === item.name
+    )
+    if (exists) {
+      await apiFetch<Artifact>(
+        `/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`,
+        { method: "PUT", body: JSON.stringify(payload) }
+      )
+      return
+    }
+    try {
+      await apiFetch<Artifact>("/api/artifacts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    } catch (err) {
+      if (!(err instanceof ApiError) || !err.message.includes("already exists")) throw err
+      await apiFetch<Artifact>(
+        `/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`,
+        { method: "PUT", body: JSON.stringify(payload) }
+      )
+    }
+  }
+
+  async function saveAll() {
     setSaving(true)
     try {
       for (const item of items) {
         const key = `${item.type}:${item.name}`
         if (created.includes(key)) continue
-        await apiFetch<Artifact>("/api/artifacts", {
-          method: "POST",
-          body: JSON.stringify({
-            type: item.type,
-            platform: "cursor",
-            name: item.name,
-            description: item.description,
-            body: item.body,
-            extra: item.extra,
-          }),
-        })
+        await saveItem(item)
         setCreated((prev) => [...prev, key])
       }
-      toast.success(`Created ${items.length} artifacts`)
+      toast.success(updateCount > 0 ? `Saved ${items.length} artifacts` : `Created ${items.length} artifacts`)
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create the bundle")
+      toast.error(err instanceof Error ? err.message : "Could not save the bundle")
     } finally {
       setSaving(false)
     }
@@ -114,14 +140,27 @@ export function BundleCard({
           />
         ))}
       </div>
+      {updateCount > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {updateCount === 1 ? "1 existing artifact will be updated." : `${updateCount} existing artifacts will be updated.`}
+        </p>
+      ) : null}
       <Button
         size="sm"
         className="w-full"
-        onClick={createAll}
+        onClick={() => void saveAll()}
         disabled={!report.ok || saving || done}
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
-        {done ? "All created" : "Create all"}
+        {done
+          ? updateCount > 0
+            ? "All saved"
+            : "All created"
+          : updateCount === 0
+            ? "Create all"
+            : updateCount === items.length
+              ? "Update all"
+              : "Save all"}
       </Button>
     </div>
   )

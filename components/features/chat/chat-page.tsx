@@ -481,7 +481,15 @@ export function ChatPage({
 
   function openInEditor(draft: NormalizedDraft) {
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-    router.push(`/${metaForType(draft.type).route}/new`)
+    const route = metaForType(draft.type).route
+    const exists = artifacts.some(
+      (artifact) => artifact.type === draft.type && artifact.name === draft.name
+    )
+    router.push(
+      exists
+        ? `/${route}/${encodeURIComponent(draft.name)}`
+        : `/${route}/new`
+    )
   }
 
   function startNewChat(): void {

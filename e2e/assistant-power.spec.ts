@@ -138,6 +138,46 @@ test.describe("assistant tools and bundles", () => {
     expect(fixRequest).toContain('"name": "release-notes"')
   })
 
+  test("updates an existing artifact instead of creating a duplicate", async ({ page }) => {
+    await stubWorkspace(page, [
+      { name: "release-notes", type: "skill", description: "Old release notes." },
+    ])
+    const bundle = {
+      summary: "Update notes",
+      skills: [{ name: "release-notes", description: "Write release notes.", body: SKILL_BODY }],
+    }
+    await page.route("**/api/chat", (route) =>
+      fulfillSse(route, [[
+        "done",
+        {
+          content: `Updated.\n\n\`\`\`bundle\n${JSON.stringify(bundle)}\n\`\`\``,
+          model: "gpt-4o-mini",
+          toolExecutions: [],
+        },
+      ]])
+    )
+    const saved: Array<{ method: string; url: string }> = []
+    await page.route("**/api/artifacts/**", async (route) => {
+      if (route.request().method() !== "PUT") {
+        await route.fallback()
+        return
+      }
+      saved.push({ method: route.request().method(), url: route.request().url() })
+      await route.fulfill({ json: { success: true, data: { name: "release-notes" } } })
+    })
+
+    await page.goto("/chat")
+    await page.getByRole("textbox", { name: "Message assistant" }).fill("Update release-notes")
+    await page.getByRole("button", { name: "Send" }).click()
+    const card = page.getByLabel("Artifact bundle")
+    await expect(card.getByText("This skill already exists and will be updated")).toBeVisible()
+    await card.getByRole("button", { name: "Update all" }).click()
+    await expect(card.getByRole("button", { name: "All saved" })).toBeVisible()
+    expect(saved).toEqual([
+      expect.objectContaining({ method: "PUT", url: expect.stringContaining("/api/artifacts/skill/release-notes") }),
+    ])
+  })
+
   test("sends thumbs-down feedback with a comment to the brain", async ({ page }) => {
     await page.route("**/api/chat", (route) =>
       fulfillSse(route, [["done", { content: "Use npm.", model: "gpt-4o-mini", toolExecutions: [] }]])

@@ -155,7 +155,7 @@ Minimizing the window hides it and leaves a menu-bar icon. Click the icon to ope
 ### Using the chat assistant & agent personas
 
 1. Go to **AI Providers** and configure credentials for **OpenAI**, **Anthropic**, or a **Custom** OpenAI-compatible endpoint (e.g. OpenRouter, or a local Ollama / LM Studio server). Keys are stored locally at `~/.black-agents/secrets.json` with `0600` permissions.
-2. **Drafting new artifacts**: Open **Assistant**, describe the artifact you want, and click **Open in editor** to review and save the generated draft. Ask for a team to get a bundle, then **Create all**.
+2. **Drafting artifacts**: Open **Assistant** and describe a new artifact, or name an existing one to update it. A new draft opens in the editor. An existing name opens that artifact with the new text, or **Update all** saves a bundle over the current files.
 3. **Chatting with workspace agents**: In **Assistant**, select an agent from the persona dropdown (e.g. `portfolio-rebalancer` or `feature-developer`). Type `@` to pick an artifact from the workspace. The chat loads it into the turn and shows it as a **Context** badge. `/name` also works when that name belongs to only one artifact.
 4. **Approvals**: a file write shows a card. Deny it, allow it for that message, or allow it for the chat. A command still asks every time. **Settings → AI → Allow file writes without asking** skips the file-write card. Turning that on shows a warning.
 5. **MCP tools**: Configure MCP servers in **Settings → MCP Servers** (or edit `.cursor/mcp.json` directly) and set each server's trust. Active tools are discovered when you chat.

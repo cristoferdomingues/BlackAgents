@@ -35,7 +35,7 @@ describe("buildSystemContext", () => {
       "---\nname: tester\ndescription: Runs tests\n---\n\nbody\n"
     )
     const context = await buildSystemContext()
-    expect(context).toContain("agent/tester: Runs tests")
+    expect(context).toContain("agent/tester — .cursor/agents/tester.md — Runs tests")
   })
 
   it("keeps persona chat distinct from the artifact-authoring assistant", () => {

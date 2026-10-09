@@ -135,9 +135,9 @@ export function buildBundleFixRequest(
   report: BundleReport
 ): string {
   const findings = report.items.flatMap((item) =>
-    item.issues.map(
-      (issue) => `- ${item.type}/${item.name} — ${issue.severity}: ${issue.message}`
-    )
+    item.issues
+      .filter((issue) => issue.severity === "error")
+      .map((issue) => `- ${item.type}/${item.name} — ${issue.severity}: ${issue.message}`)
   )
   const payload: ArtifactBundle = {
     summary: bundle.summary || undefined,
@@ -196,9 +196,8 @@ function asArtifact(item: BundleItem): Artifact {
 }
 
 /**
- * Standards checks per item, name clashes (inside the bundle and with the
- * workspace), and links: the agent must reference every skill and rule in
- * the bundle, using the same graph conventions as the rest of the app.
+ * Standards checks per item, duplicate names inside the bundle, and links.
+ * An artifact that already exists in the workspace is an update, not an error.
  */
 export function validateBundle(bundle: NormalizedBundle, existing: Artifact[]): BundleReport {
   const reports: BundleItemReport[] = bundle.items.map((item) => ({
@@ -215,8 +214,8 @@ export function validateBundle(bundle: NormalizedBundle, existing: Artifact[]): 
     seen.add(key)
     if (existing.some((a) => a.type === item.type && a.name === item.name)) {
       reports[index].issues.push({
-        severity: "error",
-        message: `A ${item.type} named "${item.name}" already exists`,
+        severity: "warning",
+        message: `This ${item.type} already exists and will be updated`,
       })
     }
   })

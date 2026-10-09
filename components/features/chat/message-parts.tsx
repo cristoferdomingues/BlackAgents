@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import type { NormalizedDraft } from "@/lib/llm/draft"
+import { useWorkspace } from "@/components/providers/workspace-provider"
 import type { ToolExecutionTrace } from "@/lib/mcp/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -171,6 +172,10 @@ export function DraftCard({
   draft: NormalizedDraft
   onOpen: (draft: NormalizedDraft) => void
 }) {
+  const { artifacts } = useWorkspace()
+  const exists = artifacts.some(
+    (artifact) => artifact.type === draft.type && artifact.name === draft.name
+  )
   const meta = metaForType(draft.type)
   const Icon = meta.icon
   return (
@@ -195,7 +200,7 @@ export function DraftCard({
         onClick={() => onOpen(draft)}
       >
         <Wand2 className="h-4 w-4" />
-        Open in editor
+        {exists ? "Update in editor" : "Open in editor"}
       </Button>
     </div>
   )

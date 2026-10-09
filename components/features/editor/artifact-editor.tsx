@@ -349,7 +349,7 @@ export function ArtifactEditor({
         if (!active) return
         platformRef.current = artifact.platform
         const fm = artifact.frontmatter
-        form.reset({
+        const loaded = {
           name: artifact.name,
           description: artifact.description || artifact.name,
           parallel: Boolean(fm.parallel),
@@ -362,7 +362,30 @@ export function ArtifactEditor({
             ? fm.mcpServers.filter((s): s is string => typeof s === "string")
             : [],
           body: artifact.body,
-        })
+        }
+        const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
+        if (raw) {
+          try {
+            const parsed = draftSchema.safeParse(JSON.parse(raw))
+            if (
+              parsed.success &&
+              parsed.data.type === type &&
+              parsed.data.name === artifact.name
+            ) {
+              sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+              const draft = normalizeDraft(parsed.data)
+              loaded.description = draft.description
+              loaded.body = draft.body
+              loaded.parallel = draft.parallel
+              loaded.alwaysApply = draft.alwaysApply
+              loaded.globs = draft.globs
+              toast.success("Update loaded from the assistant — review and save")
+            }
+          } catch {
+            // Ignore a malformed handoff and keep the saved artifact.
+          }
+        }
+        form.reset(loaded)
       })
       .catch(() => active && setNotFound(true))
       .finally(() => active && setLoading(false))

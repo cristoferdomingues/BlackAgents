@@ -69,12 +69,20 @@ describe("validateBundle", () => {
     ]
     const report = validateBundle(bundle, existing)
     expect(report.ok).toBe(false)
+    expect(report.items.find((item) => item.name === "short-comments")?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          message: 'This rule already exists and will be updated',
+        }),
+      ])
+    )
     const messages = report.items.flatMap((i) => i.issues.map((x) => `${i.name}: ${x.message}`))
     expect(messages).toEqual(
       expect.arrayContaining([
         'review-checklist: Missing "## When to Apply" section',
         "review-checklist: Duplicate name inside the bundle",
-        'short-comments: A rule named "short-comments" already exists',
+        "short-comments: This rule already exists and will be updated",
         expect.stringContaining("short-comments: Rules must stay short"),
         "pr-reviewer: Agent body must reference `review-checklist` skill",
         "pr-reviewer: Agent body must reference `short-comments` rule",

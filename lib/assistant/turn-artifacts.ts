@@ -44,6 +44,31 @@ export function parseMentions(message: string, all: Artifact[]): Artifact[] {
   return found
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Artifact names written in plain text. A name is used only when exactly one
+ * artifact has it, so "style" is not guessed when both a rule and a skill
+ * share that name.
+ */
+export function matchArtifactNames(message: string, all: Artifact[]): Artifact[] {
+  const found: Artifact[] = []
+  const byName = new Map<string, Artifact[]>()
+  for (const artifact of all) {
+    const list = byName.get(artifact.name) ?? []
+    list.push(artifact)
+    byName.set(artifact.name, list)
+  }
+  for (const [name, matches] of byName) {
+    if (matches.length !== 1 || name.length < 3) continue
+    const pattern = new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(name)}(?![A-Za-z0-9-])`, "i")
+    if (pattern.test(message)) found.push(matches[0])
+  }
+  return found
+}
+
 /** Artifacts the seeds link to (skills, rules, agents), in graph order. */
 export function linkedArtifacts(seeds: Artifact[], all: Artifact[]): Artifact[] {
   const seedKeys = new Set(seeds.map((s) => `${s.type}:${s.name}`))
@@ -99,6 +124,9 @@ export async function selectTurnArtifacts(params: {
   let jev: TurnArtifactSelection["jev"] = params.resolved ? "skipped" : "off"
 
   const mentioned = parseMentions(message, all).filter((a) => a !== persona)
+  for (const artifact of matchArtifactNames(message, all)) {
+    if (artifact !== persona && !mentioned.includes(artifact)) mentioned.push(artifact)
+  }
   for (const a of mentioned) {
     seeds.push(a)
     chosen.push({ type: a.type, name: a.name, source: "mention" })

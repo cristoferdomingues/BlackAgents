@@ -7,8 +7,10 @@ import {
   AlertCircle,
   ArrowUp,
   Bot,
+  History,
   Loader2,
   MessageCircle,
+  Plus,
   ShieldAlert,
   Sparkles,
   User,
@@ -51,6 +53,14 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -71,14 +81,18 @@ import {
   isProviderVerified,
   type ProvidersState,
 } from "@/components/features/providers/provider-readiness"
+import {
+  createConversationId,
+  getConversation,
+  readConversationsStore,
+  setActiveConversation,
+  upsertConversation,
+  writeConversationsStore,
+  type StoredConversation,
+  type StoredTurn,
+} from "@/lib/chat/conversation-history"
 
-interface Turn {
-  role: "user" | "assistant"
-  content: string
-  toolExecutions?: ToolExecutionTrace[]
-  artifacts?: TurnArtifact[]
-  stoppedAtLimit?: boolean
-}
+type Turn = StoredTurn
 
 /** The assistant reply while it is still streaming. */
 interface LiveTurn {
@@ -193,6 +207,9 @@ export function ChatPage({
   const [modelsLoading, setModelsLoading] = React.useState(false)
   const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
   const [turns, setTurns] = React.useState<Turn[]>([])
+  const [conversationId, setConversationId] = React.useState(() => createConversationId())
+  const [recentConversations, setRecentConversations] = React.useState<StoredConversation[]>([])
+  const [historyReady, setHistoryReady] = React.useState(false)
   const [input, setInput] = React.useState("")
   const [caret, setCaret] = React.useState(0)
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
@@ -206,6 +223,8 @@ export function ChatPage({
   // defaults while restoring the previous selection.
   const selectionReady = React.useRef(false)
   const persistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const conversationIdRef = React.useRef(conversationId)
+  conversationIdRef.current = conversationId
   const agents = byType("agent")
   const selectedAgent = selectedAgentName
     ? agents.find((agent) => agent.name === selectedAgentName)
@@ -223,6 +242,24 @@ export function ChatPage({
         `Guide me through this goal: ${selectedAgent.description}`,
       ]
     : SUGGESTIONS
+
+  // Restore the last matching conversation from localStorage (max 5 kept).
+  React.useEffect(() => {
+    const store = readConversationsStore()
+    setRecentConversations(store.conversations)
+    const active = store.activeId ? getConversation(store, store.activeId) : undefined
+    const agentMatches =
+      (active?.agent ?? undefined) === (selectedAgentName ?? undefined)
+    if (active && active.messages.length > 0 && agentMatches) {
+      setConversationId(active.id)
+      setTurns(active.messages)
+    } else {
+      const id = createConversationId()
+      setConversationId(id)
+      writeConversationsStore(setActiveConversation(store, id))
+    }
+    setHistoryReady(true)
+  }, [selectedAgentName])
 
   React.useEffect(() => {
     apiFetch<ProvidersState>("/api/providers")
@@ -397,7 +434,17 @@ export function ChatPage({
       if (outcome.error) throw new Error(outcome.error)
       const reply = outcome.final
       if (!reply) throw new Error("The assistant stopped before answering")
-      setTurns((t) => [...t, reply])
+      const finalized = [...next, reply]
+      setTurns(finalized)
+      const nextStore = upsertConversation(readConversationsStore(), {
+        id: conversationIdRef.current,
+        messages: finalized,
+        agent: selectedAgent?.name,
+        provider,
+        model,
+      })
+      writeConversationsStore(nextStore)
+      setRecentConversations(nextStore.conversations)
       // The model id was accepted — remember it for the next launch.
       await persistSelection(provider, model)
     } catch (err) {
@@ -418,6 +465,42 @@ export function ChatPage({
   function openInEditor(draft: NormalizedDraft) {
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
     router.push(`/${metaForType(draft.type).route}/new`)
+  }
+
+  function startNewChat(): void {
+    if (sending) return
+    const id = createConversationId()
+    const store = setActiveConversation(readConversationsStore(), id)
+    writeConversationsStore(store)
+    setConversationId(id)
+    setTurns([])
+    setInput("")
+    setLive(EMPTY_LIVE)
+    setRecentConversations(store.conversations)
+  }
+
+  function openRecentConversation(id: string): void {
+    if (sending || id === conversationId) return
+    const store = readConversationsStore()
+    const convo = getConversation(store, id)
+    if (!convo) return
+    const next = setActiveConversation(store, id)
+    writeConversationsStore(next)
+    setRecentConversations(next.conversations)
+    const target = convo.agent
+      ? `/chat?agent=${encodeURIComponent(convo.agent)}`
+      : "/chat"
+    const current = selectedAgentName
+      ? `/chat?agent=${encodeURIComponent(selectedAgentName)}`
+      : "/chat"
+    if (target !== current) {
+      router.push(target)
+      return
+    }
+    setConversationId(convo.id)
+    setTurns(convo.messages)
+    setInput("")
+    setLive(EMPTY_LIVE)
   }
 
   const mention = activeMentionQuery(input, caret)
@@ -532,6 +615,52 @@ export function ChatPage({
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-initial">
+          {historyReady && recentConversations.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={sending}
+                  aria-label="Recent chats"
+                >
+                  <History className="h-4 w-4" />
+                  Recent
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>Last 5 chats (this browser)</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {recentConversations.map((convo) => (
+                  <DropdownMenuItem
+                    key={convo.id}
+                    onSelect={() => openRecentConversation(convo.id)}
+                    className="flex flex-col items-start gap-0.5"
+                  >
+                    <span className="w-full truncate font-medium">
+                      {convo.agent ? `${convo.agent}: ` : ""}
+                      {convo.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(convo.updatedAt).toLocaleString()}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={startNewChat}
+            disabled={sending || (turns.length === 0 && !input.trim())}
+            aria-label="New chat"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
           <Select
             value={provider}
             onValueChange={selectProvider}

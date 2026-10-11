@@ -4,6 +4,11 @@ import { findArtifact, scanWorkspace } from "@/lib/artifacts/parser"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import type { Artifact } from "@/lib/artifacts/types"
 import { loadBrainContext } from "@/lib/brain/context"
+import {
+  attachmentsSchema,
+  isBinaryAttachment,
+  renderTextAttachments,
+} from "@/lib/chat/attachments"
 import { readConfig } from "@/lib/config"
 import { loadDecisionClient } from "@/lib/decision/client"
 import { buildAgentPersonaContext, buildSystemContext } from "@/lib/llm/context"
@@ -24,7 +29,13 @@ export const chatRequestSchema = z.object({
   provider: z.string().trim().min(1),
   model: z.string().trim().optional(),
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string(),
+        attachments: attachmentsSchema.optional(),
+      })
+    )
     .min(1, "At least one message is required"),
   temperature: z.number().finite().min(0).max(2).optional(),
   agent: nameSchema.optional(),
@@ -137,14 +148,22 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   }
 }
 
+/** Text files are inlined as quoted data; images and PDFs stay native parts. */
+export function toChatMessage(message: ChatRequest["messages"][number]): ChatMessage {
+  const attachments = message.role === "user" ? (message.attachments ?? []) : []
+  const binary = attachments.filter(isBinaryAttachment)
+  return {
+    role: message.role,
+    content: message.content + renderTextAttachments(attachments),
+    ...(binary.length > 0 ? { attachments: binary } : {}),
+  }
+}
+
 export function runChat(
   chat: PreparedChat,
   options: { approve: Approver; onEvent?: (event: AgentLoopEvent) => void; signal?: AbortSignal }
 ): Promise<AgentLoopResult> {
-  const messages: ChatMessage[] = chat.request.messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }))
+  const messages: ChatMessage[] = chat.request.messages.map(toChatMessage)
   return runAgentLoop({
     provider: chat.provider,
     credentials: chat.credentials,

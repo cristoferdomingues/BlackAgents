@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { attachmentMeta, attachmentMetaSchema, type Attachment } from "@/lib/chat/attachments"
+
 /**
  * Browser-local chat history (no DB). Keeps the 5 most recent finished
  * conversations in localStorage so a refresh or revisit can restore them.
@@ -29,14 +31,34 @@ const toolExecutionTraceSchema = z.object({
   durationMs: z.number().optional(),
 })
 
+/** A workflow started from chat. Shown as a card, never sent to the model. */
+export const workflowRunTurnSchema = z.object({
+  workflow: z.string(),
+  task: z.string(),
+  runId: z.string().optional(),
+})
+export type WorkflowRunTurn = z.infer<typeof workflowRunTurnSchema>
+
 export const storedTurnSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   toolExecutions: z.array(toolExecutionTraceSchema).optional(),
   artifacts: z.array(turnArtifactSchema).optional(),
   stoppedAtLimit: z.boolean().optional(),
+  attachments: z.array(attachmentMetaSchema).optional(),
+  workflowRun: workflowRunTurnSchema.optional(),
 })
 export type StoredTurn = z.infer<typeof storedTurnSchema>
+
+/** A turn in memory may also carry the attached files themselves. */
+export type ChatTurn = StoredTurn & { files?: Attachment[] }
+
+/** Drop file contents before a turn goes to localStorage. */
+export function toStoredTurn(turn: ChatTurn): StoredTurn {
+  const { files, ...rest } = turn
+  if (!files || files.length === 0) return rest
+  return { ...rest, attachments: files.map(attachmentMeta) }
+}
 
 export const storedConversationSchema = z.object({
   id: z.string().min(1),
@@ -62,7 +84,7 @@ export const EMPTY_CONVERSATIONS_STORE: ConversationsStore = {
 
 export interface ConversationUpsertInput {
   id: string
-  messages: StoredTurn[]
+  messages: ChatTurn[]
   agent?: string
   provider?: string
   model?: string
@@ -103,7 +125,7 @@ export function upsertConversation(
     agent: input.agent,
     provider: input.provider,
     model: input.model,
-    messages: input.messages,
+    messages: input.messages.map(toStoredTurn),
   }
   const rest = store.conversations.filter((c) => c.id !== input.id)
   return {

@@ -7,14 +7,20 @@ import {
   AlertCircle,
   ArrowUp,
   Bot,
+  FileImage,
+  FileText,
   History,
   Loader2,
   MessageCircle,
+  Mic,
+  Paperclip,
   Plus,
   ShieldAlert,
   Sparkles,
+  Square,
   User,
   Wrench,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -26,7 +32,28 @@ import {
   activeMentionQuery,
   filterMentions,
   insertMention,
+  mentionMatches,
 } from "@/lib/artifacts/mentions"
+import {
+  ATTACHMENT_ACCEPT,
+  AttachmentError,
+  MAX_ATTACHMENTS,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  attachmentMeta,
+  describeMissingAttachments,
+  formatBytes,
+  readFileAsAttachment,
+  totalAttachmentBytes,
+  type Attachment,
+  type AttachmentMeta,
+} from "@/lib/chat/attachments"
+import {
+  extractWorkflowDraft,
+  stripWorkflowBlock,
+} from "@/lib/llm/workflow-draft"
+import { parseWorkflowInvocation } from "@/lib/workflows/invocation"
+import type { WorkflowListItem } from "@/lib/workflows/service"
+import { useVoiceInput } from "@/hooks/use-voice-input"
 import {
   DRAFT_STORAGE_KEY,
   extractDraft,
@@ -78,6 +105,8 @@ import {
 } from "@/components/features/chat/message-parts"
 import { BundleCard } from "@/components/features/chat/bundle-card"
 import { FeedbackBar } from "@/components/features/chat/feedback-bar"
+import { WorkflowDraftCard } from "@/components/features/chat/workflow-draft-card"
+import { WorkflowRunCard } from "@/components/features/chat/workflow-run-card"
 import { ApprovalCard } from "@/components/features/approvals/approval-card"
 import {
   isProviderVerified,
@@ -90,11 +119,27 @@ import {
   setActiveConversation,
   upsertConversation,
   writeConversationsStore,
+  type ChatTurn,
   type StoredConversation,
-  type StoredTurn,
 } from "@/lib/chat/conversation-history"
 
-type Turn = StoredTurn
+type Turn = ChatTurn
+
+/** What the model sees for a turn; workflow-run turns stay local to the chat. */
+function toRequestMessage(turn: Turn): {
+  role: Turn["role"]
+  content: string
+  attachments?: Attachment[]
+} {
+  if (turn.files && turn.files.length > 0) {
+    return { role: turn.role, content: turn.content, attachments: turn.files }
+  }
+  return { role: turn.role, content: turn.content + describeMissingAttachments(turn.attachments ?? []) }
+}
+
+function turnAttachments(turn: Turn): AttachmentMeta[] {
+  return turn.files?.map(attachmentMeta) ?? turn.attachments ?? []
+}
 
 /** The assistant reply while it is still streaming. */
 interface LiveTurn {
@@ -221,6 +266,20 @@ export function ChatPage({
   const [live, setLive] = React.useState<LiveTurn>(EMPTY_LIVE)
   const [allowFileWrites, setAllowFileWrites] = React.useState(false)
   const [settingsAutoFileWrites, setSettingsAutoFileWrites] = React.useState(false)
+  const [files, setFiles] = React.useState<Attachment[]>([])
+  const [readingFiles, setReadingFiles] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [workflows, setWorkflows] = React.useState<WorkflowListItem[]>([])
+  const voiceBaseRef = React.useRef("")
+  const voice = useVoiceInput({
+    provider,
+    onTranscript: (text) => {
+      const base = voiceBaseRef.current
+      const next = base && text ? `${base.replace(/\s+$/, "")} ${text}` : base || text
+      setInput(next)
+      setCaret(next.length)
+    },
+  })
   const scrollRef = React.useRef<HTMLDivElement>(null)
   // Skip the first persist after hydration so we don't rewrite unchanged
   // defaults while restoring the previous selection.
@@ -326,6 +385,34 @@ export function ChatPage({
       .catch(() => setMcpToolsCount(0))
   }, [workspace?.path])
 
+  const loadWorkflows = React.useCallback(async (): Promise<void> => {
+    try {
+      const data = await apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
+      setWorkflows(data.workflows)
+    } catch {
+      setWorkflows([])
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!workspace?.path) return
+    let cancelled = false
+    apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
+      .then((data) => {
+        if (!cancelled) setWorkflows(data.workflows)
+      })
+      .catch(() => {
+        if (!cancelled) setWorkflows([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspace?.path])
+
+  React.useEffect(() => {
+    if (voice.error) toast.error(voice.error)
+  }, [voice.error])
+
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [turns, sending])
@@ -390,21 +477,106 @@ export function ChatPage({
     setModel(nextModel)
   }
 
+  function saveTurns(nextTurns: Turn[]): void {
+    const nextStore = upsertConversation(readConversationsStore(), {
+      id: conversationIdRef.current,
+      messages: nextTurns,
+      agent: selectedAgent?.name,
+      provider,
+      model,
+    })
+    writeConversationsStore(nextStore)
+    setRecentConversations(nextStore.conversations)
+  }
+
+  /** `/name input` or `start @name`: show a run card instead of asking the model. */
+  function startWorkflowTurn(content: string): boolean {
+    const invocation = parseWorkflowInvocation(
+      content,
+      workflows.map((item) => item.workflow.name)
+    )
+    if (!invocation) return false
+    const workflow = workflows.find((item) => item.workflow.name === invocation.workflow)?.workflow
+    const turn: Turn = {
+      role: "user",
+      content,
+      workflowRun: { workflow: invocation.workflow, task: invocation.task || workflow?.task || "" },
+    }
+    const next = [...turns, turn]
+    setTurns(next)
+    saveTurns(next)
+    setInput("")
+    setCaret(0)
+    return true
+  }
+
+  function markWorkflowStarted(index: number, runId: string, task: string): void {
+    const next = turns.map((turn, i) =>
+      i === index && turn.workflowRun
+        ? { ...turn, workflowRun: { ...turn.workflowRun, runId, task } }
+        : turn
+    )
+    setTurns(next)
+    saveTurns(next)
+  }
+
+  async function addFiles(picked: File[]): Promise<void> {
+    if (picked.length === 0) return
+    setReadingFiles(true)
+    try {
+      let next = [...files]
+      for (const file of picked) {
+        if (next.length >= MAX_ATTACHMENTS) {
+          toast.error(`Attach at most ${MAX_ATTACHMENTS} files`)
+          break
+        }
+        try {
+          const attachment = await readFileAsAttachment(file)
+          if (totalAttachmentBytes([...next, attachment]) > MAX_TOTAL_ATTACHMENT_BYTES) {
+            toast.error(`Attachments can be at most ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)} in total`)
+            continue
+          }
+          next = [...next, attachment]
+        } catch (err) {
+          toast.error(err instanceof AttachmentError ? err.message : `Could not attach "${file.name}"`)
+        }
+      }
+      setFiles(next)
+    } finally {
+      setReadingFiles(false)
+    }
+  }
+
+  function toggleVoice(): void {
+    if (voice.state === "listening") {
+      voice.stop()
+      return
+    }
+    voiceBaseRef.current = input
+    void voice.start()
+  }
+
   async function send(text: string) {
     const content = text.trim()
-    if (!content || sending) return
+    const sentFiles = files
+    if ((!content && sentFiles.length === 0) || sending) return
     if (agentNotFound) {
       toast.error(`Agent "${selectedAgentName}" was not found`)
       return
     }
+    if (sentFiles.length === 0 && startWorkflowTurn(content)) return
     if (!providerVerified) {
       toast.error("Verify this provider before starting a chat")
       return
     }
-    const next = [...turns, { role: "user" as const, content }]
+    const userTurn: Turn = sentFiles.length > 0
+      ? { role: "user", content, files: sentFiles }
+      : { role: "user", content }
+    const next = [...turns, userTurn]
     setTurns(next)
     setInput("")
     setCaret(0)
+    setFiles([])
     setSending(true)
     setLive(EMPTY_LIVE)
     try {
@@ -418,7 +590,7 @@ export function ChatPage({
         {
           provider,
           model,
-          messages: next.map(({ role, content: c }) => ({ role, content: c })),
+          messages: next.filter((turn) => !turn.workflowRun).map(toRequestMessage),
           agent: selectedAgent?.name,
           allowFileWrites,
         },
@@ -453,21 +625,14 @@ export function ChatPage({
       if (!reply) throw new Error("The assistant stopped before answering")
       const finalized = [...next, reply]
       setTurns(finalized)
-      const nextStore = upsertConversation(readConversationsStore(), {
-        id: conversationIdRef.current,
-        messages: finalized,
-        agent: selectedAgent?.name,
-        provider,
-        model,
-      })
-      writeConversationsStore(nextStore)
-      setRecentConversations(nextStore.conversations)
+      saveTurns(finalized)
       // The model id was accepted — remember it for the next launch.
       await persistSelection(provider, model)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       setTurns((t) => t.slice(0, -1))
       setInput(content)
+      setFiles(sentFiles)
       apiFetch<ProvidersState>("/api/providers")
         .then(setMeta)
         .catch(() => {
@@ -500,6 +665,7 @@ export function ChatPage({
     setConversationId(id)
     setTurns([])
     setInput("")
+    setFiles([])
     setLive(EMPTY_LIVE)
     setAllowFileWrites(false)
     setRecentConversations(store.conversations)
@@ -527,6 +693,7 @@ export function ChatPage({
     setConversationId(convo.id)
     setTurns(convo.messages)
     setInput("")
+    setFiles([])
     setLive(EMPTY_LIVE)
   }
 
@@ -537,14 +704,24 @@ export function ChatPage({
     setMentionKeySeen(mentionKey)
     setActiveMentionIndex(0)
   }
-  const mentionItems = filterMentions(
-    artifacts.map((artifact) => ({
-      type: artifact.type,
-      name: artifact.name,
-      description: artifact.description,
-    })),
-    mention?.query ?? ""
-  )
+  const mentionItems: ChatMention[] = [
+    ...filterMentions(
+      artifacts.map((artifact) => ({
+        type: artifact.type,
+        name: artifact.name,
+        description: artifact.description,
+      })),
+      mention?.query ?? ""
+    ),
+    ...workflows
+      .map(({ workflow }) => ({
+        type: "workflow" as const,
+        name: workflow.name,
+        description: workflow.description,
+      }))
+      .filter((item) => mentionMatches(item, mention?.query ?? ""))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  ]
   const mentionOpen = mention !== null && dismissedMentionKey !== mentionKey && !sending
   const mentionIndex =
     mentionItems.length === 0 ? 0 : activeMentionIndex % mentionItems.length
@@ -872,6 +1049,9 @@ export function ChatPage({
                 previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
                 provider={provider}
                 model={model}
+                workflows={workflows}
+                onWorkflowSaved={() => void loadWorkflows()}
+                onWorkflowStarted={(runId, task) => markWorkflowStarted(i, runId, task)}
               />
             ))
           )}
@@ -893,7 +1073,9 @@ export function ChatPage({
               ))}
               {live.content ? (
                 <div className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">
-                  <MarkdownPreview content={stripBundleBlock(stripDraftBlock(live.content))} />
+                  <MarkdownPreview
+                    content={stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))}
+                  />
                 </div>
               ) : null}
               <div
@@ -913,7 +1095,55 @@ export function ChatPage({
       </div>
 
       <div className="border-t p-4">
+        {files.length > 0 ? (
+          <ul
+            className="mx-auto mb-2 flex w-full max-w-6xl flex-wrap gap-2"
+            aria-label="Attached files"
+          >
+            {files.map((file, index) => (
+              <li key={`${file.name}-${index}`}>
+                <AttachmentChip
+                  meta={attachmentMeta(file)}
+                  onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                  disabled={sending}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="relative mx-auto flex w-full max-w-6xl items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ATTACHMENT_ACCEPT}
+            className="hidden"
+            data-testid="chat-file-input"
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? [])
+              e.target.value = ""
+              void addFiles(picked)
+            }}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!canChat || sending || readingFiles || files.length >= MAX_ATTACHMENTS}
+                aria-label="Attach files"
+              >
+                {readingFiles ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Paperclip className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Attach text, image, or PDF files</TooltipContent>
+          </Tooltip>
           {mentionOpen ? (
             <MentionMenu
               items={mentionItems}
@@ -922,7 +1152,7 @@ export function ChatPage({
                 loadingArtifacts
                   ? "Loading artifacts…"
                   : workspace
-                    ? "No matching artifacts"
+                    ? "No matching artifacts or workflows"
                     : "Open a workspace to mention artifacts"
               }
               onPick={pickMention}
@@ -939,6 +1169,12 @@ export function ChatPage({
             onSelect={(e) => rememberCaret(e.currentTarget)}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => rememberCaret(e.currentTarget)}
+            onPaste={(e) => {
+              const pasted = Array.from(e.clipboardData.files)
+              if (pasted.length === 0) return
+              e.preventDefault()
+              void addFiles(pasted)
+            }}
             aria-autocomplete="list"
             aria-expanded={mentionOpen}
             aria-controls={mentionOpen ? "assistant-mentions" : undefined}
@@ -954,29 +1190,56 @@ export function ChatPage({
                 : providerVerified
                   ? selectedAgent
                     ? `Message ${selectedAgent.name}…`
-                    : "Describe an agent, command, rule, or skill…"
+                    : "Describe an agent, command, rule, skill, or workflow… Type /workflow-name to run one"
                   : "Verify a provider to start chatting"
             }
             className="max-h-52 min-h-28 resize-none"
-            disabled={!canChat || sending}
+            disabled={!canChat || sending || voice.state === "transcribing"}
             aria-label={
               selectedAgent
                 ? `Message ${selectedAgent.name}`
                 : "Message assistant"
             }
           />
-          <Button
-            size="icon"
-            onClick={() => send(input)}
-            disabled={!canChat || sending || !input.trim()}
-            aria-label="Send"
-          >
-            {sending ? (
+          {voice.state === "listening" ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="destructive"
+              onClick={toggleVoice}
+              aria-label="Stop voice input"
+              className="animate-pulse"
+            >
+              <Square className="h-4 w-4" />
+            </Button>
+          ) : voice.state === "transcribing" ? (
+            <Button type="button" size="icon" disabled aria-label="Transcribing voice">
               <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </Button>
+            </Button>
+          ) : voice.isSupported && !sending && !input.trim() && files.length === 0 ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={toggleVoice}
+              disabled={!canChat}
+              aria-label="Start voice input"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              onClick={() => send(input)}
+              disabled={!canChat || sending || readingFiles || (!input.trim() && files.length === 0)}
+              aria-label="Send"
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowUp className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -1017,6 +1280,9 @@ function Message({
   previousUser,
   provider,
   model,
+  workflows,
+  onWorkflowSaved,
+  onWorkflowStarted,
 }: {
   turn: Turn
   onOpen: (draft: NormalizedDraft) => void
@@ -1026,13 +1292,23 @@ function Message({
   previousUser: string
   provider: string
   model: string
+  workflows: WorkflowListItem[]
+  onWorkflowSaved: () => void
+  onWorkflowStarted: (runId: string, task: string) => void
 }) {
   const isUser = turn.role === "user"
   const bundle = isUser ? null : extractBundle(turn.content)
-  const draft = isUser || bundle ? null : extractDraft(turn.content)
-  const prose = isUser ? turn.content : stripBundleBlock(stripDraftBlock(turn.content))
+  const workflowDraft = isUser || bundle ? null : extractWorkflowDraft(turn.content)
+  const draft = isUser || bundle || workflowDraft ? null : extractDraft(turn.content)
+  const prose = isUser
+    ? turn.content
+    : stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content)))
+  const attached = turnAttachments(turn)
+  const runTarget = turn.workflowRun
+    ? workflows.find((item) => item.workflow.name === turn.workflowRun?.workflow)?.workflow
+    : undefined
 
-  return (
+  const message = (
     <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
       {isUser ? (
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -1052,9 +1328,22 @@ function Message({
         )}
       >
         {isUser ? (
-          <div className="inline-block whitespace-pre-wrap rounded-lg bg-primary px-3 py-2 text-left text-sm text-primary-foreground">
-            {turn.content}
-          </div>
+          <>
+            {attached.length > 0 ? (
+              <ul className="flex flex-wrap justify-end gap-1.5" aria-label="Files sent">
+                {attached.map((meta, index) => (
+                  <li key={`${meta.name}-${index}`}>
+                    <AttachmentChip meta={meta} unavailable={!turn.files} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {turn.content ? (
+              <div className="inline-block whitespace-pre-wrap rounded-lg bg-primary px-3 py-2 text-left text-sm text-primary-foreground">
+                {turn.content}
+              </div>
+            ) : null}
+          </>
         ) : (
           <>
             {turn.artifacts && turn.artifacts.length > 0 ? (
@@ -1075,6 +1364,13 @@ function Message({
         )}
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
+        {workflowDraft ? (
+          <WorkflowDraftCard
+            workflow={workflowDraft}
+            exists={workflows.some((item) => item.workflow.name === workflowDraft.name)}
+            onSaved={onWorkflowSaved}
+          />
+        ) : null}
         {bundle ? (
           <BundleCard
             bundle={bundle}
@@ -1094,5 +1390,64 @@ function Message({
         ) : null}
       </div>
     </div>
+  )
+
+  if (!turn.workflowRun) return message
+  return (
+    <div className="space-y-3">
+      {message}
+      <div className="flex gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Bot className="h-4 w-4" />
+        </div>
+        <div className="w-full min-w-0 max-w-xl">
+          <WorkflowRunCard
+            run={turn.workflowRun}
+            description={runTarget?.description}
+            available={Boolean(runTarget) || Boolean(turn.workflowRun.runId)}
+            onStarted={onWorkflowStarted}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AttachmentChip({
+  meta,
+  onRemove,
+  disabled,
+  unavailable,
+}: {
+  meta: AttachmentMeta
+  onRemove?: () => void
+  disabled?: boolean
+  /** Restored from history: the file itself is no longer kept. */
+  unavailable?: boolean
+}) {
+  const Icon = meta.kind === "image" ? FileImage : FileText
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-64 items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs",
+        unavailable && "opacity-60"
+      )}
+      title={unavailable ? `${meta.name} (not kept after reload)` : meta.name}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="truncate font-medium">{meta.name}</span>
+      <span className="shrink-0 text-muted-foreground">{formatBytes(meta.size)}</span>
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={disabled}
+          className="rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+          aria-label={`Remove ${meta.name}`}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </span>
   )
 }

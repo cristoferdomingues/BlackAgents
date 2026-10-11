@@ -24,6 +24,23 @@ describe("buildSystemContext", () => {
     expect(context).toContain("fs_write")
   })
 
+  it("includes the workflow protocol and lists workspace workflows", async () => {
+    expect(await buildSystemContext()).toContain("no workflows yet")
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/workflows/release-line.workflow.json",
+      JSON.stringify({
+        name: "release-line",
+        description: "Ship a release",
+        steps: [{ id: "plan", agent: "planner" }],
+      })
+    )
+    const context = await buildSystemContext()
+    expect(context).toContain("```workflow")
+    expect(context).toContain("- release-line — Ship a release — steps: planner")
+    expect(context).toContain("/workflow-name input")
+  })
+
   it("notes when the workspace has no artifacts", async () => {
     expect(await buildSystemContext()).toContain("no artifacts yet")
   })

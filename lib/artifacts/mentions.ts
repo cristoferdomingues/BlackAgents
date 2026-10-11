@@ -20,8 +20,11 @@ export const MENTION_TYPES: ArtifactType[] = [
   "skill",
 ]
 
+/** Chat can also mention workflows (`@workflow:name`) to start them. */
+export type MentionTargetType = ArtifactType | "workflow"
+
 /** The token inserted into the editor when a mention is picked. */
-export function mentionToken(type: ArtifactType, name: string): string {
+export function mentionToken(type: MentionTargetType, name: string): string {
   return `@${type}:${name}`
 }
 
@@ -125,7 +128,7 @@ export function insertMention(
   text: string,
   caret: number,
   query: MentionQuery,
-  type: ArtifactType,
+  type: MentionTargetType,
   name: string
 ): { text: string; caret: number } {
   const token = mentionToken(type, name)

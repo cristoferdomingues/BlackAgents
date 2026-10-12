@@ -36,8 +36,13 @@ test.describe("assistant tools and bundles", () => {
     })
 
     await page.goto("/chat")
+    await expect(page.getByRole("combobox", { name: "Provider" })).toContainText("OpenAI")
     const allowWrites = page.getByLabel("Auto-approve file writes")
-    await allowWrites.hover()
+    // Headless Chrome does not deliver hover to this tooltip trigger, so fire
+    // the pointer event the tooltip opens on.
+    await allowWrites.locator("xpath=..").evaluate((el) => {
+      el.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }))
+    })
     await expect(page.getByRole("tooltip")).toContainText("A new chat asks again")
     await allowWrites.click()
     await page.getByRole("textbox", { name: "Message assistant" }).fill("Check @rule:style")

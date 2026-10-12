@@ -107,3 +107,129 @@ test("picks a voice model from models that take audio", async ({ page }) => {
   await expect(model).toHaveValue("google/gemini-2.5-flash")
   expect(puts).toContainEqual({ models: { voice: null } })
 })
+
+test("saves a vision model for a provider and lists who uses it", async ({ page }) => {
+  let saved: { provider: string; model: string } | null = null
+  const puts: unknown[] = []
+  await stubWorkspace(page, [
+    {
+      name: "reviewer",
+      type: "agent",
+      description: "Reviews pull requests.",
+      frontmatter: { model: "task:vision" },
+    },
+  ])
+  await stubVerifiedProvider(page)
+  await page.route("**/api/workflows", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          workflows: [
+            {
+              workflow: {
+                name: "nightly-report",
+                description: "",
+                task: "",
+                trigger: { type: "manual" },
+                steps: [{ id: "summarize", agent: "reviewer", model: "task:vision" }],
+                limits: { stepTimeoutMinutes: 10, runTimeoutMinutes: 60, maxRetries: 1 },
+                selfAssess: false,
+              },
+              lastRun: null,
+              active: false,
+            },
+          ],
+        },
+      },
+    })
+  )
+  await page.route("**/api/settings/ai", async (route) => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON() as {
+        models?: { vision?: { provider: string; model: string } | null }
+      }
+      puts.push(body)
+      if (body.models && "vision" in body.models) saved = body.models.vision ?? null
+    }
+    await route.fulfill({ json: settingsBody(false) })
+  })
+  await page.route("**/api/settings/ai/models*", (route) => {
+    const url = new URL(route.request().url())
+    const task = url.searchParams.get("task")
+    if (task === "voice") {
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            task: "voice",
+            saved: null,
+            defaultModel: null,
+            effective: null,
+            custom: { configured: false, isOpenRouter: false },
+            models: [],
+            filtered: false,
+          },
+        },
+      })
+    }
+    const provider = url.searchParams.get("provider") ?? saved?.provider ?? "openai"
+    const models =
+      provider === "anthropic"
+        ? [{ id: "claude-sonnet-4-20250514" }]
+        : [{ id: "gpt-4o" }, { id: "gpt-4o-mini" }]
+    return route.fulfill({
+      json: {
+        success: true,
+        data: {
+          task,
+          provider,
+          saved,
+          defaultModel: null,
+          effective: saved && saved.provider === provider ? saved.model : null,
+          custom: { configured: true, isOpenRouter: false },
+          providers: [
+            { id: "openai", label: "OpenAI", verified: true },
+            { id: "anthropic", label: "Anthropic", verified: true },
+            { id: "custom", label: "Custom (OpenAI-compatible)", verified: false },
+          ],
+          models,
+          filtered: false,
+        },
+      },
+    })
+  })
+
+  await page.goto("/settings?tab=ai")
+  await page.getByRole("tab", { name: "Vision" }).click()
+  await expect(page.getByRole("tab", { name: "Vision" })).toHaveAttribute("aria-selected", "true")
+  await expect(page.getByText("Used by: reviewer (agent), nightly-report → summarize (step)")).toBeVisible()
+  const provider = page.getByRole("combobox", { name: "Vision provider" })
+  await provider.click()
+  await expect(page.getByRole("option", { name: /Verify under AI Providers/ })).toBeDisabled()
+  const listed = page.waitForResponse(
+    (res) => res.url().includes("/api/settings/ai/models") && res.url().includes("provider=anthropic")
+  )
+  await page.getByRole("option", { name: "Anthropic", exact: true }).click()
+  await listed
+  await page.getByRole("button", { name: "Choose model" }).click()
+  await page.getByRole("menuitem", { name: "claude-sonnet-4-20250514" }).click()
+  await page.getByRole("tabpanel", { name: "Vision" }).getByRole("button", { name: "Save", exact: true }).click()
+  await expect(page.getByText("Vision model saved")).toBeVisible()
+  expect(puts).toContainEqual({
+    models: { vision: { provider: "anthropic", model: "claude-sonnet-4-20250514" } },
+  })
+
+  await page.reload()
+  await page.getByRole("tab", { name: "Vision" }).click()
+  await expect(page.getByRole("textbox", { name: "Vision model" })).toHaveValue("claude-sonnet-4-20250514")
+  await expect(page.getByRole("combobox", { name: "Vision provider" })).toContainText("Anthropic")
+
+  await page.getByRole("tab", { name: "Fast" }).click()
+  await expect(page.getByText("Not used yet")).toBeVisible()
+
+  await page.getByRole("tab", { name: "Vision" }).click()
+  await page.getByRole("button", { name: "Clear" }).click()
+  await expect(page.getByText("Cleared the Vision model")).toBeVisible()
+  expect(puts).toContainEqual({ models: { vision: null } })
+})

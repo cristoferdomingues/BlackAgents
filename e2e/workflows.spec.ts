@@ -117,7 +117,163 @@ test.describe("workflows", () => {
     await expect(page).toHaveURL(/\/workflows\/runs\/run-1$/)
     await expect(page.getByText("All planned").first()).toBeVisible()
     await expect(page.getByText("docs/plan.md")).toBeVisible()
+    await expect(page.getByText("from step")).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Good answer" })).toBeVisible()
+  })
+
+  test("sets a step model, shows where it comes from, and keeps it", async ({ page }) => {
+    let current = workflow
+    const saves: unknown[] = []
+    await page.route("**/api/workflows/review-line", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON() as typeof workflow
+        saves.push(body)
+        current = body
+        await route.fulfill({ json: { success: true, data: { workflow: current } } })
+        return
+      }
+      await route.fulfill({ json: { success: true, data: { workflow: current, active: false } } })
+    })
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/review-line")
+    const summary = page.getByRole("button", { name: /Model:/ })
+    await expect(summary).toContainText("Assistant default")
+    await summary.click()
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    const modelsReady = page.waitForResponse((res) => res.url().includes("/api/providers/models"))
+    await page.getByRole("option", { name: "OpenAI" }).click()
+    await modelsReady
+    await page.getByRole("button", { name: "Choose model" }).click()
+    await page.getByRole("menuitem", { name: "gpt-4o-mini" }).click()
+    await expect(summary).toContainText("gpt-4o-mini · from step")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText("Workflow saved")).toBeVisible()
+    expect(saves[0]).toMatchObject({
+      steps: [{ id: "plan", agent: "planner", model: "gpt-4o-mini", provider: "openai" }],
+    })
+
+    await page.reload()
+    await expect(page.getByRole("button", { name: /Model:/ })).toContainText("gpt-4o-mini · from step")
+  })
+
+  test("shows the model a step used", async ({ page }) => {
+    await page.route("**/api/runs/run-1/events", (route) =>
+      fulfillSse(route, [
+        [
+          "run",
+          run({
+            steps: [
+              {
+                id: "plan",
+                agent: "planner",
+                status: "succeeded",
+                attempts: 1,
+                output: "Planned with a fast model",
+                toolExecutions: [],
+                filesChanged: [],
+                provider: "openai",
+                model: "gpt-4o-mini",
+                modelSource: "step",
+                task: "fast",
+              },
+              {
+                id: "review",
+                agent: "planner",
+                status: "succeeded",
+                attempts: 1,
+                output: "Reviewed on the agent model",
+                toolExecutions: [],
+                filesChanged: [],
+                provider: "anthropic",
+                model: "claude-sonnet-4-20250514",
+                modelSource: "agent",
+              },
+            ],
+          }),
+        ],
+      ])
+    )
+
+    await page.goto("/workflows/runs/run-1")
+    await expect(page.getByText("OpenAI · gpt-4o-mini · from step · task:fast")).toBeVisible()
+    await expect(page.getByText("Anthropic · claude-sonnet-4-20250514 · from agent")).toBeVisible()
+  })
+
+  test("shows the agent model when the step inherits, and keeps a task kind", async ({ page }) => {
+    await page.route("**/api/artifacts", (route) => {
+      if (route.request().method() !== "GET") return route.fallback()
+      return route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              name: "planner",
+              type: "agent",
+              platform: "cursor",
+              description: "Plans work.",
+              frontmatter: { name: "planner", description: "Plans work.", model: "gpt-4o", provider: "openai" },
+              body: "Plan.",
+              relativePath: ".cursor/agents/planner.md",
+            },
+          ],
+        },
+      })
+    })
+    await page.route("**/api/settings/ai", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            settings: {
+              assistant: { maxToolTurns: 8, autoApproveFileWrites: false },
+              jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
+              models: { fast: { provider: "openai", model: "gpt-4o-mini" } },
+            },
+          },
+        },
+      })
+    )
+    let current = workflow
+    const saves: unknown[] = []
+    await page.route("**/api/workflows/review-line", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON() as typeof workflow
+        saves.push(body)
+        current = body
+        await route.fulfill({ json: { success: true, data: { workflow: current } } })
+        return
+      }
+      await route.fulfill({ json: { success: true, data: { workflow: current, active: false } } })
+    })
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/review-line")
+    const summary = page.getByRole("button", { name: /Model:/ })
+    await expect(summary).toContainText("gpt-4o · from agent")
+    await summary.click()
+    const settingsReady = page.waitForResponse((res) => res.url().includes("/api/settings/ai"))
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    await page.getByRole("option", { name: "Fast" }).click()
+    await settingsReady
+    await expect(summary).toContainText("task:fast → gpt-4o-mini (OpenAI) · from step")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText("Workflow saved")).toBeVisible()
+    expect(saves[0]).toMatchObject({ steps: [{ id: "plan", agent: "planner", model: "task:fast" }] })
+    expect((saves[0] as { steps: Array<{ provider?: string }> }).steps[0]?.provider).toBeUndefined()
+
+    const reloaded = page.waitForResponse(
+      (res) => res.url().includes("/api/settings/ai") && !res.url().includes("/models")
+    )
+    await page.reload()
+    await reloaded
+    await expect(page.getByRole("button", { name: /Model:/ })).toContainText(
+      "task:fast → gpt-4o-mini (OpenAI) · from step"
+    )
   })
 
   test("approves a tool call from the run view", async ({ page }) => {

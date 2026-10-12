@@ -9,7 +9,7 @@ import {
 import { newRun } from "@/lib/workflows/executor"
 import { buildStepMessage, filesChangedBy, handoffsFor } from "@/lib/workflows/handoff"
 import { isDue } from "@/lib/workflows/runner"
-import { workflowSchema, type StepRun, type Workflow } from "@/lib/workflows/schema"
+import { isWorkflowRun, workflowSchema, type StepRun, type Workflow } from "@/lib/workflows/schema"
 import {
   deleteWorkflow,
   listRuns,
@@ -46,6 +46,65 @@ describe("workflowSchema", () => {
     expect(parsed.trigger).toEqual({ type: "manual" })
     expect(parsed.limits).toEqual({ stepTimeoutMinutes: 10, runTimeoutMinutes: 60, maxRetries: 1 })
     expect(parsed.steps[0]).toMatchObject({ input: "previous", allowWrites: false, maxTurns: 6, gate: false })
+  })
+
+  it("accepts a step model and still parses workflows saved without one", () => {
+    const parsed = workflowSchema.parse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", model: "gpt-4o", provider: "openai" }],
+    })
+    expect(parsed.steps[0]).toMatchObject({ model: "gpt-4o", provider: "openai" })
+    const old = workflowSchema.parse({ name: "line", steps: [{ id: "a", agent: "planner" }] })
+    expect(old.steps[0].model).toBeUndefined()
+    expect(old.steps[0].provider).toBeUndefined()
+  })
+
+  it("still accepts a run saved before model fields existed", () => {
+    const old = {
+      id: "run-old",
+      workflow: "line",
+      workspaceRoot: "/tmp/ws",
+      status: "succeeded",
+      trigger: "manual",
+      task: "Ship it",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      steps: [{ id: "plan", agent: "planner", status: "succeeded", attempts: 1, toolExecutions: [], filesChanged: [] }],
+    }
+    expect(isWorkflowRun(old)).toBe(true)
+    if (isWorkflowRun(old)) {
+      expect(old.steps[0].model).toBeUndefined()
+      expect(old.steps[0].modelSource).toBeUndefined()
+    }
+  })
+
+  it("rejects a bad step model and names the step", () => {
+    const task = workflowSchema.safeParse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", model: "task:nope" }],
+    })
+    expect(task.success).toBe(false)
+    if (!task.success) expect(task.error.issues[0]?.message).toBe('Step "review": Unknown model task "nope"')
+
+    const voice = workflowSchema.safeParse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", model: "task:voice" }],
+    })
+    expect(voice.success).toBe(false)
+    if (!voice.success) expect(voice.error.issues[0]?.message).toBe('Step "review": "voice" is not a chat model task')
+
+    const lone = workflowSchema.safeParse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", provider: "openai" }],
+    })
+    expect(lone.success).toBe(false)
+    if (!lone.success) expect(lone.error.issues[0]?.message).toBe('Step "review": A provider without a model is ignored')
+
+    const provider = workflowSchema.safeParse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", model: "task:vision", provider: "openai" }],
+    })
+    expect(provider.success).toBe(false)
+    if (!provider.success) expect(provider.error.issues[0]?.message).toBe('Step "review": A task kind cannot set a provider')
   })
 
   it("rejects duplicate step ids, bad triggers and empty steps", () => {

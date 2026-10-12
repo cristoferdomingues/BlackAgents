@@ -73,6 +73,43 @@ describe("serializeArtifact", () => {
     expect(matter(content).data).toMatchObject({ name: "demo" })
   })
 
+  it("writes an agent model and clears it when the editor sends null", () => {
+    const saved = serializeArtifact(input({ extra: { model: "gpt-4o", provider: "openai" } }))
+    expect(matter(saved.content).data).toMatchObject({ model: "gpt-4o", provider: "openai" })
+
+    const cleared = serializeArtifact(
+      input({ extra: { model: null, provider: null } }),
+      matter(saved.content).data
+    )
+    expect(matter(cleared.content).data.model).toBeUndefined()
+    expect(matter(cleared.content).data.provider).toBeUndefined()
+  })
+
+  it("keeps a hand-written model when the editor does not send one", () => {
+    const { content } = serializeArtifact(input({ extra: { parallel: true } }), {
+      model: "sonnet",
+      provider: "anthropic",
+      customAuthor: "Ada",
+    })
+    expect(matter(content).data).toMatchObject({
+      model: "sonnet",
+      provider: "anthropic",
+      parallel: true,
+      customAuthor: "Ada",
+    })
+  })
+
+  it("drops model and provider for non-agents", () => {
+    const { content } = serializeArtifact(
+      input({ type: "rule", extra: { model: "gpt-4o", provider: "openai", alwaysApply: true } }),
+      { model: "gpt-4o", provider: "openai" }
+    )
+    const data = matter(content).data
+    expect(data.model).toBeUndefined()
+    expect(data.provider).toBeUndefined()
+    expect(data.alwaysApply).toBe(true)
+  })
+
   it("preserves unmanaged frontmatter fields from existingFrontmatter", () => {
     const existing = {
       name: "old-name",

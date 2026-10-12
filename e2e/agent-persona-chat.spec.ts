@@ -139,6 +139,8 @@ test.describe("agent persona chat", () => {
     })
 
     await page.goto("/chat?agent=tester")
+    await expect(page.getByRole("textbox", { name: "Model" })).toBeEnabled()
+    await expect(page.getByText("from agent")).toHaveCount(0)
     const message = page.getByRole("textbox", { name: "Message tester" })
     await message.fill("How will you approach this?")
     await page.getByRole("button", { name: "Send" }).click()
@@ -185,5 +187,233 @@ test.describe("agent persona chat", () => {
     await expect(
       page.getByText("OpenAI rejected the API key", { exact: true })
     ).toBeVisible()
+  })
+
+  test("uses the agent model in the header and keeps the saved picker", async ({ page }) => {
+    const puts: unknown[] = []
+    await page.route("**/api/artifacts", async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              ...tester,
+              frontmatter: {
+                ...tester.frontmatter,
+                model: "claude-sonnet-4-20250514",
+                provider: "anthropic",
+              },
+            },
+          ],
+        },
+      })
+    })
+    await stubProviders(page, () => "valid")
+    await page.route("**/api/providers", async (route) => {
+      if (route.request().method() === "PUT") puts.push(route.request().postDataJSON())
+      await route.fallback()
+    })
+    let chatBody: { model?: string } | undefined
+    await page.route("**/api/chat", async (route) => {
+      chatBody = route.request().postDataJSON() as { model?: string }
+      await fulfillSse(route, [
+        [
+          "context",
+          {
+            artifacts: [],
+            model: {
+              provider: "anthropic",
+              model: "claude-sonnet-4-20250514",
+              source: "agent",
+            },
+          },
+        ],
+        ["token", { content: "Reviewing." }],
+        ["done", { content: "Reviewing.", model: "claude-sonnet-4-20250514" }],
+      ])
+    })
+
+    await page.goto("/chat?agent=tester")
+    const model = page.getByRole("textbox", { name: "Model" })
+    await expect(model).toBeDisabled()
+    await expect(model).toHaveValue("claude-sonnet-4-20250514")
+    await expect(page.getByText("claude-sonnet-4-20250514 · from agent")).toBeVisible()
+    await model.hover()
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "This agent picks its own model. Edit the agent to change it."
+    )
+
+    await page.getByRole("textbox", { name: "Message tester" }).fill("Look at this")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(
+      page.getByText("claude-sonnet-4-20250514 · anthropic · from agent")
+    ).toBeVisible()
+    expect(chatBody?.model).toBe("gpt-4o-mini")
+    expect(JSON.stringify(puts)).not.toContain("claude-sonnet-4-20250514")
+  })
+
+  test("shows a task kind from the agent, then the resolved model", async ({ page }) => {
+    await page.route("**/api/artifacts", async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              ...tester,
+              frontmatter: { ...tester.frontmatter, model: "task:vision" },
+            },
+          ],
+        },
+      })
+    })
+    await stubProviders(page, () => "valid")
+    await page.route("**/api/chat", async (route) => {
+      await fulfillSse(route, [
+        [
+          "context",
+          {
+            artifacts: [],
+            model: { provider: "openai", model: "gpt-4o", source: "agent", task: "vision" },
+          },
+        ],
+        ["done", { content: "I can see it.", model: "gpt-4o" }],
+      ])
+    })
+
+    await page.goto("/chat?agent=tester")
+    await expect(page.getByRole("textbox", { name: "Model" })).toBeDisabled()
+    await expect(page.getByText("task:vision · from agent")).toBeVisible()
+    await page.getByRole("textbox", { name: "Message tester" }).fill("What is in the image?")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("task:vision → gpt-4o · openai · from agent")).toBeVisible()
+  })
+})
+
+test.describe("agent model editor", () => {
+  test.beforeEach(async ({ page }) => {
+    await stubWorkspace(page)
+    await stubProviders(page, () => "valid")
+    await page.route("**/api/settings/ai", async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            settings: {
+              assistant: { maxToolTurns: 8, autoApproveFileWrites: false },
+              jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
+              models: {},
+            },
+            jevKey: { configured: false },
+            jevOpenRouterKey: { configured: false },
+            aiOpenRouter: { available: false },
+            openRouterAvailable: false,
+            activeProvider: null,
+          },
+        },
+      })
+    })
+  })
+
+  function reviewer(frontmatter: Record<string, unknown>) {
+    return {
+      name: "reviewer",
+      type: "agent",
+      platform: "cursor",
+      description: "Reviews pull requests",
+      frontmatter: {
+        name: "reviewer",
+        description: "Reviews pull requests",
+        ...frontmatter,
+      },
+      body: "Review carefully.",
+      relativePath: ".cursor/agents/reviewer.md",
+    }
+  }
+
+  async function stubAgent(page: Page, frontmatter: Record<string, unknown>): Promise<unknown[]> {
+    const saved: unknown[] = []
+    const artifact = reviewer(frontmatter)
+    await page.route("**/api/artifacts/agent/reviewer", async (route) => {
+      if (route.request().method() === "PUT") {
+        saved.push(route.request().postDataJSON())
+        await route.fulfill({ json: { success: true, data: artifact } })
+        return
+      }
+      await route.fulfill({ json: { success: true, data: artifact } })
+    })
+    return saved
+  }
+
+  test("saves a task kind and leaves the provider empty", async ({ page }) => {
+    const saved = await stubAgent(page, {})
+    await page.goto("/agents/reviewer")
+    await expect(page.getByLabel("Name")).toHaveValue("reviewer")
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    await page.getByRole("option", { name: "Vision" }).click()
+    await expect(page.getByRole("link", { name: "not set" })).toHaveAttribute("href", "/settings?tab=ai")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText('Agent "reviewer" saved')).toBeVisible()
+    expect(saved[0]).toMatchObject({ extra: { model: "task:vision", provider: null } })
+  })
+
+  test("saves a model, keeps it after reload, then clears it", async ({ page }) => {
+    let frontmatter: Record<string, unknown> = {}
+    const saved: unknown[] = []
+    await page.route("**/api/artifacts/agent/reviewer", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON() as {
+          extra?: { model?: string | null; provider?: string | null }
+        }
+        saved.push(body)
+        const extra = body.extra ?? {}
+        frontmatter = {}
+        if (typeof extra.model === "string") frontmatter.model = extra.model
+        if (typeof extra.provider === "string") frontmatter.provider = extra.provider
+      }
+      await route.fulfill({ json: { success: true, data: reviewer(frontmatter) } })
+    })
+
+    await page.goto("/agents/reviewer")
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    const modelsReady = page.waitForResponse((res) => res.url().includes("/api/providers/models"))
+    await page.getByRole("option", { name: "OpenAI" }).click()
+    await modelsReady
+    await page.getByRole("button", { name: "Choose model" }).click()
+    await page.getByRole("menuitem", { name: "gpt-4o-mini" }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText('Agent "reviewer" saved')).toBeVisible()
+    expect(saved[0]).toMatchObject({ extra: { model: "gpt-4o-mini", provider: "openai" } })
+
+    await page.reload()
+    await expect(page.getByRole("textbox", { name: "Agent model" })).toHaveValue("gpt-4o-mini")
+    await expect(page.getByRole("combobox", { name: "Model provider" })).toContainText("OpenAI")
+
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    await page.getByRole("option", { name: "Inherit", exact: true }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect.poll(() => saved.length).toBe(2)
+    expect(saved[1]).toMatchObject({ extra: { model: null, provider: null } })
+    await page.reload()
+    await expect(page.getByRole("combobox", { name: "Model provider" })).toContainText("Inherit")
+    await expect(page.getByRole("textbox", { name: "Agent model" })).toHaveCount(0)
+  })
+
+  test("keeps an alias and clears a real model with null", async ({ page }) => {
+    const aliasSaves = await stubAgent(page, { model: "sonnet" })
+    await page.goto("/agents/reviewer")
+    await expect(page.getByLabel("Name")).toHaveValue("reviewer")
+    await expect(page.getByRole("combobox", { name: "Model provider" })).toContainText("Inherit")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText('Agent "reviewer" saved')).toBeVisible()
+    expect(aliasSaves[0]).toMatchObject({ extra: { model: "sonnet", provider: null } })
+
+    const clearSaves = await stubAgent(page, { model: "gpt-4o", provider: "openai" })
+    await page.goto("/agents/reviewer")
+    await expect(page.getByRole("textbox", { name: "Agent model" })).toHaveValue("gpt-4o")
+    await page.getByRole("combobox", { name: "Model provider" }).click()
+    await page.getByRole("option", { name: "Inherit", exact: true }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect.poll(() => clearSaves.length).toBe(1)
+    expect(clearSaves[0]).toMatchObject({ extra: { model: null, provider: null } })
   })
 })

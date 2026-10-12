@@ -20,6 +20,15 @@ import {
   type WorkflowRun,
   type WorkflowStep,
 } from "@/lib/workflows/schema"
+import {
+  effectiveModelText,
+  isTaskSelectValue,
+  modelFormFromFrontmatter,
+  stepModelFields,
+  stepModelIssue,
+  type ModelSelectValue,
+} from "@/components/features/models/model-choice"
+import { useSavedTaskModels } from "@/components/features/models/model-choice-fields"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { Button } from "@/components/ui/button"
@@ -31,6 +40,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
 import { formatTime, RunStatusBadge } from "./run-status"
+import { StepModelSection } from "./step-model-section"
 
 const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
   { id: "openai", label: "OpenAI" },
@@ -50,6 +60,8 @@ interface StepDraft {
   allowWrites: boolean
   maxTurns: number
   gate: boolean
+  modelChoice: ModelSelectValue
+  model: string
 }
 
 interface Draft {
@@ -83,6 +95,8 @@ function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
     allowWrites: false,
     maxTurns: 6,
     gate: false,
+    modelChoice: "inherit",
+    model: "",
   }
 }
 
@@ -100,42 +114,33 @@ function toDraft(wf: Workflow): Draft {
     runTimeoutMinutes: wf.limits.runTimeoutMinutes,
     maxRetries: wf.limits.maxRetries,
     selfAssess: wf.selfAssess,
-    steps: wf.steps.map((s) => ({
-      key: nextKey(),
-      id: s.id,
-      agent: s.agent,
-      instructions: s.instructions,
-      input: s.input,
-      ownTools: !s.tools,
-      tools: s.tools ?? [...DEFAULT_AGENT_TOOLS],
-      mcpServers: s.mcpServers,
-      allowWrites: s.allowWrites,
-      maxTurns: s.maxTurns,
-      gate: s.gate,
-    })),
+    steps: wf.steps.map((s) => {
+      const modelFields = modelFormFromFrontmatter(s.model, s.provider)
+      return {
+        key: nextKey(),
+        id: s.id,
+        agent: s.agent,
+        instructions: s.instructions,
+        input: s.input,
+        ownTools: !s.tools,
+        tools: s.tools ?? [...DEFAULT_AGENT_TOOLS],
+        mcpServers: s.mcpServers,
+        allowWrites: s.allowWrites,
+        maxTurns: s.maxTurns,
+        gate: s.gate,
+        modelChoice: modelFields.modelChoice,
+        model: modelFields.modelAlias || modelFields.modelId,
+      }
+    }),
   }
 }
 
-function toInput(d: Draft): unknown {
-  return {
-    name: d.name.trim(),
-    description: d.description.trim(),
-    task: d.task,
-    provider: d.provider === "default" ? undefined : d.provider,
-    model: d.model.trim() || undefined,
-    trigger:
-      d.triggerType === "interval"
-        ? { type: "interval", everyMinutes: d.everyMinutes }
-        : d.triggerType === "daily"
-          ? { type: "daily", at: d.at }
-          : { type: "manual" },
-    limits: {
-      stepTimeoutMinutes: d.stepTimeoutMinutes,
-      runTimeoutMinutes: d.runTimeoutMinutes,
-      maxRetries: d.maxRetries,
-    },
-    selfAssess: d.selfAssess,
-    steps: d.steps.map((s) => ({
+function toInput(d: Draft): { body: unknown; error: string | null } {
+  const steps: unknown[] = []
+  for (const s of d.steps) {
+    const issue = stepModelIssue(s.modelChoice, s.model, s.id.trim() || s.id)
+    if (issue) return { body: null, error: issue }
+    steps.push({
       id: s.id.trim(),
       agent: s.agent,
       instructions: s.instructions,
@@ -145,7 +150,31 @@ function toInput(d: Draft): unknown {
       allowWrites: s.allowWrites,
       maxTurns: s.maxTurns,
       gate: s.gate,
-    })),
+      ...stepModelFields(s.modelChoice, s.model),
+    })
+  }
+  return {
+    error: null,
+    body: {
+      name: d.name.trim(),
+      description: d.description.trim(),
+      task: d.task,
+      provider: d.provider === "default" ? undefined : d.provider,
+      model: d.model.trim() || undefined,
+      trigger:
+        d.triggerType === "interval"
+          ? { type: "interval", everyMinutes: d.everyMinutes }
+          : d.triggerType === "daily"
+            ? { type: "daily", at: d.at }
+            : { type: "manual" },
+      limits: {
+        stepTimeoutMinutes: d.stepTimeoutMinutes,
+        runTimeoutMinutes: d.runTimeoutMinutes,
+        maxRetries: d.maxRetries,
+      },
+      selfAssess: d.selfAssess,
+      steps,
+    },
   }
 }
 
@@ -187,6 +216,13 @@ export function WorkflowBuilder({ name }: { name?: string }) {
   }))
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const needsTaskModels =
+    draft.model.trim().startsWith("task:") ||
+    draft.steps.some((step) => isTaskSelectValue(step.modelChoice)) ||
+    agents.some(
+      (agent) => typeof agent.frontmatter.model === "string" && agent.frontmatter.model.trim().startsWith("task:")
+    )
+  const taskModels = useSavedTaskModels(needsTaskModels)
 
   React.useEffect(() => {
     if (!name || !workspace) return
@@ -227,7 +263,12 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     })
 
   async function save() {
-    const parsed = workflowSchema.safeParse(toInput(draft))
+    const input = toInput(draft)
+    if (input.error) {
+      setError(input.error)
+      return
+    }
+    const parsed = workflowSchema.safeParse(input.body)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
       setError(`${issue?.path.length ? `${issue.path.join(".")}: ` : ""}${issue?.message ?? "Invalid workflow"}`)
@@ -478,6 +519,26 @@ export function WorkflowBuilder({ name }: { name?: string }) {
                   </div>
                 ) : null}
               </div>
+              <StepModelSection
+                stepKey={step.key}
+                modelChoice={step.modelChoice}
+                model={step.model}
+                summary={(() => {
+                  const fields = stepModelFields(step.modelChoice, step.model)
+                  const agent = agents.find((item) => item.name === step.agent)
+                  return effectiveModelText({
+                    stepModel: fields.model,
+                    stepProvider: fields.provider,
+                    agentModel: agent?.frontmatter.model,
+                    agentProvider: agent?.frontmatter.provider,
+                    workflowModel: draft.model,
+                    workflowProvider: draft.provider === "default" ? undefined : draft.provider,
+                    tasks: taskModels.choices,
+                  })
+                })()}
+                taskChoices={taskModels.choices}
+                onChange={(patch) => setStep(step.key, patch)}
+              />
               <div className="flex items-center gap-2">
                 <Switch
                   id={`${step.key}-writes`}

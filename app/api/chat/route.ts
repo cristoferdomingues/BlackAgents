@@ -46,6 +46,12 @@ export async function POST(req: Request) {
         artifacts: chat.selection.artifacts,
         jev: chat.selection.jev,
         tools: chat.tools.length,
+        model: {
+          provider: chat.provider.id,
+          model: chat.model,
+          source: chat.modelSource,
+          ...(chat.modelTask ? { task: chat.modelTask } : {}),
+        },
       })
       try {
         const result = await runChat(chat, {

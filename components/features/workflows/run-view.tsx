@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
+import { formatRunStepModel } from "@/components/features/models/model-choice"
+
 import { formatTime, RunStatusBadge } from "./run-status"
 
 type ViewState =
@@ -116,7 +118,9 @@ export function RunView({ id }: { id: string }) {
       ) : null}
 
       <ol className="space-y-3" aria-label="Steps">
-        {run.steps.map((step, index) => (
+        {run.steps.map((step, index) => {
+          const modelLine = formatRunStepModel(step)
+          return (
           <li key={step.id}>
             <Card>
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
@@ -133,6 +137,9 @@ export function RunView({ id }: { id: string }) {
                   {step.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-primary" aria-label="Step running" /> : null}
                   <RunStatusBadge status={step.status} />
                 </div>
+                {modelLine ? (
+                  <p className="w-full text-xs text-muted-foreground">{modelLine}</p>
+                ) : null}
               </CardHeader>
               {step.output || step.error || step.toolExecutions.length > 0 || step.filesChanged.length > 0 ? (
                 <CardContent className="space-y-3">
@@ -157,7 +164,8 @@ export function RunView({ id }: { id: string }) {
               ) : null}
             </Card>
           </li>
-        ))}
+          )
+        })}
       </ol>
 
       {finished && run.status === "succeeded" && lastOutput?.output ? (

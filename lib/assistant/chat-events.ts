@@ -35,7 +35,19 @@ export const turnArtifactSchema = z.object({
   source: z.enum(["mention", "auto", "linked"]),
 })
 
-export const chatContextEventSchema = z.object({ artifacts: z.array(turnArtifactSchema).default([]) })
+export const chatContextModelSchema = z.object({
+  provider: z.enum(["openai", "anthropic", "custom"]),
+  model: z.string(),
+  source: z.enum(["step", "agent", "workflow", "assistant"]),
+  task: z.enum(["vision", "fast", "reasoning"]).optional(),
+})
+export type ChatContextModel = z.infer<typeof chatContextModelSchema>
+
+export const chatContextEventSchema = z.object({
+  artifacts: z.array(turnArtifactSchema).default([]),
+  /** A bad model object is ignored so the rest of the event still applies. */
+  model: chatContextModelSchema.optional().catch(undefined),
+})
 export const chatTokenEventSchema = z.object({ content: z.string() })
 export const chatToolResultEventSchema = z.object({ trace: toolTraceSchema })
 export const chatApprovalRequiredEventSchema = z.object({ approval: approvalRequestSchema })

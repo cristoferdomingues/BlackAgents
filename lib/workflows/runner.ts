@@ -14,7 +14,7 @@ import { buildToolset } from "@/lib/runtime/tools"
 
 import { filesChangedSince } from "./changes"
 import { executeRun, newRun, type ExecutorDeps } from "./executor"
-import { resolveRunLlm } from "./llm"
+import { ensureWorkflowModels, resolveRunLlm } from "./llm"
 import { isTerminal, type Workflow, type WorkflowRun, type WorkflowTrigger } from "./schema"
 import { listRuns, listWorkflows, pruneRuns, readWorkflow, RUNS_DIR, saveRun } from "./store"
 
@@ -189,11 +189,40 @@ export class WorkflowRunner {
         entry.lastSkip = { at: now.toISOString(), reason: skip }
         continue
       }
+      const modelError = await this.modelGate(root, workflow)
+      if (modelError) {
+        const run = newRun({
+          id: randomUUID(),
+          workflow,
+          workspaceRoot: root,
+          trigger: "schedule",
+          task: workflow.task,
+          now,
+        })
+        run.status = "failed"
+        run.error = modelError
+        run.startedAt = now.toISOString()
+        run.finishedAt = now.toISOString()
+        for (const step of run.steps) step.status = "skipped"
+        await saveRun(run)
+        this.emit(run)
+        continue
+      }
       await this.enqueue({ root, workflow, trigger: "schedule" })
       started.push(workflow.name)
     }
     if (changed) await writeScheduleState(root, state)
     return started
+  }
+
+  /** Fail the scheduled run before it starts when a step's model cannot be used. */
+  private async modelGate(root: string, workflow: Workflow): Promise<string | null> {
+    try {
+      await ensureWorkflowModels(root, workflow, (layers, options) => this.deps.resolveLlm(layers, options))
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : "No usable AI provider"
+    }
   }
 
   /** Returns a skip reason only when Jev is very sure nothing needs doing. */
@@ -267,7 +296,7 @@ export class WorkflowRunner {
 
 export const defaultExecutorDeps: Omit<ExecutorDeps, "save" | "emit"> = {
   artifacts: scanWorkspace,
-  resolveLlm: (workflow) => resolveRunLlm({ provider: workflow.provider, model: workflow.model }),
+  resolveLlm: (layers, options) => resolveRunLlm(layers, options),
   buildTools: buildToolset,
   decision: loadDecisionClient,
   brainContext: loadBrainContext,

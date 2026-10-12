@@ -1,7 +1,10 @@
 import { z } from "zod"
 
+import { getProviderSecret } from "@/lib/secrets"
+
+import { getProvider } from "./registry"
 import type { ModelInfo } from "./task-models"
-import { ProviderError } from "./types"
+import { ProviderError, type ProviderId } from "./types"
 
 interface OpenAIModelsResponse {
   data?: Array<{ id?: string }>
@@ -48,6 +51,7 @@ const modelsWithModalitiesSchema = z.object({
           output_modalities: z.array(z.string()).optional(),
         })
         .optional(),
+      supported_parameters: z.array(z.string()).optional(),
     })
   ),
 })
@@ -84,9 +88,65 @@ export async function listModelsWithModalities(
       ...(m.architecture?.output_modalities
         ? { outputModalities: m.architecture.output_modalities }
         : {}),
+      ...(m.supported_parameters ? { supportedParameters: m.supported_parameters } : {}),
     })
   }
   return models.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+export interface ProviderModelList {
+  models: ModelInfo[]
+  source: "static" | "live"
+  warning?: string
+}
+
+/**
+ * Models for a provider picker. Anthropic is the curated list. OpenAI merges
+ * a live `/models` list onto that catalog. Custom keeps modality metadata.
+ */
+export async function listProviderModels(id: ProviderId): Promise<ProviderModelList> {
+  const provider = getProvider(id)
+  if (!provider) return { models: [], source: "static" }
+  const secret = await getProviderSecret(id)
+  const staticModels: ModelInfo[] = provider.models.map((modelId) => ({ id: modelId }))
+
+  if (id === "anthropic") return { models: staticModels, source: "static" }
+
+  const canListLive =
+    (id === "openai" && Boolean(secret?.apiKey)) || (id === "custom" && Boolean(secret?.baseUrl))
+  if (!canListLive) return { models: staticModels, source: "static" }
+
+  const baseUrl = id === "openai" ? "https://api.openai.com/v1" : secret?.baseUrl
+  if (!baseUrl) return { models: staticModels, source: "static" }
+  const apiKey = secret?.apiKey ?? ""
+
+  try {
+    if (id === "custom") {
+      const live = await listModelsWithModalities(baseUrl, apiKey)
+      return { models: mergeModelInfo(staticModels, live), source: "live" }
+    }
+    const live = await listOpenAICompatibleModels(baseUrl, apiKey)
+    return {
+      models: mergeModelLists(provider.models, live).map((modelId) => ({ id: modelId })),
+      source: "live",
+    }
+  } catch (err) {
+    if (err instanceof ProviderError) {
+      return { models: staticModels, source: "static", warning: err.message }
+    }
+    throw err
+  }
+}
+
+function mergeModelInfo(primary: ModelInfo[], extra: ModelInfo[]): ModelInfo[] {
+  const seen = new Set<string>()
+  const out: ModelInfo[] = []
+  for (const model of [...primary, ...extra]) {
+    if (seen.has(model.id)) continue
+    seen.add(model.id)
+    out.push(model)
+  }
+  return out
 }
 
 /** Prefer first-seen order (static curated models stay on top). */
@@ -104,11 +164,7 @@ export function mergeModelLists(...lists: string[][]): string[] {
   return out
 }
 
-export function filterModels(models: string[], query: string): string[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return models
-  return models.filter((m) => m.toLowerCase().includes(q))
-}
+export { filterModels } from "./filter-models"
 
 function uniqueSorted(ids: string[]): string[] {
   return [...new Set(ids)].sort((a, b) => a.localeCompare(b))

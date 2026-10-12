@@ -125,6 +125,7 @@ When the user wants a workflow (agents that run one after another, each handing 
 Rules for the workflow block:
 - 1 to ${MAX_WORKFLOW_STEPS} steps. Every "agent" must be an agent listed in the workspace artifacts above. If a needed agent is missing, say so and propose it first (draft or bundle).
 - Step "input" is "previous" (last output), "task" (only the run's task), or "all" (every earlier output). Step ids are unique kebab-case.
+- A step may set "model" and "provider" only when the user asks for a specific model on that step.
 - "trigger" is { "type": "manual" }, { "type": "interval", "everyMinutes": 5-1440 }, or { "type": "daily", "at": "HH:MM" }.
 - To update a workflow listed above, keep its name and return the full definition.
 - The user starts a workflow by typing "/workflow-name input" or "start @workflow-name"; the app handles that, not you.

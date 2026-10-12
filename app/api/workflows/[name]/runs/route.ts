@@ -4,7 +4,8 @@ import { ok, fail, handle } from "@/lib/api-response"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { readConfig } from "@/lib/config"
 import { CredentialStateError } from "@/lib/llm/credentials"
-import { resolveRunLlm } from "@/lib/workflows/llm"
+import { ModelRefError } from "@/lib/llm/model-ref"
+import { ensureWorkflowModels, resolveRunLlm } from "@/lib/workflows/llm"
 import { getRunner } from "@/lib/workflows/runner"
 import { summarizeRun } from "@/lib/workflows/schema"
 import { listRuns, readWorkflow } from "@/lib/workflows/store"
@@ -37,10 +38,12 @@ export async function POST(req: Request, ctx: RouteContext) {
     const workflow = await readWorkflow(currentPath, name)
     if (!workflow) return fail("Workflow not found", 404)
     try {
-      await resolveRunLlm({ provider: workflow.provider, model: workflow.model })
+      await ensureWorkflowModels(currentPath, workflow, (layers, options) => resolveRunLlm(layers, options))
     } catch (err) {
-      const status = err instanceof CredentialStateError ? err.status : 412
-      return fail(err instanceof Error ? err.message : "No usable AI provider", status)
+      if (err instanceof ModelRefError || err instanceof CredentialStateError) {
+        return fail(err.message, err.status)
+      }
+      return fail(err instanceof Error ? err.message : "No usable AI provider", 412)
     }
     const run = await getRunner().enqueue({
       root: currentPath,

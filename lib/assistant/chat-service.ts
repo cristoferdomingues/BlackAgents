@@ -13,8 +13,18 @@ import { readConfig } from "@/lib/config"
 import { loadDecisionClient } from "@/lib/decision/client"
 import { buildAgentPersonaContext, buildSystemContext } from "@/lib/llm/context"
 import { getVerifiedCredentials, CredentialStateError } from "@/lib/llm/credentials"
+import {
+  agentModelLayer,
+  ModelRefError,
+  selectLayeredModel,
+  resolveTaskRef,
+  unverifiedProviderMessage,
+  type ModelLayer,
+  type ModelSource,
+} from "@/lib/llm/model-ref"
 import { getProvider, isProviderId } from "@/lib/llm/registry"
-import type { ChatMessage, LLMCredentials, LLMProvider } from "@/lib/llm/types"
+import type { ChatModelTask } from "@/lib/llm/task-models"
+import type { ChatMessage, LLMCredentials, LLMProvider, ProviderId } from "@/lib/llm/types"
 import type { ProviderSecret } from "@/lib/secrets"
 import { readAiSettings } from "@/lib/settings"
 import { createApprovalPolicy } from "@/lib/runtime/approval-policy"
@@ -49,6 +59,10 @@ export type ChatRequest = z.infer<typeof chatRequestSchema>
 export interface PreparedChat {
   provider: LLMProvider
   model: string
+  /** Which layer chose this model. */
+  modelSource: ModelSource
+  /** Set when the winning layer was `task:<kind>`. */
+  modelTask?: ChatModelTask
   credentials: LLMCredentials
   secret: ProviderSecret
   systemContext: string
@@ -80,10 +94,7 @@ function lastUserMessage(messages: ChatRequest["messages"]): string {
  */
 export async function prepareChat(request: ChatRequest): Promise<PrepareResult> {
   if (!isProviderId(request.provider)) return { ok: false, message: "Unknown provider", status: 400 }
-  const provider = getProvider(request.provider)
-  if (!provider) return { ok: false, message: "Unknown provider", status: 400 }
-  const model = request.model?.trim() || provider.models[0]
-  if (!model) return { ok: false, message: "A model is required for this provider", status: 400 }
+  if (!getProvider(request.provider)) return { ok: false, message: "Unknown provider", status: 400 }
 
   const config = await readConfig()
   const root = config.currentPath ?? null
@@ -94,11 +105,58 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
     persona = agent
   }
 
+  let layers: ModelLayer[]
+  try {
+    layers = []
+    if (persona) layers.push(agentModelLayer(persona))
+    const headerModel = request.model?.trim()
+    layers.push({
+      source: "assistant",
+      ref: headerModel
+        ? { kind: "id", model: headerModel, provider: request.provider }
+        : { kind: "inherit" },
+    })
+  } catch (error) {
+    if (error instanceof ModelRefError) return { ok: false, message: error.message, status: error.status }
+    throw error
+  }
+
+  const settingsPromise = readAiSettings()
+  const needsTask = layers.some((layer) => layer.ref.kind === "task")
+  const settingsForTask = needsTask ? await settingsPromise : undefined
+  let modelChoice: ReturnType<typeof selectLayeredModel>
+  try {
+    modelChoice = selectLayeredModel(layers, (task) => {
+      if (!settingsForTask) {
+        throw new ModelRefError("Set the model in Settings → AI → Models by task", 412, "task_unset")
+      }
+      return resolveTaskRef(task, settingsForTask)
+    })
+  } catch (error) {
+    if (error instanceof ModelRefError) return { ok: false, message: error.message, status: error.status }
+    throw error
+  }
+
+  const providerId: ProviderId = modelChoice?.provider ?? request.provider
+  const provider = getProvider(providerId)
+  if (!provider) return { ok: false, message: "Unknown provider", status: 400 }
+  const model = modelChoice?.model || request.model?.trim() || provider.models[0]
+  if (!model) return { ok: false, message: "A model is required for this provider", status: 400 }
+  const modelSource: ModelSource = modelChoice?.source ?? "assistant"
+  const modelTask = modelChoice?.task
+
   let verified: Awaited<ReturnType<typeof getVerifiedCredentials>>
   try {
     verified = await getVerifiedCredentials(provider)
   } catch (error) {
     if (error instanceof CredentialStateError) {
+      if (modelSource === "agent" && persona) {
+        return {
+          ok: false,
+          message: unverifiedProviderMessage({ kind: "agent", name: persona.name }, provider.label),
+          status: 412,
+        }
+      }
       return { ok: false, message: error.message, status: error.status }
     }
     throw error
@@ -107,7 +165,7 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   const [all, resolved, settings] = await Promise.all([
     root ? scanWorkspace(root) : Promise.resolve([] as Artifact[]),
     loadDecisionClient(),
-    readAiSettings(),
+    settingsPromise,
   ])
   const message = lastUserMessage(request.messages)
   const selection = await selectTurnArtifacts({ message, all, persona, resolved })
@@ -133,6 +191,8 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
     chat: {
       provider,
       model,
+      modelSource,
+      ...(modelTask ? { modelTask } : {}),
       credentials: verified.credentials,
       secret: verified.secret,
       systemContext: sections.join("\n\n"),

@@ -7,6 +7,7 @@ export interface StubArtifact {
   type: "agent" | "skill" | "rule" | "command"
   description: string
   body?: string
+  frontmatter?: Record<string, unknown>
 }
 
 export function artifact(a: StubArtifact) {
@@ -16,7 +17,7 @@ export function artifact(a: StubArtifact) {
     type: a.type,
     platform: "cursor",
     description: a.description,
-    frontmatter: { name: a.name, description: a.description },
+    frontmatter: { name: a.name, description: a.description, ...a.frontmatter },
     body: a.body ?? `Body of ${a.name}.`,
     relativePath: `.cursor/${dir}`,
   }

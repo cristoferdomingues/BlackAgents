@@ -6,7 +6,7 @@ import { z } from "zod"
  * which models fit it, using OpenRouter-style modality metadata.
  *
  * Planned growth, most specific wins: workflow step → agent `model:` →
- * task kind (this file) → workflow → Assistant default.
+ * workflow → Assistant default; any of them may name a task kind instead.
  */
 
 export const modelTaskSchema = z.enum(["voice"])

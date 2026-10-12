@@ -1,12 +1,20 @@
 import { fail, handle, ok } from "@/lib/api-response"
+import { isOpenRouterBaseUrl } from "@/lib/decision/client"
 import {
   CredentialStateError,
   getVerifiedCredentials,
   markInvalidOnAuthFailure,
 } from "@/lib/llm/credentials"
 import { getProvider, isProviderId } from "@/lib/llm/registry"
-import { supportsTranscription, transcribeAudio, transcribeRequestSchema } from "@/lib/llm/transcribe"
+import { resolveTaskModel } from "@/lib/llm/task-models"
+import {
+  supportsTranscription,
+  transcribeAudio,
+  transcribeRequestSchema,
+  VOICE_MODEL_MISSING,
+} from "@/lib/llm/transcribe"
 import { ProviderError } from "@/lib/llm/types"
+import { readAiSettings } from "@/lib/settings"
 
 /**
  * Voice fallback for the chat input: a recorded WAV clip becomes text with
@@ -33,8 +41,19 @@ export async function POST(req: Request) {
       throw error
     }
 
+    let model = request.model
+    if (provider.id === "custom" && !model) {
+      const settings = await readAiSettings()
+      model = resolveTaskModel(
+        "voice",
+        settings.models.voice,
+        isOpenRouterBaseUrl(verified.credentials.baseUrl)
+      )
+      if (!model) return fail(VOICE_MODEL_MISSING, 412)
+    }
+
     try {
-      const text = await transcribeAudio(provider.id, request, verified.credentials)
+      const text = await transcribeAudio(provider.id, { ...request, model }, verified.credentials)
       return ok({ text })
     } catch (err) {
       if (err instanceof ProviderError) {

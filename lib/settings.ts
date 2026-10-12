@@ -17,6 +17,8 @@ export type JevProviderPreference = z.infer<typeof jevProviderPreferenceSchema>
 export const jevOpenRouterKeySourceSchema = z.enum(["reuse", "dedicated"])
 export type JevOpenRouterKeySource = z.infer<typeof jevOpenRouterKeySourceSchema>
 
+const taskModelIdSchema = z.string().trim().min(1, "Choose a model").max(200)
+
 export const aiSettingsSchema = z.object({
   assistant: z
     .object({
@@ -35,6 +37,12 @@ export const aiSettingsSchema = z.object({
        * Default `reuse` preserves the previous “share Custom OpenRouter key” behavior.
        */
       openRouterKeySource: jevOpenRouterKeySourceSchema.default("reuse"),
+    })
+    .default({}),
+  /** Models by task (Custom provider). A missing entry uses the task's default. */
+  models: z
+    .object({
+      voice: taskModelIdSchema.optional(),
     })
     .default({}),
 })
@@ -56,6 +64,13 @@ export const aiSettingsPatchSchema = z.object({
     })
     .partial()
     .optional(),
+  /** A model id saves it; `null` goes back to the task's default. */
+  models: z
+    .object({
+      voice: taskModelIdSchema.nullable(),
+    })
+    .partial()
+    .optional(),
 })
 export type AiSettingsPatch = z.infer<typeof aiSettingsPatchSchema>
 
@@ -74,11 +89,25 @@ export async function readAiSettings(): Promise<AiSettings> {
   return aiSettingsSchema.parse({})
 }
 
+function mergeModels(
+  current: AiSettings["models"],
+  patch: AiSettingsPatch["models"]
+): AiSettings["models"] {
+  const next: AiSettings["models"] = { ...current }
+  for (const [task, model] of Object.entries(patch ?? {}) as [keyof AiSettings["models"], string | null | undefined][]) {
+    if (model === undefined) continue
+    if (model === null) delete next[task]
+    else next[task] = model
+  }
+  return next
+}
+
 export async function updateAiSettings(patch: AiSettingsPatch): Promise<AiSettings> {
   const current = await readAiSettings()
   const next = aiSettingsSchema.parse({
     assistant: { ...current.assistant, ...patch.assistant },
     jev: { ...current.jev, ...patch.jev },
+    models: mergeModels(current.models, patch.models),
   })
   await fs.mkdir(configDir(), { recursive: true })
   await fs.writeFile(settingsFile(), `${JSON.stringify(next, null, 2)}\n`, "utf8")

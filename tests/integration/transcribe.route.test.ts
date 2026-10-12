@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { POST } from "@/app/api/assistant/transcribe/route"
 import { getProviderSecret, setProviderSecret } from "@/lib/secrets"
+import { updateAiSettings } from "@/lib/settings"
 
 import { jsonRequest, makeTempEnv, type TempEnv } from "../helpers/workspace"
 
@@ -55,6 +56,41 @@ describe("POST /api/assistant/transcribe", () => {
     expect(await res.json()).toEqual({ success: true, data: { text: "create a rule" } })
     const init = fetchMock.mock.calls[0][1] as RequestInit
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer sk-valid")
+  })
+
+  describe("custom provider voice model", () => {
+    const verified = { status: "valid" as const, checkedAt: "2026-10-11T10:00:00.000Z" }
+    const okReply = { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "hi" } }] }) }
+    const sentModel = (fetchMock: ReturnType<typeof vi.fn>): unknown =>
+      JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).model
+
+    it("uses google/gemini-2.5-flash on OpenRouter when nothing is saved", async () => {
+      await setProviderSecret("custom", { apiKey: "k", baseUrl: "https://openrouter.ai/api/v1", verification: verified })
+      const fetchMock = vi.fn().mockResolvedValue(okReply)
+      vi.stubGlobal("fetch", fetchMock)
+      const res = await post({ ...body, provider: "custom" })
+      expect(res.status).toBe(200)
+      expect(sentModel(fetchMock)).toBe("google/gemini-2.5-flash")
+    })
+
+    it("uses the model saved in Settings → AI", async () => {
+      await setProviderSecret("custom", { apiKey: "k", baseUrl: "https://openrouter.ai/api/v1", verification: verified })
+      await updateAiSettings({ models: { voice: "openai/gpt-4o-audio-preview" } })
+      const fetchMock = vi.fn().mockResolvedValue(okReply)
+      vi.stubGlobal("fetch", fetchMock)
+      await post({ ...body, provider: "custom" })
+      expect(sentModel(fetchMock)).toBe("openai/gpt-4o-audio-preview")
+    })
+
+    it("asks for a voice model on other endpoints with nothing saved", async () => {
+      await setProviderSecret("custom", { apiKey: "k", baseUrl: "http://localhost:1234/v1", verification: verified })
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+      const res = await post({ ...body, provider: "custom" })
+      expect(res.status).toBe(412)
+      expect((await res.json()).error).toMatch(/Models by task/)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
   })
 
   it("surfaces upstream errors and marks the key invalid on 401", async () => {

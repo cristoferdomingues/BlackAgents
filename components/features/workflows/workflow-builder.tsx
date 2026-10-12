@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import type { ProviderId } from "@/lib/llm/types"
+import { parseStoredWorkflowDraft, WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
 import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, DEFAULT_AGENT_TOOLS, type BuiltinToolName } from "@/lib/runtime/tool-names"
 import {
   MAX_GATE_RETRIES,
@@ -153,6 +154,14 @@ function numberValue(raw: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n
 }
 
+/** Take (once) a draft the Assistant handed over; for an edit, only one with the same name. */
+function takeChatDraft(name?: string): Workflow | null {
+  const workflow = parseStoredWorkflowDraft(sessionStorage.getItem(WORKFLOW_DRAFT_STORAGE_KEY))
+  if (!workflow || (name && workflow.name !== name)) return null
+  sessionStorage.removeItem(WORKFLOW_DRAFT_STORAGE_KEY)
+  return workflow
+}
+
 type LoadState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready" }
 
 export function WorkflowBuilder({ name }: { name?: string }) {
@@ -183,13 +192,27 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     if (!name || !workspace) return
     apiFetch<{ workflow: Workflow }>(`/api/workflows/${encodeURIComponent(name)}`)
       .then(({ workflow }) => {
-        setDraft(toDraft(workflow))
+        setDraft(toDraft(takeChatDraft(name) ?? workflow))
         setLoad({ kind: "ready" })
       })
       .catch((err: unknown) =>
         setLoad({ kind: "error", message: err instanceof Error ? err.message : "Could not load the workflow" })
       )
   }, [name, workspace])
+
+  // A draft handed over from the Assistant ("Open in builder").
+  React.useEffect(() => {
+    if (name) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      const workflow = takeChatDraft()
+      if (workflow) setDraft(toDraft(workflow))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [name])
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]): void =>
     setDraft((d) => ({ ...d, [key]: value }))

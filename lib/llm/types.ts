@@ -8,6 +8,7 @@
  * here lets the model layer and the future chat UI evolve independently.
  */
 
+import type { BinaryAttachment } from "@/lib/chat/attachments"
 import type { ToolExecutionTrace } from "@/lib/mcp/types"
 
 export type ProviderId = "openai" | "anthropic" | "custom"
@@ -26,6 +27,8 @@ export interface ChatMessage {
   name?: string
   tool_call_id?: string
   tool_calls?: ToolCall[]
+  /** User turns only: images and PDFs sent as native content parts. */
+  attachments?: BinaryAttachment[]
 }
 
 export interface LLMToolDefinition {

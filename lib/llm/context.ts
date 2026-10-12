@@ -4,6 +4,9 @@ import { loadStandards } from "../standards"
 import { BUILTIN_TOOL_NAMES } from "../runtime/tool-names"
 import { BUNDLE_FENCE, MAX_BUNDLE_RULES, MAX_BUNDLE_SKILLS } from "./bundle"
 import { ARTIFACT_DRAFT_FENCE } from "./draft"
+import { WORKFLOW_DRAFT_FENCE } from "./workflow-draft"
+import { MAX_WORKFLOW_STEPS } from "../workflows/schema"
+import { listWorkflows } from "../workflows/store"
 import type { Artifact } from "../artifacts/types"
 
 /**
@@ -16,8 +19,21 @@ export async function buildSystemContext(): Promise<string> {
 
   const config = await readConfig()
   let registry = "No workspace is selected yet."
+  let workflowRegistry = "No workspace is selected yet."
   if (config.currentPath) {
-    const artifacts = await scanWorkspace(config.currentPath)
+    const [artifacts, workflows] = await Promise.all([
+      scanWorkspace(config.currentPath),
+      listWorkflows(config.currentPath).catch(() => []),
+    ])
+    workflowRegistry =
+      workflows.length === 0
+        ? "The active workspace has no workflows yet."
+        : workflows
+            .map(
+              (w) =>
+                `- ${w.name} — ${w.description || "(no description)"} — steps: ${w.steps.map((s) => s.agent).join(" → ")}`
+            )
+            .join("\n")
     if (artifacts.length === 0) {
       registry = "The active workspace has no artifacts yet."
     } else {
@@ -30,7 +46,7 @@ export async function buildSystemContext(): Promise<string> {
     }
   }
 
-  return `You are BlackAgents, an authoring assistant for AI agent toolkits. You help users design and write four artifact types — agents, commands, rules, and skills — that conform to the authoring standards below.
+  return `You are BlackAgents, an authoring assistant for AI agent toolkits. You help users design and write four artifact types — agents, commands, rules, and skills — that conform to the authoring standards below. You also design workflows: ordered lines of workspace agents.
 
 Be concise and concrete. Ask a clarifying question only when the request is genuinely ambiguous; otherwise propose a well-structured artifact. Follow the cross-reference conventions (reference agents/rules/skills by name) and keep each artifact in its correct type per the decision guide.
 
@@ -84,7 +100,36 @@ Rules for the bundle block:
 - At most ${MAX_BUNDLE_SKILLS} skills and ${MAX_BUNDLE_RULES} rules. Reuse an existing name only to update that artifact. A new artifact needs a new name.
 - The agent body must reference every bundled skill as \`name\` skill and every bundled rule as \`name\` rule.
 - Optional agent "tools" may list: ${BUILTIN_TOOL_NAMES.join(", ")}. Leave it out for read-only file access.
-- Bodies are markdown only, never YAML frontmatter. Emit either one draft block or one bundle block per reply, never both.`
+- Bodies are markdown only, never YAML frontmatter.
+
+## Workflows in the active workspace
+
+${workflowRegistry}
+
+## Workflow protocol
+
+When the user wants a workflow (agents that run one after another, each handing its output to the next), emit ONE fenced code block tagged \`${WORKFLOW_DRAFT_FENCE}\`:
+
+\`\`\`${WORKFLOW_DRAFT_FENCE}
+{
+  "name": "kebab-case-name",
+  "description": "one line on what the workflow does",
+  "task": "default task text used when the run has no input",
+  "trigger": { "type": "manual" },
+  "steps": [
+    { "id": "kebab-step-id", "agent": "existing-agent-name", "instructions": "what this step does", "input": "previous", "gate": false }
+  ]
+}
+\`\`\`
+
+Rules for the workflow block:
+- 1 to ${MAX_WORKFLOW_STEPS} steps. Every "agent" must be an agent listed in the workspace artifacts above. If a needed agent is missing, say so and propose it first (draft or bundle).
+- Step "input" is "previous" (last output), "task" (only the run's task), or "all" (every earlier output). Step ids are unique kebab-case.
+- "trigger" is { "type": "manual" }, { "type": "interval", "everyMinutes": 5-1440 }, or { "type": "daily", "at": "HH:MM" }.
+- To update a workflow listed above, keep its name and return the full definition.
+- The user starts a workflow by typing "/workflow-name input" or "start @workflow-name"; the app handles that, not you.
+
+Emit at most one draft, bundle, or workflow block per reply, never more than one.`
 }
 
 /**

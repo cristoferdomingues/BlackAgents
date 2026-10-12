@@ -1,15 +1,27 @@
 "use client"
 
 import * as React from "react"
+import { Workflow as WorkflowIcon } from "lucide-react"
 
 import { metaForType } from "@/lib/artifacts/constants"
-import type { ArtifactType } from "@/lib/artifacts/types"
+import type { MentionTargetType } from "@/lib/artifacts/mentions"
 import { cn } from "@/lib/utils"
 
 export interface ChatMention {
-  type: ArtifactType
+  type: MentionTargetType
   name: string
   description?: string
+}
+
+function mentionMeta(type: MentionTargetType): {
+  icon: React.ComponentType<{ className?: string }>
+  labelPlural: string
+  colorClass: string
+} {
+  if (type === "workflow") {
+    return { icon: WorkflowIcon, labelPlural: "Workflows", colorClass: "text-primary" }
+  }
+  return metaForType(type)
 }
 
 export function MentionMenu({
@@ -37,14 +49,14 @@ export function MentionMenu({
       id="assistant-mentions"
       ref={listRef}
       role="listbox"
-      aria-label="Workspace artifacts"
+      aria-label="Workspace artifacts and workflows"
       className="absolute bottom-full left-0 z-20 mb-2 max-h-64 w-full max-w-lg overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     >
       {items.length === 0 ? (
         <p className="px-2 py-1.5 text-sm text-muted-foreground">{emptyLabel}</p>
       ) : (
         items.map((item, index) => {
-          const meta = metaForType(item.type)
+          const meta = mentionMeta(item.type)
           const showHeader = index === 0 || items[index - 1]?.type !== item.type
           const Icon = meta.icon
           return (

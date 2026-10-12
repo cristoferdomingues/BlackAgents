@@ -11,6 +11,7 @@ import {
   removeConversation,
   setActiveConversation,
   titleFromMessages,
+  toStoredTurn,
   upsertConversation,
   writeConversationsStore,
   type ConversationsStore,
@@ -54,6 +55,33 @@ describe("upsertConversation", () => {
     })
     expect(store.conversations[0]).toMatchObject({ id: "c4", title: "updated" })
     expect(store.conversations).toHaveLength(MAX_RECENT_CONVERSATIONS)
+  })
+
+  it("keeps only file metadata and workflow-run turns in storage", () => {
+    const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, {
+      id: "files",
+      messages: [
+        {
+          role: "user",
+          content: "read this",
+          files: [{ kind: "pdf", name: "doc.pdf", data: "JVBERi0=" }],
+        },
+        { role: "user", content: "/triage x", workflowRun: { workflow: "triage", task: "x" } },
+      ],
+    })
+    const [first, second] = store.conversations[0].messages
+    expect(first).toEqual({
+      role: "user",
+      content: "read this",
+      attachments: [{ kind: "pdf", name: "doc.pdf", size: 5 }],
+    })
+    expect(JSON.stringify(first)).not.toContain("JVBERi0")
+    expect(second.workflowRun).toEqual({ workflow: "triage", task: "x" })
+    expect(parseConversationsStore(store).conversations[0].messages).toEqual([first, second])
+  })
+
+  it("leaves turns without files unchanged", () => {
+    expect(toStoredTurn({ role: "assistant", content: "hi" })).toEqual({ role: "assistant", content: "hi" })
   })
 
   it("does not persist empty threads but still tracks activeId", () => {

@@ -98,7 +98,8 @@ test.describe("agent persona chat", () => {
     ).toBeVisible()
     await expect(page.getByLabel("tester avatar")).toBeVisible()
     await expect(page.getByRole("textbox", { name: "Message tester" })).toBeEnabled()
-    await expect(page.getByRole("button", { name: "Send" })).toBeDisabled()
+    await expect(page.getByRole("button", { name: "Start voice input" })).toBeEnabled()
+    await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0)
   })
 
   test("gates persona chat and sends unverified users to recovery", async ({

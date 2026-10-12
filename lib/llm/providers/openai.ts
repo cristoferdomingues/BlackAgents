@@ -1,3 +1,5 @@
+import type { BinaryAttachment } from "@/lib/chat/attachments"
+
 import {
   ProviderError,
   type LLMCredentials,
@@ -37,6 +39,8 @@ export function toOpenAIMessages(request: LLMGenerateRequest): Record<string, un
           },
         })),
       })
+    } else if (m.role === "user" && m.attachments && m.attachments.length > 0) {
+      messages.push({ role: "user", content: toOpenAIUserContent(m.content, m.attachments) })
     } else {
       messages.push({
         role: m.role,
@@ -45,6 +49,26 @@ export function toOpenAIMessages(request: LLMGenerateRequest): Record<string, un
     }
   }
   return messages
+}
+
+/** A user turn with files as OpenAI content parts (text, image_url, file). */
+export function toOpenAIUserContent(
+  text: string,
+  attachments: BinaryAttachment[]
+): Record<string, unknown>[] {
+  const parts: Record<string, unknown>[] = []
+  if (text) parts.push({ type: "text", text })
+  for (const a of attachments) {
+    if (a.kind === "image") {
+      parts.push({ type: "image_url", image_url: { url: `data:${a.mimeType};base64,${a.data}` } })
+    } else {
+      parts.push({
+        type: "file",
+        file: { filename: a.name, file_data: `data:application/pdf;base64,${a.data}` },
+      })
+    }
+  }
+  return parts
 }
 
 interface OpenAIToolCall {

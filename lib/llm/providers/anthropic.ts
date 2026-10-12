@@ -1,3 +1,5 @@
+import type { BinaryAttachment } from "@/lib/chat/attachments"
+
 import {
   ProviderError,
   type LLMCredentials,
@@ -17,6 +19,24 @@ interface AnthropicContentBlock {
 
 interface AnthropicMessage {
   content?: AnthropicContentBlock[]
+}
+
+/** A user turn with files: image / document blocks first, then the text. */
+export function toAnthropicUserContent(
+  text: string,
+  attachments: BinaryAttachment[]
+): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = attachments.map((a) =>
+    a.kind === "image"
+      ? { type: "image", source: { type: "base64", media_type: a.mimeType, data: a.data } }
+      : {
+          type: "document",
+          title: a.name,
+          source: { type: "base64", media_type: "application/pdf", data: a.data },
+        }
+  )
+  if (text) blocks.push({ type: "text", text })
+  return blocks
 }
 
 async function verifyAnthropic(apiKey: string): Promise<void> {
@@ -87,6 +107,9 @@ export const anthropicProvider: LLMProvider = {
             })
           }
           return { role: "assistant" as const, content: contentBlocks }
+        }
+        if (m.role === "user" && m.attachments && m.attachments.length > 0) {
+          return { role: "user" as const, content: toAnthropicUserContent(m.content, m.attachments) }
         }
         return { role: m.role, content: m.content }
       })

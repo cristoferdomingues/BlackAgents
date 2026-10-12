@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import { nameSchema } from "../artifacts/schemas"
+import { inspectModelRef, providerIdSchema, type ModelSource } from "../llm/model-ref"
+import type { ChatModelTask } from "../llm/task-models"
 import { builtinToolNameSchema } from "../runtime/tool-names"
 import type { ApprovalRequest, ToolExecutionTrace } from "../runtime/types"
 
@@ -36,6 +38,9 @@ export const workflowStepSchema = z.object({
   maxTurns: z.number().int().min(1).max(MAX_STEP_TURNS).default(6),
   /** Ask Jev after this step: continue, retry the step, or stop the line. */
   gate: z.boolean().default(false),
+  /** Overrides the agent's and the workflow's model for this step. */
+  model: z.string().trim().max(200).optional(),
+  provider: providerIdSchema.optional(),
 })
 export type WorkflowStep = z.infer<typeof workflowStepSchema>
 
@@ -55,7 +60,7 @@ export const workflowSchema = z
     description: z.string().trim().max(300).default(""),
     /** Default task text, used by scheduled runs and as the run form default. */
     task: z.string().max(4_000).default(""),
-    provider: z.enum(["openai", "anthropic", "custom"]).optional(),
+    provider: providerIdSchema.optional(),
     model: z.string().trim().max(200).optional(),
     trigger: workflowTriggerSchema.default({ type: "manual" }),
     steps: z.array(workflowStepSchema).min(1, "Add at least one step").max(MAX_WORKFLOW_STEPS),
@@ -76,6 +81,20 @@ export const workflowSchema = z
         ctx.addIssue({ code: "custom", path: ["steps", index, "id"], message: `Duplicate step id "${step.id}"` })
       }
       ids.add(step.id)
+      const inspected = inspectModelRef(step.model, step.provider)
+      if (inspected.error) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "model"],
+          message: `Step "${step.id}": ${inspected.error.message}`,
+        })
+      } else if (inspected.warning) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "provider"],
+          message: `Step "${step.id}": ${inspected.warning}`,
+        })
+      }
     })
   })
 export type Workflow = z.infer<typeof workflowSchema>
@@ -122,6 +141,12 @@ export interface StepRun {
   gate?: StepGateResult
   startedAt?: string
   finishedAt?: string
+  /** Provider that actually ran this step. Missing on runs saved before model routing. */
+  provider?: "openai" | "anthropic" | "custom"
+  model?: string
+  modelSource?: ModelSource
+  /** Set when the step ran a task kind (`task:vision` and the rest). */
+  task?: ChatModelTask
 }
 
 export interface WorkflowRun {

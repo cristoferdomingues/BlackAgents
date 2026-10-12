@@ -1,7 +1,8 @@
 import matter from "gray-matter"
 
 import { artifactRelPath } from "../artifacts/layout"
-import type { Artifact, Platform } from "../artifacts/types"
+import type { Artifact, ArtifactFrontmatter, Platform } from "../artifacts/types"
+import { isAgentModelAlias, parseModelRef } from "../llm/model-ref"
 
 /**
  * Multi-platform export adapter.
@@ -19,6 +20,23 @@ export interface ExportFile {
 }
 
 export type ExportStatus = "create" | "overwrite" | "unchanged"
+
+/**
+ * Cursor and Claude understand `model`. Write a real id, or a tool alias
+ * (`sonnet`, `fast`, …) unchanged. Never write `provider` or `task:` refs.
+ */
+function exportedAgentModel(type: Artifact["type"], frontmatter: ArtifactFrontmatter): string | undefined {
+  if (type !== "agent" || typeof frontmatter.model !== "string") return undefined
+  const model = frontmatter.model.trim()
+  if (!model || model === "inherit") return undefined
+  if (isAgentModelAlias(model)) return model
+  try {
+    const ref = parseModelRef(model, undefined)
+    return ref.kind === "id" ? ref.model : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Re-express an artifact's frontmatter in the target platform's conventions.
@@ -40,6 +58,8 @@ export function frontmatterFor(
       // Cursor rules are identified by filename and omit `name`.
       if (type !== "rule") fm.name = name
       if (description) fm.description = description
+      const cursorModel = exportedAgentModel(type, frontmatter)
+      if (cursorModel) fm.model = cursorModel
       if (type === "agent" && frontmatter.parallel) fm.parallel = true
       if (type === "rule") {
         if (frontmatter.alwaysApply) fm.alwaysApply = true
@@ -52,6 +72,8 @@ export function frontmatterFor(
       // Claude understands name + description; it has no rule activation keys.
       if (type === "agent" || type === "skill") fm.name = name
       if (description) fm.description = description
+      const claudeModel = exportedAgentModel(type, frontmatter)
+      if (claudeModel) fm.model = claudeModel
       return fm
     }
 

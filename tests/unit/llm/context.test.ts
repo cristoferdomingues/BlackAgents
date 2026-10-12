@@ -37,6 +37,7 @@ describe("buildSystemContext", () => {
     )
     const context = await buildSystemContext()
     expect(context).toContain("```workflow")
+    expect(context).toContain('only when the user asks for a specific model')
     expect(context).toContain("- release-line — Ship a release — steps: planner")
     expect(context).toContain("/workflow-name input")
   })

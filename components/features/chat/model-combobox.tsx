@@ -4,7 +4,7 @@ import * as React from "react"
 import { Check, ChevronsUpDown, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { filterModels } from "@/lib/llm/list-models"
+import { filterModels } from "@/lib/llm/filter-models"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +23,9 @@ interface ModelComboboxProps {
   loading?: boolean
   className?: string
   disabled?: boolean
+  /** Accessible name for the text box. Defaults to "Model". */
+  label?: string
+  id?: string
 }
 
 /**
@@ -36,6 +39,8 @@ export function ModelCombobox({
   loading = false,
   className,
   disabled = false,
+  label = "Model",
+  id,
 }: ModelComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
@@ -50,10 +55,11 @@ export function ModelCombobox({
   return (
     <div className={cn("flex w-64", className)}>
       <Input
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="model id"
-        aria-label="Model"
+        aria-label={label}
         disabled={disabled}
         className={cn(hasSuggestions && "rounded-r-none")}
         autoComplete="off"

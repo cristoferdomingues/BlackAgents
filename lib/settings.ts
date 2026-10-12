@@ -3,6 +3,7 @@ import path from "node:path"
 import { z } from "zod"
 
 import { configDir } from "./config"
+import { providerIdSchema } from "./llm/provider-id"
 import { DEFAULT_MAX_TURNS, MAX_TURNS_LIMIT } from "./runtime/agent-loop"
 
 /**
@@ -18,6 +19,11 @@ export const jevOpenRouterKeySourceSchema = z.enum(["reuse", "dedicated"])
 export type JevOpenRouterKeySource = z.infer<typeof jevOpenRouterKeySourceSchema>
 
 const taskModelIdSchema = z.string().trim().min(1, "Choose a model").max(200)
+
+const taskChoiceSchema = z.object({
+  provider: providerIdSchema,
+  model: taskModelIdSchema,
+})
 
 export const aiSettingsSchema = z.object({
   assistant: z
@@ -39,10 +45,16 @@ export const aiSettingsSchema = z.object({
       openRouterKeySource: jevOpenRouterKeySourceSchema.default("reuse"),
     })
     .default({}),
-  /** Models by task (Custom provider). A missing entry uses the task's default. */
+  /**
+   * Models by task. Voice stays a Custom-provider model id.
+   * Chat kinds store the provider and the model together.
+   */
   models: z
     .object({
       voice: taskModelIdSchema.optional(),
+      vision: taskChoiceSchema.optional(),
+      fast: taskChoiceSchema.optional(),
+      reasoning: taskChoiceSchema.optional(),
     })
     .default({}),
 })
@@ -64,10 +76,13 @@ export const aiSettingsPatchSchema = z.object({
     })
     .partial()
     .optional(),
-  /** A model id saves it; `null` goes back to the task's default. */
+  /** A value saves it; `null` clears it. Voice is a model id; chat kinds are `{ provider, model }`. */
   models: z
     .object({
       voice: taskModelIdSchema.nullable(),
+      vision: taskChoiceSchema.nullable(),
+      fast: taskChoiceSchema.nullable(),
+      reasoning: taskChoiceSchema.nullable(),
     })
     .partial()
     .optional(),
@@ -94,10 +109,16 @@ function mergeModels(
   patch: AiSettingsPatch["models"]
 ): AiSettings["models"] {
   const next: AiSettings["models"] = { ...current }
-  for (const [task, model] of Object.entries(patch ?? {}) as [keyof AiSettings["models"], string | null | undefined][]) {
-    if (model === undefined) continue
-    if (model === null) delete next[task]
-    else next[task] = model
+  if (!patch) return next
+  if (patch.voice !== undefined) {
+    if (patch.voice === null) delete next.voice
+    else next.voice = patch.voice
+  }
+  for (const key of ["vision", "fast", "reasoning"] as const) {
+    const value = patch[key]
+    if (value === undefined) continue
+    if (value === null) delete next[key]
+    else next[key] = value
   }
   return next
 }

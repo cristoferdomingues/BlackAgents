@@ -61,10 +61,12 @@ import {
   type NormalizedDraft,
 } from "@/lib/llm/draft"
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
+import { inspectModelRef, type ModelRef } from "@/lib/llm/model-ref"
 import {
   chatApprovalRequiredEventSchema,
   chatApprovalResolvedEventSchema,
   chatContextEventSchema,
+  type ChatContextModel,
   chatDoneEventSchema,
   chatErrorEventSchema,
   chatTokenEventSchema,
@@ -98,6 +100,7 @@ import {
 } from "@/components/ui/select"
 import { MentionMenu, type ChatMention } from "@/components/features/chat/mention-menu"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
+import { agentHeaderSummary } from "@/components/features/models/model-choice"
 import {
   AgentAvatar,
   DraftCard,
@@ -147,6 +150,7 @@ interface LiveTurn {
   toolExecutions: ToolExecutionTrace[]
   approvals: ApprovalRequest[]
   artifacts: TurnArtifact[]
+  model?: ChatContextModel
 }
 
 const EMPTY_LIVE: LiveTurn = { content: "", toolExecutions: [], approvals: [], artifacts: [] }
@@ -155,7 +159,12 @@ function applyEvent(live: LiveTurn, { event, data }: SseEvent): LiveTurn {
   switch (event) {
     case "context": {
       const parsed = chatContextEventSchema.safeParse(data)
-      return parsed.success ? { ...live, artifacts: parsed.data.artifacts } : live
+      if (!parsed.success) return live
+      return {
+        ...live,
+        artifacts: parsed.data.artifacts,
+        ...(parsed.data.model ? { model: parsed.data.model } : {}),
+      }
     }
     case "token": {
       const parsed = chatTokenEventSchema.safeParse(data)
@@ -250,6 +259,11 @@ export function ChatPage({
   const [metaError, setMetaError] = React.useState<string | null>(null)
   const [provider, setProvider] = React.useState<string>("")
   const [model, setModel] = React.useState<string>("")
+  const agentKey = selectedAgentName ?? ""
+  const [resolvedModel, setResolvedModel] = React.useState<{
+    agentKey: string
+    model: ChatContextModel | null
+  }>({ agentKey, model: null })
   const [availableModels, setAvailableModels] = React.useState<string[]>([])
   const [modelsLoading, setModelsLoading] = React.useState(false)
   const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
@@ -297,6 +311,21 @@ export function ChatPage({
       !loadingArtifacts &&
       !selectedAgent
   )
+  const agentRef: ModelRef = React.useMemo(() => {
+    if (!selectedAgent) return { kind: "inherit" }
+    const inspected = inspectModelRef(selectedAgent.frontmatter.model, selectedAgent.frontmatter.provider)
+    return inspected.error ? { kind: "inherit" } : inspected.ref
+  }, [selectedAgent])
+  const agentLocksModel = agentRef.kind === "id" || agentRef.kind === "task"
+  const shownResolved = resolvedModel.agentKey === agentKey ? resolvedModel.model : null
+  const agentSummary = agentLocksModel ? agentHeaderSummary(agentRef, shownResolved) : null
+  const pickerModel =
+    agentLocksModel && shownResolved
+      ? shownResolved.model
+      : agentLocksModel && agentRef.kind === "id"
+        ? agentRef.model
+        : model
+
   const suggestions = selectedAgent
     ? [
         `What kinds of tasks are you best suited for as ${selectedAgent.name}?`,
@@ -578,7 +607,9 @@ export function ChatPage({
     setCaret(0)
     setFiles([])
     setSending(true)
+    setResolvedModel({ agentKey, model: null })
     setLive(EMPTY_LIVE)
+    let finished = false
     try {
       let current = EMPTY_LIVE
       const outcome: { final: Turn | null; error: string | null } = {
@@ -617,6 +648,7 @@ export function ChatPage({
             return
           }
           current = applyEvent(current, event)
+          if (current.model) setResolvedModel({ agentKey, model: current.model })
           setLive(current)
         }
       )
@@ -626,8 +658,7 @@ export function ChatPage({
       const finalized = [...next, reply]
       setTurns(finalized)
       saveTurns(finalized)
-      // The model id was accepted — remember it for the next launch.
-      await persistSelection(provider, model)
+      finished = true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       setTurns((t) => t.slice(0, -1))
@@ -641,6 +672,10 @@ export function ChatPage({
     } finally {
       setSending(false)
       setLive(EMPTY_LIVE)
+    }
+    if (finished) {
+      // Remember the header picker only. An agent's model must not become the default.
+      await persistSelection(provider, model)
     }
   }
 
@@ -891,14 +926,39 @@ export function ChatPage({
               })}
             </SelectContent>
           </Select>
-          <ModelCombobox
-            value={model}
-            onChange={setModel}
-            models={availableModels}
-            loading={modelsLoading}
-            disabled={!providerVerified}
-            className="w-52 sm:w-64"
-          />
+          {agentLocksModel ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex" tabIndex={0}>
+                  <ModelCombobox
+                    value={pickerModel}
+                    onChange={() => {
+                      // The agent owns this chat's model. The header value stays put.
+                    }}
+                    models={availableModels}
+                    loading={modelsLoading}
+                    disabled
+                    className="w-52 sm:w-64"
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>This agent picks its own model. Edit the agent to change it.</TooltipContent>
+            </Tooltip>
+          ) : (
+            <ModelCombobox
+              value={model}
+              onChange={setModel}
+              models={availableModels}
+              loading={modelsLoading}
+              disabled={!providerVerified}
+              className="w-52 sm:w-64"
+            />
+          )}
+          {agentSummary ? (
+            <Badge variant="outline" className="max-w-80 truncate font-normal" title={agentSummary}>
+              {agentSummary}
+            </Badge>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex items-center gap-2">

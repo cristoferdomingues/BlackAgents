@@ -4,7 +4,9 @@ import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
 import { buildAgentPersonaContext } from "@/lib/llm/context"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
+import type { ModelLayer } from "@/lib/llm/model-ref"
 import { ProviderError } from "@/lib/llm/types"
+import { readAiSettings } from "@/lib/settings"
 import { createApprovalPolicy } from "@/lib/runtime/approval-policy"
 import { runAgentLoop } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover } from "@/lib/runtime/ask-user"
@@ -12,7 +14,7 @@ import { agentToolScope, type ToolScope } from "@/lib/runtime/tools"
 import type { RuntimeTool } from "@/lib/runtime/types"
 
 import { buildStepMessage, filesChangedBy, handoffsFor } from "./handoff"
-import type { ResolvedLlm } from "./llm"
+import { stepModelLayers, stepResolveOptions, type ResolveLlmOptions, type ResolvedLlm } from "./llm"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
 export const REPORT_MAX_CHARS = 2_000
@@ -20,7 +22,7 @@ export const REPORT_MAX_CHARS = 2_000
 /** Everything the executor reads from the outside world, injectable for tests. */
 export interface ExecutorDeps {
   artifacts: (root: string) => Promise<Artifact[]>
-  resolveLlm: (workflow: Workflow) => Promise<ResolvedLlm>
+  resolveLlm: (layers: ModelLayer[], options?: ResolveLlmOptions) => Promise<ResolvedLlm>
   buildTools: (root: string, scope: ToolScope) => Promise<RuntimeTool[]>
   decision: () => Promise<ResolvedDecisionClient | null>
   brainContext: (params: {
@@ -114,16 +116,33 @@ export async function executeRun(
   await update()
 
   try {
-    const [llm, all, resolved] = await Promise.all([
-      deps.resolveLlm(workflow),
+    const [settings, all, resolved] = await Promise.all([
+      readAiSettings(),
       deps.artifacts(run.workspaceRoot),
       deps.decision(),
     ])
+    const credentialCache = new Map<string, ResolvedLlm>()
 
     for (const [index, step] of workflow.steps.entries()) {
       const stepRun = run.steps[index]
       const agent = all.find((a) => a.type === "agent" && a.name === step.agent)
       if (!agent) throw new StepFailure(`Agent "${step.agent}" was not found`)
+
+      let llm: ResolvedLlm
+      try {
+        const layers = stepModelLayers(workflow, step, agent)
+        const options = stepResolveOptions(workflow, step, agent, settings, credentialCache)
+        // The resolver knows the final provider after all fallback rules and
+        // owns the provider+model cache. Do not cache by a partial preview:
+        // two model ids without an explicit provider would otherwise collide.
+        llm = await deps.resolveLlm(layers, options)
+      } catch (err) {
+        throw new StepFailure(errorText(err))
+      }
+      stepRun.provider = llm.provider.id
+      stepRun.model = llm.model
+      if (llm.source) stepRun.modelSource = llm.source
+      if (llm.task) stepRun.task = llm.task
 
       const own = agentToolScope(agent)
       const tools = await deps.buildTools(run.workspaceRoot, {

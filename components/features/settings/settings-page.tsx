@@ -65,7 +65,7 @@ const TEMPLATE_ICONS: Record<WorkspaceTemplate, React.ComponentType<{ className?
   blank: FileCode,
 }
 
-export function SettingsPage() {
+export function SettingsPage({ initialTab = "create" }: { initialTab?: string }) {
   const {
     workspace,
     workspaces,
@@ -75,14 +75,9 @@ export function SettingsPage() {
     removeWorkspace,
   } = useWorkspace()
 
-  // Initial tab selection: check URL param or default to "create"
-  const [tab, setTab] = React.useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const param = new URLSearchParams(window.location.search).get("tab")
-      if (param === "open" || param === "create" || param === "mcp" || param === "ai") return param
-    }
-    return "create"
-  })
+  // The server reads `?tab=` and passes the same value to the first client
+  // render, avoiding a hydration mismatch on direct links to the AI tab.
+  const [tab, setTab] = React.useState(initialTab)
 
   // "Open Existing" state
   const [openPath, setOpenPath] = React.useState("")

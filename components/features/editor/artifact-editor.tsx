@@ -30,6 +30,14 @@ import {
   isBuiltinToolName,
 } from "@/lib/runtime/tool-names"
 import { AgentToolsField } from "@/components/features/editor/agent-tools-field"
+import { ModelChoiceFields, useSavedTaskModels } from "@/components/features/models/model-choice-fields"
+import {
+  MODEL_SELECT_VALUES,
+  agentModelExtra,
+  isTaskSelectValue,
+  modelFormFromFrontmatter,
+  type ModelSelectValue,
+} from "@/components/features/models/model-choice"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import { DRAFT_STORAGE_KEY, draftSchema, normalizeDraft } from "@/lib/llm/draft"
 import type { ValidationResult } from "@/lib/llm/validation"
@@ -60,23 +68,36 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-const createFormSchema = (isEdit: boolean) =>
-  z.object({
-    name: isEdit
-      ? z
-          .string()
-          .trim()
-          .min(1, "Name is required")
-          .max(80, "Name is too long")
-      : nameSchema,
-    description: z.string().trim().min(1, "Description is required"),
-    parallel: z.boolean().default(false),
-    alwaysApply: z.boolean().default(false),
-    globs: z.array(z.string()).default([]),
-    tools: z.array(builtinToolNameSchema).default([...DEFAULT_AGENT_TOOLS]),
-    mcpServers: z.array(z.string()).default([]),
-    body: z.string().default(""),
-  })
+const createFormSchema = (isEdit: boolean, type: ArtifactType) =>
+  z
+    .object({
+      name: isEdit
+        ? z
+            .string()
+            .trim()
+            .min(1, "Name is required")
+            .max(80, "Name is too long")
+        : nameSchema,
+      description: z.string().trim().min(1, "Description is required"),
+      parallel: z.boolean().default(false),
+      alwaysApply: z.boolean().default(false),
+      globs: z.array(z.string()).default([]),
+      tools: z.array(builtinToolNameSchema).default([...DEFAULT_AGENT_TOOLS]),
+      mcpServers: z.array(z.string()).default([]),
+      modelChoice: z.enum(MODEL_SELECT_VALUES).default("inherit"),
+      modelId: z.string().default(""),
+      modelAlias: z.string().default(""),
+      body: z.string().default(""),
+    })
+    .superRefine((values, ctx) => {
+      if (type !== "agent") return
+      if (values.modelChoice !== "openai" && values.modelChoice !== "anthropic" && values.modelChoice !== "custom") {
+        return
+      }
+      if (!values.modelId.trim()) {
+        ctx.addIssue({ code: "custom", path: ["modelId"], message: "Choose a model" })
+      }
+    })
 
 type FormValues = z.infer<ReturnType<typeof createFormSchema>>
 
@@ -135,7 +156,7 @@ export function ArtifactEditor({
   const [tab, setTab] = React.useState<"edit" | "preview">("edit")
   const platformRef = React.useRef<Platform>("cursor")
 
-  const schema = React.useMemo(() => createFormSchema(isEdit), [isEdit])
+  const schema = React.useMemo(() => createFormSchema(isEdit, type), [isEdit, type])
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -146,6 +167,9 @@ export function ArtifactEditor({
       globs: [],
       tools: [...DEFAULT_AGENT_TOOLS],
       mcpServers: [],
+      modelChoice: "inherit",
+      modelId: "",
+      modelAlias: "",
       body: isEdit ? "" : STANDARDS_SPEC[type].bodyTemplate("agent-name"),
     },
   })
@@ -155,6 +179,9 @@ export function ArtifactEditor({
   const body = form.watch("body")
   const nameValue = form.watch("name")
   const descriptionValue = form.watch("description")
+  const modelChoice = form.watch("modelChoice")
+  const modelId = form.watch("modelId")
+  const taskModels = useSavedTaskModels(type === "agent" && isTaskSelectValue(modelChoice))
 
   const [providers, setProviders] = React.useState<ProvidersState | null>(null)
   const [providersLoaded, setProvidersLoaded] = React.useState(false)
@@ -331,6 +358,9 @@ export function ArtifactEditor({
         globs: draft.globs,
         tools: [...DEFAULT_AGENT_TOOLS],
         mcpServers: [],
+        modelChoice: "inherit",
+        modelId: "",
+        modelAlias: "",
         body: draft.body,
       })
       toast.success("Draft loaded from the assistant — review and save")
@@ -349,6 +379,7 @@ export function ArtifactEditor({
         if (!active) return
         platformRef.current = artifact.platform
         const fm = artifact.frontmatter
+        const modelFields = modelFormFromFrontmatter(fm.model, fm.provider)
         const loaded = {
           name: artifact.name,
           description: artifact.description || artifact.name,
@@ -361,6 +392,9 @@ export function ArtifactEditor({
           mcpServers: Array.isArray(fm.mcpServers)
             ? fm.mcpServers.filter((s): s is string => typeof s === "string")
             : [],
+          modelChoice: modelFields.modelChoice,
+          modelId: modelFields.modelId,
+          modelAlias: modelFields.modelAlias,
           body: artifact.body,
         }
         const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
@@ -417,7 +451,7 @@ export function ArtifactEditor({
           alwaysApply: values.alwaysApply,
           globs: values.globs,
           ...(type === "agent"
-            ? { tools: values.tools, mcpServers: values.mcpServers }
+            ? { tools: values.tools, mcpServers: values.mcpServers, ...agentModelExtra(values) }
             : {}),
         },
       }
@@ -678,6 +712,36 @@ export function ArtifactEditor({
                   form.setValue("mcpServers", servers, { shouldDirty: true })
                 }
               />
+            ) : null}
+
+            {type === "agent" ? (
+              <div className="space-y-2 sm:col-span-2">
+                <div>
+                  <p className="text-sm font-medium">Model</p>
+                  <p className="text-xs text-muted-foreground">
+                    Chats with this agent and workflow steps that use it run on this model.
+                  </p>
+                </div>
+                <ModelChoiceFields
+                  idPrefix="agent-model"
+                  selectLabel="Model provider"
+                  modelLabel="Agent model"
+                  value={modelChoice}
+                  model={modelId}
+                  taskChoices={taskModels.choices}
+                  onValueChange={(next: ModelSelectValue) => {
+                    form.setValue("modelChoice", next, { shouldDirty: true })
+                    form.setValue("modelAlias", "", { shouldDirty: true })
+                    if (next === "inherit" || isTaskSelectValue(next)) {
+                      form.setValue("modelId", "", { shouldDirty: true })
+                    }
+                  }}
+                  onModelChange={(next) => form.setValue("modelId", next, { shouldDirty: true })}
+                />
+                {form.formState.errors.modelId ? (
+                  <p className="text-xs text-destructive">{form.formState.errors.modelId.message}</p>
+                ) : null}
+              </div>
             ) : null}
 
             {type === "rule" ? (

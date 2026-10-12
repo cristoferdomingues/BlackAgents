@@ -4,11 +4,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { scanWorkspace } from "@/lib/artifacts/parser"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
+import { ModelRefError } from "@/lib/llm/model-ref"
+import { setProviderSecret } from "@/lib/secrets"
 import { listPendingApprovals } from "@/lib/runtime/approvals"
 import { newRun } from "@/lib/workflows/executor"
+import { resolveRunLlm } from "@/lib/workflows/llm"
 import { WorkflowRunner } from "@/lib/workflows/runner"
 import { isTerminal, workflowSchema, type Workflow, type WorkflowRun } from "@/lib/workflows/schema"
-import { readRun, saveRun, saveWorkflow } from "@/lib/workflows/store"
+import { listRuns, readRun, saveRun, saveWorkflow } from "@/lib/workflows/store"
 
 import { choiceAnswer, fakeJev } from "../../helpers/jev"
 import { call, fakeTool, scriptedProvider } from "../../helpers/runtime"
@@ -115,6 +118,79 @@ describe("WorkflowRunner", () => {
     ) as Record<string, { lastCheckAt: string }>
     expect(state.hourly.lastCheckAt).toBe(now.toISOString())
     expect(await runner.tick(new Date(now.getTime() + 60_000))).toEqual([])
+  })
+
+  it("fails a scheduled run through the real resolver when a step provider is not verified", async () => {
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    runner = new WorkflowRunner({
+      artifacts: scanWorkspace,
+      resolveLlm: (layers, options) => resolveRunLlm(layers, options),
+      buildTools: async () => [],
+      decision: async () => null,
+      brainContext: async () => "",
+    })
+    await saveWorkflow(
+      env.workspace,
+      workflow({
+        name: "hourly",
+        trigger: { type: "interval", everyMinutes: 60 },
+        steps: [{ id: "only", agent: "planner", model: "claude-sonnet-4-20250514", provider: "anthropic" }],
+      })
+    )
+    expect(await runner.tick(new Date())).toEqual([])
+    const runs = await listRuns(env.workspace, "hourly")
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({
+      status: "failed",
+      trigger: "schedule",
+      error: 'Step "only" uses Anthropic, which is not verified. Verify it under AI Providers.',
+    })
+    expect(runs[0]?.steps[0]?.status).toBe("skipped")
+  })
+
+  it("fails a scheduled run when a task kind has no model", async () => {
+    runner = new WorkflowRunner({
+      artifacts: scanWorkspace,
+      resolveLlm: (layers, options) => resolveRunLlm(layers, options),
+      buildTools: async () => [],
+      decision: async () => null,
+      brainContext: async () => "",
+    })
+    await saveWorkflow(
+      env.workspace,
+      workflow({
+        name: "hourly",
+        trigger: { type: "interval", everyMinutes: 60 },
+        steps: [{ id: "only", agent: "planner", model: "task:reasoning" }],
+      })
+    )
+    expect(await runner.tick(new Date())).toEqual([])
+    const runs = await listRuns(env.workspace, "hourly")
+    expect(runs[0]).toMatchObject({
+      status: "failed",
+      error: "Set the Reasoning model in Settings → AI → Models by task",
+    })
+  })
+
+  it("marks a scheduled run failed when a step model is not verified", async () => {
+    const message = 'Step "only" uses Anthropic, which is not verified. Verify it under AI Providers.'
+    runner = new WorkflowRunner({
+      artifacts: scanWorkspace,
+      resolveLlm: async () => {
+        throw new ModelRefError(message, 412, "unverified")
+      },
+      buildTools: async () => [],
+      decision: async () => null,
+      brainContext: async () => "",
+    })
+    await saveWorkflow(env.workspace, workflow({ name: "hourly", trigger: { type: "interval", everyMinutes: 60 } }))
+    expect(await runner.tick(new Date())).toEqual([])
+    const runs = await listRuns(env.workspace, "hourly")
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({ status: "failed", error: message, trigger: "schedule" })
   })
 
   it("skips a scheduled run when Jev is sure nothing changed", async () => {

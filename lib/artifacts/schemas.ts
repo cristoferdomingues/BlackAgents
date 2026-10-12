@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { inspectModelRef, isAgentModelAlias, parseModelRef, providerIdSchema } from "../llm/model-ref"
 import { builtinToolNameSchema } from "../runtime/tool-names"
 
 /** kebab-case identifier: lowercase letters, digits, single hyphens. */
@@ -38,9 +39,26 @@ export const artifactInputSchema = z.object({
       tools: z.array(builtinToolNameSchema).optional(),
       /** Agents: MCP servers the agent may use (absent = all). */
       mcpServers: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+      /** Agents: model id, "inherit", an alias, or "task:<kind>". `null` clears it. */
+      model: z.string().trim().max(200, "Model id is too long").nullable().optional(),
+      /** Agents: provider for `model`. `null` clears it. Absent = the caller's provider. */
+      provider: providerIdSchema.nullable().optional(),
     })
     .partial()
     .default({}),
+})
+.superRefine((input, ctx) => {
+  if (input.type !== "agent") return
+  const model = input.extra.model
+  const provider = input.extra.provider
+  if (model == null && (provider == null || provider === undefined)) return
+  const inspected = inspectModelRef(model === null ? undefined : model, provider === null ? undefined : provider)
+  if (!inspected.error) return
+  ctx.addIssue({
+    code: "custom",
+    path: ["extra", "model"],
+    message: inspected.error.message,
+  })
 })
 
 export type ArtifactInput = z.infer<typeof artifactInputSchema>
@@ -57,6 +75,26 @@ export function normalizeExtra(
       if (extra.tools) out.tools = [...new Set(extra.tools)]
       if (extra.mcpServers && extra.mcpServers.length > 0) {
         out.mcpServers = [...new Set(extra.mcpServers)]
+      }
+      if (typeof extra.model === "string") {
+        const model = extra.model.trim()
+        if (model && model !== "inherit") {
+          if (isAgentModelAlias(model)) {
+            out.model = model
+          } else {
+            try {
+              const ref = parseModelRef(model, extra.provider ?? undefined)
+              if (ref.kind === "id") {
+                out.model = ref.model
+                if (ref.provider) out.provider = ref.provider
+              } else if (ref.kind === "task") {
+                out.model = `task:${ref.task}`
+              }
+            } catch {
+              // Schema validation already rejects bad values.
+            }
+          }
+        }
       }
       return out
     }

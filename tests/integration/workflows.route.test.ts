@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises"
+import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { GET as GET_RUN, DELETE as CANCEL_RUN } from "@/app/api/runs/[id]/route"
@@ -6,6 +8,7 @@ import { DELETE, GET as GET_ONE, PUT } from "@/app/api/workflows/[name]/route"
 import { GET as LIST_RUNS, POST as START_RUN } from "@/app/api/workflows/[name]/runs/route"
 import { GET, POST } from "@/app/api/workflows/route"
 import { setProviderSecret } from "@/lib/secrets"
+import { updateAiSettings } from "@/lib/settings"
 import { parseSseFrames } from "@/lib/sse-client"
 import { getRunner } from "@/lib/workflows/runner"
 import { isTerminal, type WorkflowRun } from "@/lib/workflows/schema"
@@ -81,6 +84,114 @@ describe("workflow routes", () => {
     expect(ghost.status).toBe(400)
     expect(ghost.body.error).toContain("ghost")
     expect((await json(await GET_ONE(new Request("http://t"), named("Bad Name")))).status).toBe(400)
+  })
+
+  it("saves a step model and refuses to start when that provider is not verified", async () => {
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    await POST(jsonRequest("http://t/api/workflows", "POST", body))
+    const saved = await json<{ workflow: { steps: Array<{ model?: string; provider?: string }> } }>(
+      await PUT(
+        jsonRequest("http://t/api/workflows/review-line", "PUT", {
+          ...body,
+          steps: [{ id: "plan", agent: "planner", model: "claude-sonnet-4-20250514", provider: "anthropic" }],
+        }),
+        named("review-line")
+      )
+    )
+    expect(saved.status).toBe(200)
+    expect(saved.body.data?.workflow.steps[0]).toMatchObject({
+      model: "claude-sonnet-4-20250514",
+      provider: "anthropic",
+    })
+    const started = await json(await START_RUN(jsonRequest("http://t", "POST", {}), named("review-line")))
+    expect(started.status).toBe(412)
+    expect(started.body.error).toBe(
+      'Step "plan" uses Anthropic, which is not verified. Verify it under AI Providers.'
+    )
+  })
+
+  it("loads a workflow saved before step models and fails fast for an agent provider", async () => {
+    await mkdir(path.join(env.workspace, ".black-agents/workflows"), { recursive: true })
+    await writeFile(
+      path.join(env.workspace, ".black-agents/workflows/legacy-line.workflow.json"),
+      JSON.stringify({ name: "legacy-line", steps: [{ id: "plan", agent: "planner" }] }),
+      "utf8"
+    )
+    const loaded = await json<{ workflow: { steps: Array<{ model?: string; provider?: string }> } }>(
+      await GET_ONE(new Request("http://t"), named("legacy-line"))
+    )
+    expect(loaded.status).toBe(200)
+    expect(loaded.body.data?.workflow.steps[0]?.model).toBeUndefined()
+    expect(loaded.body.data?.workflow.steps[0]?.provider).toBeUndefined()
+
+    await seedArtifact(
+      env.workspace,
+      ".cursor/agents/planner.md",
+      "---\nname: planner\ndescription: Plans.\nmodel: claude-sonnet-4-20250514\nprovider: anthropic\n---\nYou plan.\n"
+    )
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    const started = await json(await START_RUN(jsonRequest("http://t", "POST", {}), named("legacy-line")))
+    expect(started.status).toBe(412)
+    expect(started.body.success).toBe(false)
+    expect(started.body.error).toBe(
+      'Step "plan" uses Anthropic, which is not verified. Verify it under AI Providers.'
+    )
+  })
+
+  it("rejects a bad step model on save and refuses an unset task kind at run start", async () => {
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    await POST(jsonRequest("http://t/api/workflows", "POST", body))
+    const rejected = await json(
+      await PUT(
+        jsonRequest("http://t/api/workflows/review-line", "PUT", {
+          ...body,
+          steps: [{ id: "plan", agent: "planner", model: "task:nope" }],
+        }),
+        named("review-line")
+      )
+    )
+    expect(rejected.status).toBe(400)
+    expect(rejected.body.error).toContain('Step "plan": Unknown model task "nope"')
+
+    const saved = await json(
+      await PUT(
+        jsonRequest("http://t/api/workflows/review-line", "PUT", {
+          ...body,
+          steps: [{ id: "plan", agent: "planner", model: "task:fast" }],
+        }),
+        named("review-line")
+      )
+    )
+    expect(saved.status).toBe(200)
+    const started = await json(await START_RUN(jsonRequest("http://t", "POST", {}), named("review-line")))
+    expect(started.status).toBe(412)
+    expect(started.body.error).toBe("Set the Fast model in Settings → AI → Models by task")
+
+    await updateAiSettings({ models: { fast: { provider: "openai", model: "gpt-4o-mini" } } })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: "fast plan" } }] }),
+      }))
+    )
+    const ready = await json<{ run: WorkflowRun }>(
+      await START_RUN(jsonRequest("http://t", "POST", {}), named("review-line"))
+    )
+    expect(ready.status).toBe(201)
+    const done = await untilTerminal(ready.body.data?.run.id ?? "")
+    expect(done.status).toBe("succeeded")
+    expect(done.steps[0]).toMatchObject({ model: "gpt-4o-mini", provider: "openai", modelSource: "step", task: "fast" })
   })
 
   it("refuses to start a run without a verified provider", async () => {

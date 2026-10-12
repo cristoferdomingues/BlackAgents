@@ -37,6 +37,18 @@ describe("frontmatterFor", () => {
     expect(fm).toMatchObject({ name: "a", parallel: true })
   })
 
+  it("cursor and claude keep a model id and aliases, and drop provider and task refs", () => {
+    const withId = artifact("agent", "a", { model: "gpt-4o", provider: "openai" })
+    expect(frontmatterFor("cursor", withId).model).toBe("gpt-4o")
+    expect(frontmatterFor("cursor", withId).provider).toBeUndefined()
+    expect(frontmatterFor("claude", withId).model).toBe("gpt-4o")
+    expect(frontmatterFor("claude", artifact("agent", "a", { model: "sonnet" })).model).toBe("sonnet")
+    expect(frontmatterFor("cursor", artifact("agent", "a", { model: "task:vision" })).model).toBeUndefined()
+    expect(frontmatterFor("windsurf", withId).model).toBeUndefined()
+    expect(frontmatterFor("antigravity", withId).model).toBeUndefined()
+    expect(frontmatterFor("antigravity", withId).provider).toBeUndefined()
+  })
+
   it("claude drops rule name and has no activation keys", () => {
     const fm = frontmatterFor("claude", artifact("rule", "r", { alwaysApply: true }))
     expect(fm.name).toBeUndefined()

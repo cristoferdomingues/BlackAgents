@@ -12,6 +12,10 @@ const audioIn: ModelInfo = { id: "google/gemini-2.5-flash", inputModalities: ["t
 const audioOut: ModelInfo = { id: "openai/gpt-audio-mini", inputModalities: ["text"], outputModalities: ["audio"] }
 const textOnly: ModelInfo = { id: "openai/gpt-4o-mini", inputModalities: ["text"], outputModalities: ["text"] }
 
+const imageIn: ModelInfo = { id: "openai/gpt-4o", inputModalities: ["text", "image"], outputModalities: ["text"] }
+const reasoner: ModelInfo = { id: "openai/o4", supportedParameters: ["reasoning", "tools"] }
+const plainReason: ModelInfo = { id: "openai/gpt-4o-mini", supportedParameters: ["tools"] }
+
 describe("modelsForTask", () => {
   it("keeps only models that take audio and give text for voice", () => {
     expect(modelsForTask("voice", [audioIn, audioOut, textOnly])).toEqual({ models: [audioIn], filtered: true })
@@ -20,6 +24,26 @@ describe("modelsForTask", () => {
   it("returns every model unfiltered when no modality data exists", () => {
     const plain = [{ id: "a" }, { id: "b" }]
     expect(modelsForTask("voice", plain)).toEqual({ models: plain, filtered: false })
+  })
+
+  it("keeps image-in text-out models for vision", () => {
+    expect(modelsForTask("vision", [imageIn, textOnly, audioIn])).toEqual({ models: [imageIn], filtered: true })
+  })
+
+  it("does not filter fast, even when modalities exist", () => {
+    const models = [imageIn, textOnly]
+    expect(modelsForTask("fast", models)).toEqual({ models, filtered: false })
+  })
+
+  it("filters reasoning only when some model publishes supported parameters", () => {
+    expect(modelsForTask("reasoning", [textOnly, imageIn])).toEqual({
+      models: [textOnly, imageIn],
+      filtered: false,
+    })
+    expect(modelsForTask("reasoning", [reasoner, plainReason, textOnly])).toEqual({
+      models: [reasoner],
+      filtered: true,
+    })
   })
 })
 

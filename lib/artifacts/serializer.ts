@@ -19,6 +19,15 @@ function frontmatterFor(
   // Only replace tool scope when the editor sent it, so older clients keep it.
   if (input.extra.tools !== undefined) delete base.tools
   if (input.extra.mcpServers !== undefined) delete base.mcpServers
+  if (input.type === "agent") {
+    if (input.extra.model !== undefined) delete base.model
+    if (input.extra.provider !== undefined) delete base.provider
+    // A task kind owns its provider, so a stale provider must not stay beside it.
+    if (typeof extra.model === "string" && extra.model.startsWith("task:")) delete base.provider
+  } else {
+    delete base.model
+    delete base.provider
+  }
 
   switch (input.type) {
     case "rule":

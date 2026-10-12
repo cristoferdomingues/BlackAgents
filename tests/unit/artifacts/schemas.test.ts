@@ -103,7 +103,48 @@ describe("normalizeExtra", () => {
 
   it("drops all extras for commands and skills", () => {
     expect(normalizeExtra("command", { parallel: true })).toEqual({})
-    expect(normalizeExtra("skill", { alwaysApply: true })).toEqual({})
+    expect(normalizeExtra("skill", { alwaysApply: true, model: "gpt-4o", provider: "openai" })).toEqual({})
+  })
+
+  it("keeps an agent model, drops inherit, and keeps aliases", () => {
+    expect(normalizeExtra("agent", { model: "gpt-4o", provider: "openai" })).toEqual({
+      model: "gpt-4o",
+      provider: "openai",
+    })
+    expect(normalizeExtra("agent", { model: "inherit", provider: "openai" })).toEqual({})
+    expect(normalizeExtra("agent", { model: "sonnet", provider: "anthropic" })).toEqual({ model: "sonnet" })
+    expect(normalizeExtra("agent", { model: "task:vision" })).toEqual({ model: "task:vision" })
+    expect(normalizeExtra("agent", { model: null, provider: null })).toEqual({})
+  })
+})
+
+describe("agent model schema", () => {
+  const base = {
+    type: "agent" as const,
+    name: "demo-agent",
+    description: "A demo agent.",
+    body: "",
+  }
+
+  it("rejects an unknown task, voice, and a provider beside a task", () => {
+    expect(artifactInputSchema.safeParse({ ...base, extra: { model: "task:nope" } }).success).toBe(false)
+    const voice = artifactInputSchema.safeParse({ ...base, extra: { model: "task:voice" } })
+    expect(voice.success).toBe(false)
+    if (!voice.success) expect(voice.error.issues[0]?.message).toBe('"voice" is not a chat model task')
+    const both = artifactInputSchema.safeParse({
+      ...base,
+      extra: { model: "task:fast", provider: "openai" },
+    })
+    expect(both.success).toBe(false)
+    if (!both.success) expect(both.error.issues[0]?.message).toBe("A task kind cannot set a provider")
+  })
+
+  it("accepts a model id and a task kind", () => {
+    expect(artifactInputSchema.parse({ ...base, extra: { model: "gpt-4o", provider: "openai" } }).extra).toMatchObject({
+      model: "gpt-4o",
+      provider: "openai",
+    })
+    expect(artifactInputSchema.parse({ ...base, extra: { model: "task:reasoning" } }).extra.model).toBe("task:reasoning")
   })
 })
 

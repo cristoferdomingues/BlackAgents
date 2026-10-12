@@ -32,6 +32,7 @@ import type { McpServerStatus } from "@/lib/mcp/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
 import { McpTrustSelect } from "@/components/features/settings/mcp-trust-select"
+import { TaskModelsCard } from "@/components/features/settings/task-models-card"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -336,6 +337,7 @@ export function SettingsPage() {
 
         <TabsContent value="ai" className="space-y-4 pt-2">
           <AiSettingsCard />
+          <TaskModelsCard />
         </TabsContent>
 
         {/* Tab 1: Create New Workspace */}

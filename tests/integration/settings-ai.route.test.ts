@@ -22,6 +22,7 @@ describe("/api/settings/ai", () => {
       settings: {
         assistant: { maxToolTurns: 8, autoApproveFileWrites: false },
         jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
+        models: {},
       },
       jevKey: { configured: false },
       jevOpenRouterKey: { configured: false },

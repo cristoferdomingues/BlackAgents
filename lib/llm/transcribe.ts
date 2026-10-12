@@ -10,6 +10,7 @@ import { ProviderError, type LLMCredentials, type ProviderId } from "./types"
  */
 
 export const OPENAI_TRANSCRIBE_MODEL = "whisper-1"
+export const VOICE_MODEL_MISSING = "Choose a voice model in Settings → AI → Models by task"
 /** About 2 minutes of 16 kHz mono 16-bit WAV, base64-encoded. */
 export const MAX_AUDIO_BASE64_LENGTH = 6_000_000
 
@@ -68,7 +69,7 @@ async function transcribeCustom(
   credentials: LLMCredentials
 ): Promise<string> {
   if (!credentials.baseUrl) throw new ProviderError("Custom provider requires a base URL", 400)
-  if (!request.model) throw new ProviderError("Choose a model to transcribe with", 400)
+  if (!request.model) throw new ProviderError(VOICE_MODEL_MISSING, 412)
   const headers: Record<string, string> = { "Content-Type": "application/json" }
   if (credentials.apiKey) headers.Authorization = `Bearer ${credentials.apiKey}`
 

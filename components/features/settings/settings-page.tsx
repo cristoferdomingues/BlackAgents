@@ -18,7 +18,6 @@ import {
   Terminal,
   Trash2,
   TriangleAlert,
-  Wrench,
   Zap,
   Brain,
   Globe,
@@ -347,31 +346,31 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
-          <TabsTrigger value="create" className="gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Create Workspace
+        <TabsList className="grid h-auto min-h-9 w-full grid-cols-2 gap-1 sm:grid-cols-5">
+          <TabsTrigger value="create" className="gap-1.5 px-2">
+            <FolderPlus className="size-4 shrink-0 text-primary" />
+            <span className="truncate">Create Workspace</span>
           </TabsTrigger>
-          <TabsTrigger value="open" className="gap-2">
-            <FolderOpen className="h-4 w-4" />
-            Open Existing
+          <TabsTrigger value="open" className="gap-1.5 px-2">
+            <FolderOpen className="size-4 shrink-0 text-primary" />
+            <span className="truncate">Open Existing</span>
           </TabsTrigger>
-          <TabsTrigger value="mcp" className="gap-2">
-            <Wrench className="h-4 w-4 text-purple-400" />
-            MCP Servers
+          <TabsTrigger value="mcp" className="gap-1.5 px-2">
+            <Plug className="size-4 shrink-0 text-primary" />
+            <span className="truncate">MCP Servers</span>
             {totalMcpTools > 0 ? (
-              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+              <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
                 {totalMcpTools}
               </Badge>
             ) : null}
           </TabsTrigger>
-          <TabsTrigger value="browser" className="gap-2">
-            <Globe className="h-4 w-4 text-primary" />
-            Browser
+          <TabsTrigger value="browser" className="gap-1.5 px-2">
+            <Globe className="size-4 shrink-0 text-primary" />
+            <span className="truncate">Browser</span>
           </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-2">
-            <Brain className="h-4 w-4 text-primary" />
-            AI
+          <TabsTrigger value="ai" className="gap-1.5 px-2">
+            <Brain className="size-4 shrink-0 text-primary" />
+            <span className="truncate">AI</span>
           </TabsTrigger>
         </TabsList>
 

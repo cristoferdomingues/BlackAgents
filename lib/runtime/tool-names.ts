@@ -1,7 +1,13 @@
 import { z } from "zod"
 
 /** Built-in tools an agent can be equipped with. Isomorphic (used by the UI). */
-export const BUILTIN_TOOL_NAMES = ["fs_list", "fs_read", "fs_write", "shell_run"] as const
+export const BUILTIN_TOOL_NAMES = [
+  "fs_list",
+  "fs_read",
+  "fs_write",
+  "shell_run",
+  "browser_run_flow",
+] as const
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number]
 export const builtinToolNameSchema = z.enum(BUILTIN_TOOL_NAMES)
 
@@ -17,4 +23,8 @@ export const BUILTIN_TOOL_LABELS: Record<BuiltinToolName, { label: string; hint:
   fs_read: { label: "Read files", hint: "Read-only, inside the workspace" },
   fs_write: { label: "Write files", hint: "Needs approval unless writes are allowed" },
   shell_run: { label: "Run commands", hint: "Needs approval for every command" },
+  browser_run_flow: {
+    label: "Run browser flow",
+    hint: "Replay a saved flow (desktop / Electron only)",
+  },
 }

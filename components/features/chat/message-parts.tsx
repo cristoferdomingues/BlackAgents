@@ -5,23 +5,56 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Globe,
+  Loader2,
   Terminal,
   Wand2,
   XCircle,
 } from "lucide-react"
+import { toast } from "sonner"
 
+import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
+import { BROWSER_MCP_SERVER } from "@/lib/browser/constants"
 import type { NormalizedDraft } from "@/lib/llm/draft"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import type { ToolExecutionTrace } from "@/lib/mcp/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 
 export function ToolExecutionsSection({ traces }: { traces: ToolExecutionTrace[] }) {
   const [open, setOpen] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [flowName, setFlowName] = React.useState("coached-browser-flow")
   const totalDuration = traces.reduce((acc, t) => acc + (t.durationMs ?? 0), 0)
   const hasError = traces.some((t) => t.error)
+  const browserTraces = traces.filter((t) => t.server === BROWSER_MCP_SERVER && !t.error)
+
+  async function saveAsFlow() {
+    if (browserTraces.length === 0) return
+    setSaving(true)
+    try {
+      const res = await apiFetch<{ flow: { name: string } }>(
+        "/api/browser/flows/from-traces",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: flowName.trim(),
+            description: `Saved from chat coaching (${browserTraces.length} steps)`,
+            traces: browserTraces,
+            bind: true,
+          }),
+        }
+      )
+      toast.success(`Saved browser flow "${res.flow.name}"`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save flow")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="rounded-lg border bg-muted/30 text-left text-xs overflow-hidden">
@@ -63,6 +96,31 @@ export function ToolExecutionsSection({ traces }: { traces: ToolExecutionTrace[]
           {traces.map((trace, idx) => (
             <ToolTraceCard key={trace.id ?? idx} trace={trace} />
           ))}
+          {browserTraces.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-dashed p-2 font-sans">
+              <Globe className="h-3.5 w-3.5 text-primary shrink-0" />
+              <Input
+                className="h-7 max-w-[10rem] text-xs"
+                value={flowName}
+                onChange={(e) => setFlowName(e.target.value)}
+                aria-label="Flow name"
+                spellCheck={false}
+              />
+              <Button
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                disabled={saving || !flowName.trim()}
+                onClick={() => void saveAsFlow()}
+              >
+                {saving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Globe className="h-3 w-3" />
+                )}
+                Save as browser flow
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

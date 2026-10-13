@@ -1,3 +1,5 @@
+import { BROWSER_MCP_SERVER } from "@/lib/browser/constants"
+import { isDesktopRuntime } from "@/lib/browser/platform"
 import { executeWorkspaceTool, loadWorkspaceTools } from "@/lib/mcp/client"
 import { readMcpPolicy, trustOf, type McpTrust } from "@/lib/mcp/policy"
 import type { McpTool } from "@/lib/mcp/types"
@@ -49,13 +51,18 @@ export async function loadMcpRuntimeTools(
 ): Promise<RuntimeTool[]> {
   if (servers && servers.length === 0) return []
   try {
+    const scoped =
+      servers ??
+      undefined
+    const desktop = isDesktopRuntime()
     const [tools, policy] = await Promise.all([
-      loadWorkspaceTools(workspaceRoot, servers),
+      loadWorkspaceTools(workspaceRoot, scoped),
       readMcpPolicy(workspaceRoot),
     ])
     const seen = new Set<string>()
     const out: RuntimeTool[] = []
     for (const tool of tools) {
+      if (tool.server === BROWSER_MCP_SERVER && !desktop) continue
       const runtime = toRuntimeTool(tool, trustOf(policy, tool.server))
       if (seen.has(runtime.name)) continue
       seen.add(runtime.name)

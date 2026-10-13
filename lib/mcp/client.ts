@@ -4,6 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 
+import { maybeRecordBrowserTraces } from "@/lib/browser/recording"
 import { getMcpSecrets } from "@/lib/secrets"
 
 import { readWorkspaceMcpConfig } from "./config"
@@ -251,7 +252,7 @@ export async function executeWorkspaceTool(
       }
     }
 
-    return {
+    const trace = {
       id: executionId,
       server: serverName,
       tool: toolName,
@@ -260,8 +261,10 @@ export async function executeWorkspaceTool(
       error: callResult.isError ? String(parsedResult) : undefined,
       durationMs: Date.now() - startTime,
     }
+    maybeRecordBrowserTraces(workspaceRoot, [trace])
+    return trace
   } catch (err) {
-    return {
+    const trace = {
       id: executionId,
       server: serverName,
       tool: toolName,
@@ -269,6 +272,8 @@ export async function executeWorkspaceTool(
       error: err instanceof Error ? err.message : String(err),
       durationMs: Date.now() - startTime,
     }
+    maybeRecordBrowserTraces(workspaceRoot, [trace])
+    return trace
   } finally {
     if (client) {
       await client.close().catch(() => {})

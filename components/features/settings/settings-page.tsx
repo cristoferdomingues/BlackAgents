@@ -21,6 +21,7 @@ import {
   Wrench,
   Zap,
   Brain,
+  Globe,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -34,6 +35,7 @@ import { mcpSecretId } from "@/lib/mcp/secret-refs"
 import type { McpServerConfig, McpServerStatus, McpTransportType } from "@/lib/mcp/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
+import { BrowserAutomationCard } from "@/components/features/settings/browser-automation-card"
 import { McpTrustSelect } from "@/components/features/settings/mcp-trust-select"
 import { TaskModelsCard } from "@/components/features/settings/task-models-card"
 import { Button } from "@/components/ui/button"
@@ -345,7 +347,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
           <TabsTrigger value="create" className="gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
             Create Workspace
@@ -363,6 +365,10 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
               </Badge>
             ) : null}
           </TabsTrigger>
+          <TabsTrigger value="browser" className="gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            Browser
+          </TabsTrigger>
           <TabsTrigger value="ai" className="gap-2">
             <Brain className="h-4 w-4 text-primary" />
             AI
@@ -372,6 +378,10 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         <TabsContent value="ai" className="space-y-4 pt-2">
           <AiSettingsCard />
           <TaskModelsCard />
+        </TabsContent>
+
+        <TabsContent value="browser" className="space-y-4 pt-2">
+          <BrowserAutomationCard />
         </TabsContent>
 
         {/* Tab 1: Create New Workspace */}

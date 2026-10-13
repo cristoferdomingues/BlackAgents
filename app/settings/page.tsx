@@ -1,6 +1,6 @@
 import { SettingsPage } from "@/components/features/settings/settings-page"
 
-const SETTINGS_TABS = ["create", "open", "mcp", "ai"] as const
+const SETTINGS_TABS = ["create", "open", "mcp", "browser", "ai"] as const
 type SettingsTab = (typeof SETTINGS_TABS)[number]
 
 function isSettingsTab(value: string | string[] | undefined): value is SettingsTab {

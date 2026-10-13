@@ -1,0 +1,28 @@
+{
+  "name": "time-registration-daily",
+  "description": "Daily time registration via saved browser flow (desktop app must be open).",
+  "task": "Run the browser flow time-registration to clock in / register today's time.",
+  "trigger": {
+    "type": "daily",
+    "at": "09:05"
+  },
+  "steps": [
+    {
+      "id": "run-flow",
+      "agent": "time-registrar",
+      "instructions": "Run browser_run_flow with name \"time-registration\". If auth fails, stop and ask the user to re-login in Settings → Browser.",
+      "input": "task",
+      "tools": ["fs_list", "fs_read", "browser_run_flow"],
+      "mcpServers": ["browser"],
+      "allowWrites": false,
+      "maxTurns": 8,
+      "gate": false
+    }
+  ],
+  "limits": {
+    "stepTimeoutMinutes": 15,
+    "runTimeoutMinutes": 30,
+    "maxRetries": 0
+  },
+  "selfAssess": false
+}

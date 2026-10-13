@@ -6,6 +6,7 @@ import {
   type BuiltinToolName,
 } from "../tool-names"
 import type { RuntimeTool } from "../types"
+import { browserRunFlowTool } from "./browser-run-flow"
 import { fsListTool, fsReadTool, fsWriteTool } from "./fs"
 import { loadMcpRuntimeTools } from "./mcp"
 import { shellRunTool } from "./shell"
@@ -15,6 +16,7 @@ const BUILTIN_TOOLS: Record<BuiltinToolName, RuntimeTool> = {
   fs_read: fsReadTool,
   fs_write: fsWriteTool,
   shell_run: shellRunTool,
+  browser_run_flow: browserRunFlowTool,
 }
 
 export function builtinTools(names: readonly BuiltinToolName[]): RuntimeTool[] {

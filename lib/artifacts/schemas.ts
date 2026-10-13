@@ -35,7 +35,7 @@ export const artifactInputSchema = z.object({
       parallel: z.boolean().optional(),
       alwaysApply: z.boolean().optional(),
       globs: z.array(z.string().trim().min(1)).optional(),
-      /** Agents: built-in tools (fs_list, fs_read, fs_write, shell_run). */
+      /** Agents: built-in tools (fs_list, fs_read, fs_write, shell_run, browser_run_flow). */
       tools: z.array(builtinToolNameSchema).optional(),
       /** Agents: MCP servers the agent may use (absent = all). */
       mcpServers: z.array(z.string().trim().min(1).max(100)).max(50).optional(),

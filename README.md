@@ -113,6 +113,10 @@ Auth tokens entered in **Settings → MCP Servers** are stored in `~/.black-agen
 - **Settings & Tool Diagnostics**: Navigate to **Settings → MCP Servers** to view live connection statuses (Connected / Error / Disabled), inspect tool signatures, test server responsiveness with timeout boundaries, or add new servers.
 - **Visual Execution Traces**: In the Assistant chat, assistant responses display collapsible execution trace cards showing tool name, arguments, elapsed duration in milliseconds, and structured JSON results or errors.
 
+### Browser automation (desktop)
+
+Electron only (`npm run desktop:dev` / packaged app). **Settings → Browser** enables Playwright MCP (`@playwright/mcp`) with a persistent Chromium profile. Teach a site by **recording** (Settings) or **coaching in chat**, then **Save as browser flow**. Replay with the builtin `browser_run_flow` tool or the `time-registrar` agent. Install Chromium once with `npm run desktop:install-browser`.
+
 ## Workspace Starter Kits
 
 When creating a new workspace in **Settings** or the header menu, you can start from scratch or choose a domain template:

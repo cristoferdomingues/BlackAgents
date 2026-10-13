@@ -41,6 +41,7 @@ async function startApplicationServer() {
       HOSTNAME: "127.0.0.1",
       NODE_ENV: "production",
       PORT: String(port),
+      BLACK_AGENTS_DESKTOP: "1",
     },
   })
 

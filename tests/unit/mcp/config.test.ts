@@ -4,6 +4,8 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
+  LEGACY_CURSOR_MCP_REL_PATH,
+  MCP_CONFIG_REL_PATH,
   readWorkspaceMcpConfig,
   saveWorkspaceMcpServer,
   deleteWorkspaceMcpServer,
@@ -19,15 +21,18 @@ afterEach(async () => {
   await rm(workspaceDir, { recursive: true, force: true })
 })
 
+function mcpPath(): string {
+  return path.join(workspaceDir, MCP_CONFIG_REL_PATH)
+}
+
 describe("readWorkspaceMcpConfig", () => {
-  it("returns an empty mcpServers object when .cursor/mcp.json does not exist", async () => {
+  it("returns an empty mcpServers object when no MCP config exists", async () => {
     const config = await readWorkspaceMcpConfig(workspaceDir)
     expect(config).toEqual({ mcpServers: {} })
   })
 
-  it("reads and parses valid .cursor/mcp.json", async () => {
-    const cursorDir = path.join(workspaceDir, ".cursor")
-    await mkdir(cursorDir, { recursive: true })
+  it("reads and parses valid .black-agents/mcp.json", async () => {
+    await mkdir(path.dirname(mcpPath()), { recursive: true })
     const sampleConfig = {
       mcpServers: {
         "sqlite-db": {
@@ -37,11 +42,7 @@ describe("readWorkspaceMcpConfig", () => {
         },
       },
     }
-    await writeFile(
-      path.join(cursorDir, "mcp.json"),
-      JSON.stringify(sampleConfig, null, 2),
-      "utf8"
-    )
+    await writeFile(mcpPath(), JSON.stringify(sampleConfig, null, 2), "utf8")
 
     const result = await readWorkspaceMcpConfig(workspaceDir)
     expect(result.mcpServers["sqlite-db"]).toBeDefined()
@@ -53,20 +54,76 @@ describe("readWorkspaceMcpConfig", () => {
     ])
   })
 
+  it("migrates a legacy .cursor/mcp.json into .black-agents/mcp.json", async () => {
+    const legacyAbs = path.join(workspaceDir, LEGACY_CURSOR_MCP_REL_PATH)
+    await mkdir(path.dirname(legacyAbs), { recursive: true })
+    await writeFile(
+      legacyAbs,
+      JSON.stringify({
+        mcpServers: {
+          github: {
+            url: "https://api.githubcopilot.com/mcp/",
+            headers: {
+              Authorization: "${secret:mcp.github.header.Authorization}",
+            },
+          },
+        },
+      }),
+      "utf8"
+    )
+
+    const result = await readWorkspaceMcpConfig(workspaceDir)
+    expect(result.mcpServers.github?.url).toBe(
+      "https://api.githubcopilot.com/mcp/"
+    )
+
+    const migrated = JSON.parse(await readFile(mcpPath(), "utf8")) as {
+      mcpServers: Record<string, { url?: string }>
+    }
+    expect(migrated.mcpServers.github?.url).toBe(
+      "https://api.githubcopilot.com/mcp/"
+    )
+  })
+
+  it("prefers .black-agents/mcp.json over a legacy Cursor file", async () => {
+    await mkdir(path.dirname(mcpPath()), { recursive: true })
+    await writeFile(
+      mcpPath(),
+      JSON.stringify({
+        mcpServers: {
+          owned: { command: "echo", args: ["owned"] },
+        },
+      }),
+      "utf8"
+    )
+    const legacyAbs = path.join(workspaceDir, LEGACY_CURSOR_MCP_REL_PATH)
+    await mkdir(path.dirname(legacyAbs), { recursive: true })
+    await writeFile(
+      legacyAbs,
+      JSON.stringify({
+        mcpServers: {
+          legacy: { command: "echo", args: ["legacy"] },
+        },
+      }),
+      "utf8"
+    )
+
+    const result = await readWorkspaceMcpConfig(workspaceDir)
+    expect(Object.keys(result.mcpServers)).toEqual(["owned"])
+  })
+
   it("recovers gracefully from corrupted JSON file", async () => {
-    const cursorDir = path.join(workspaceDir, ".cursor")
-    await mkdir(cursorDir, { recursive: true })
-    await writeFile(path.join(cursorDir, "mcp.json"), "NOT_JSON", "utf8")
+    await mkdir(path.dirname(mcpPath()), { recursive: true })
+    await writeFile(mcpPath(), "NOT_JSON", "utf8")
 
     const result = await readWorkspaceMcpConfig(workspaceDir)
     expect(result).toEqual({ mcpServers: {} })
   })
 
   it("reads a URL server that has headers and no transport", async () => {
-    const cursorDir = path.join(workspaceDir, ".cursor")
-    await mkdir(cursorDir, { recursive: true })
+    await mkdir(path.dirname(mcpPath()), { recursive: true })
     await writeFile(
-      path.join(cursorDir, "mcp.json"),
+      mcpPath(),
       JSON.stringify({
         mcpServers: {
           blacklionfi: {
@@ -88,7 +145,7 @@ describe("readWorkspaceMcpConfig", () => {
 })
 
 describe("saveWorkspaceMcpServer", () => {
-  it("saves a new server configuration into .cursor/mcp.json", async () => {
+  it("saves a new server configuration into .black-agents/mcp.json", async () => {
     const serverConfig = {
       command: "node",
       args: ["server.js"],
@@ -109,16 +166,12 @@ describe("saveWorkspaceMcpServer", () => {
       disabled: false,
     })
 
-    // Verify it was persisted to disk
-    const content = await readFile(
-      path.join(workspaceDir, ".cursor", "mcp.json"),
-      "utf8"
-    )
+    const content = await readFile(mcpPath(), "utf8")
     const diskParsed = JSON.parse(content)
     expect(diskParsed.mcpServers["custom-node"].command).toBe("node")
   })
 
-  it("saves an HTTP server with headers", async () => {
+  it("saves an HTTP server with headers and keeps transport http", async () => {
     const updated = await saveWorkspaceMcpServer(workspaceDir, "blacklionfi", {
       url: "https://app.example/api/mcp",
       headers: { Authorization: "Bearer blf_mcp_token" },
@@ -130,10 +183,7 @@ describe("saveWorkspaceMcpServer", () => {
       headers: { Authorization: "Bearer blf_mcp_token" },
       transport: "http",
     })
-    const content = await readFile(
-      path.join(workspaceDir, ".cursor", "mcp.json"),
-      "utf8"
-    )
+    const content = await readFile(mcpPath(), "utf8")
     const diskParsed = JSON.parse(content) as {
       mcpServers: Record<
         string,
@@ -144,7 +194,7 @@ describe("saveWorkspaceMcpServer", () => {
     expect(diskParsed.mcpServers["blacklionfi"].headers).toEqual({
       Authorization: "Bearer blf_mcp_token",
     })
-    expect(diskParsed.mcpServers["blacklionfi"].transport).toBeUndefined()
+    expect(diskParsed.mcpServers["blacklionfi"].transport).toBe("http")
   })
 
   it("keeps transport sse on disk for an SSE server", async () => {
@@ -153,10 +203,7 @@ describe("saveWorkspaceMcpServer", () => {
       transport: "sse",
     })
 
-    const content = await readFile(
-      path.join(workspaceDir, ".cursor", "mcp.json"),
-      "utf8"
-    )
+    const content = await readFile(mcpPath(), "utf8")
     const diskParsed = JSON.parse(content) as {
       mcpServers: Record<string, { transport?: string }>
     }
@@ -173,7 +220,6 @@ describe("saveWorkspaceMcpServer", () => {
       args: ["2"],
     })
 
-    // Update server-one
     const updated = await saveWorkspaceMcpServer(workspaceDir, "server-one", {
       command: "echo",
       args: ["1-updated"],
@@ -186,7 +232,7 @@ describe("saveWorkspaceMcpServer", () => {
 })
 
 describe("deleteWorkspaceMcpServer", () => {
-  it("removes a configured server from .cursor/mcp.json", async () => {
+  it("removes a configured server from .black-agents/mcp.json", async () => {
     await saveWorkspaceMcpServer(workspaceDir, "to-remove", {
       command: "npx",
       args: ["remove-me"],
@@ -200,11 +246,7 @@ describe("deleteWorkspaceMcpServer", () => {
     expect(updated.mcpServers["to-remove"]).toBeUndefined()
     expect(updated.mcpServers["to-keep"]).toBeDefined()
 
-    // Verify persistence
-    const content = await readFile(
-      path.join(workspaceDir, ".cursor", "mcp.json"),
-      "utf8"
-    )
+    const content = await readFile(mcpPath(), "utf8")
     const diskParsed = JSON.parse(content)
     expect(diskParsed.mcpServers["to-remove"]).toBeUndefined()
     expect(diskParsed.mcpServers["to-keep"]).toBeDefined()

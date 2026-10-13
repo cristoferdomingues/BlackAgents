@@ -2,6 +2,12 @@ import { z } from "zod"
 
 export type McpTransportType = "stdio" | "sse" | "http"
 
+/** Redacted secret status safe to send to the client (matches `KeyStatus`). */
+export interface McpSecretStatus {
+  configured: boolean
+  last4?: string
+}
+
 /** True when `value` is an absolute http or https URL. */
 export function isHttpUrl(value: string): boolean {
   try {
@@ -87,4 +93,6 @@ export interface McpServerStatus {
   status: "connected" | "error" | "disabled"
   tools: McpTool[]
   error?: string
+  /** Redacted status for `${secret:…}` refs on this server (safe for the client). */
+  secretStatuses?: Record<string, McpSecretStatus>
 }

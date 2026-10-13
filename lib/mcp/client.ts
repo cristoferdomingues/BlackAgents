@@ -4,7 +4,10 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 
+import { getMcpSecrets } from "@/lib/secrets"
+
 import { readWorkspaceMcpConfig } from "./config"
+import { mcpServerSecretStatuses, resolveMcpServerSecrets } from "./resolve-secrets"
 import { mcpAuthRequestInit, resolveMcpTransport } from "./transport"
 import type {
   McpServerConfig,
@@ -50,36 +53,39 @@ export async function createMcpConnection(
     capabilities: {},
   })
 
-  const kind = resolveMcpTransport(config)
+  const mcpSecrets = await getMcpSecrets()
+  const resolved = resolveMcpServerSecrets(config, mcpSecrets)
+
+  const kind = resolveMcpTransport(resolved)
   let transport: Transport
 
   if (kind === "http" || kind === "sse") {
-    if (!config.url) {
+    if (!resolved.url) {
       throw new Error(
         kind === "http" ? "HTTP server needs a URL" : "SSE server needs a URL"
       )
     }
-    const url = new URL(config.url)
-    const requestInit = mcpAuthRequestInit(config)
+    const url = new URL(resolved.url)
+    const requestInit = mcpAuthRequestInit(resolved)
     const options = requestInit ? { requestInit } : undefined
     transport =
       kind === "http"
         ? new StreamableHTTPClientTransport(url, options)
         : new SSEClientTransport(url, options)
-  } else if (config.command) {
+  } else if (resolved.command) {
     const envRecord: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) {
       if (typeof v === "string") envRecord[k] = v
     }
-    if (config.env) {
-      for (const [k, v] of Object.entries(config.env)) {
+    if (resolved.env) {
+      for (const [k, v] of Object.entries(resolved.env)) {
         envRecord[k] = v
       }
     }
 
     transport = new StdioClientTransport({
-      command: config.command,
-      args: config.args ?? [],
+      command: resolved.command,
+      args: resolved.args ?? [],
       env: envRecord,
       cwd,
     })
@@ -97,12 +103,16 @@ export async function testMcpServer(
   config: McpServerConfig,
   cwd?: string
 ): Promise<McpServerStatus> {
+  const mcpSecrets = await getMcpSecrets()
+  const secretStatuses = mcpServerSecretStatuses(config, mcpSecrets)
+
   if (config.disabled) {
     return {
       name,
       config,
       status: "disabled",
       tools: [],
+      secretStatuses,
     }
   }
 
@@ -135,6 +145,7 @@ export async function testMcpServer(
       config,
       status: "connected",
       tools,
+      secretStatuses,
     }
   } catch (err) {
     return {
@@ -143,6 +154,7 @@ export async function testMcpServer(
       status: "error",
       tools: [],
       error: err instanceof Error ? err.message : String(err),
+      secretStatuses,
     }
   } finally {
     if (client) {

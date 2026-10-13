@@ -4,10 +4,13 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
+  getMcpSecrets,
   getProviderSecret,
   readSecrets,
+  removeMcpSecrets,
   removeProviderSecret,
   setDefaults,
+  setMcpSecrets,
   setProviderSecret,
   setProviderVerification,
   toStatusList,
@@ -91,5 +94,20 @@ describe("toStatusList", () => {
     const openai = statuses.find((s) => s.id === "openai")!
     expect(openai.configured).toBe(false)
     expect(openai.last4).toBeUndefined()
+  })
+})
+
+describe("mcp secrets", () => {
+  it("stores and removes MCP secret values", async () => {
+    await setMcpSecrets({
+      "mcp.github.header.Authorization": "Bearer ghp_abcd",
+    })
+    expect(await getMcpSecrets()).toEqual({
+      "mcp.github.header.Authorization": "Bearer ghp_abcd",
+    })
+
+    await removeMcpSecrets(["mcp.github.header.Authorization"])
+    expect(await getMcpSecrets()).toEqual({})
+    expect((await readSecrets()).mcp).toBeUndefined()
   })
 })

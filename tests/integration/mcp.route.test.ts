@@ -63,9 +63,8 @@ describe("POST /api/mcp", () => {
     expect(json.data.server.name).toBe("my-service")
     expect(json.data.server.status).toBe("disabled")
 
-    // Verify .cursor/mcp.json exists in workspace
     const mcpContent = await readFile(
-      path.join(env.workspace, ".cursor", "mcp.json"),
+      path.join(env.workspace, ".black-agents", "mcp.json"),
       "utf8"
     )
     const parsed = JSON.parse(mcpContent)
@@ -95,15 +94,56 @@ describe("POST /api/mcp", () => {
     })
 
     const mcpContent = await readFile(
-      path.join(env.workspace, ".cursor", "mcp.json"),
+      path.join(env.workspace, ".black-agents", "mcp.json"),
       "utf8"
     )
     const parsed = JSON.parse(mcpContent) as {
       mcpServers: Record<string, { transport?: string; headers?: Record<string, string> }>
     }
-    expect(parsed.mcpServers["blacklionfi"].transport).toBeUndefined()
+    expect(parsed.mcpServers["blacklionfi"].transport).toBe("http")
     expect(parsed.mcpServers["blacklionfi"].headers?.Authorization).toBe(
       "Bearer blf_mcp_token"
+    )
+  })
+
+  it("stores Authorization as a secret and writes a placeholder to mcp.json", async () => {
+    const res = await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "github",
+        config: {
+          url: "https://api.githubcopilot.com/mcp/",
+          headers: { Authorization: "Bearer ghp_test_token_9999" },
+          transport: "http",
+          disabled: true,
+        },
+        secretHeaders: ["Authorization"],
+      })
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.server.config.headers.Authorization).toBe(
+      "${secret:mcp.github.header.Authorization}"
+    )
+    expect(json.data.server.secretStatuses).toEqual({
+      "mcp.github.header.Authorization": { configured: true, last4: "9999" },
+    })
+
+    const mcpContent = await readFile(
+      path.join(env.workspace, ".black-agents", "mcp.json"),
+      "utf8"
+    )
+    expect(mcpContent).toContain("${secret:mcp.github.header.Authorization}")
+    expect(mcpContent).not.toContain("ghp_test_token_9999")
+
+    const secretsRaw = await readFile(
+      path.join(env.configDir, "secrets.json"),
+      "utf8"
+    )
+    const secrets = JSON.parse(secretsRaw) as {
+      mcp?: Record<string, string>
+    }
+    expect(secrets.mcp?.["mcp.github.header.Authorization"]).toBe(
+      "Bearer ghp_test_token_9999"
     )
   })
 
@@ -144,8 +184,7 @@ describe("DELETE /api/mcp", () => {
     expect(res.status).toBe(400)
   })
 
-  it("deletes configured server from .cursor/mcp.json", async () => {
-    // First create a server
+  it("deletes configured server from .black-agents/mcp.json", async () => {
     await POST(
       jsonRequest("http://t/api/mcp", "POST", {
         name: "to-delete",
@@ -156,7 +195,6 @@ describe("DELETE /api/mcp", () => {
       })
     )
 
-    // Now delete it
     const req = new Request("http://t/api/mcp?name=to-delete", {
       method: "DELETE",
     })
@@ -166,12 +204,40 @@ describe("DELETE /api/mcp", () => {
     expect(json.data.success).toBe(true)
     expect(json.data.deleted).toBe("to-delete")
 
-    // Check disk
     const mcpContent = await readFile(
-      path.join(env.workspace, ".cursor", "mcp.json"),
+      path.join(env.workspace, ".black-agents", "mcp.json"),
       "utf8"
     )
     const parsed = JSON.parse(mcpContent)
     expect(parsed.mcpServers["to-delete"]).toBeUndefined()
+  })
+
+  it("removes MCP secrets when the server is deleted", async () => {
+    await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "github",
+        config: {
+          url: "https://api.githubcopilot.com/mcp/",
+          headers: { Authorization: "Bearer ghp_to_remove" },
+          transport: "http",
+          disabled: true,
+        },
+        secretHeaders: ["Authorization"],
+      })
+    )
+
+    const res = await DELETE(
+      new Request("http://t/api/mcp?name=github", { method: "DELETE" })
+    )
+    expect(res.status).toBe(200)
+
+    const secretsRaw = await readFile(
+      path.join(env.configDir, "secrets.json"),
+      "utf8"
+    )
+    const secrets = JSON.parse(secretsRaw) as {
+      mcp?: Record<string, string>
+    }
+    expect(secrets.mcp?.["mcp.github.header.Authorization"]).toBeUndefined()
   })
 })

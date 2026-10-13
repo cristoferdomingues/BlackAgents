@@ -35,7 +35,7 @@ Agents can also **act** on that folder: they read files, call MCP tools, and —
 - **Workflows** — a local production line. Each step runs one workspace agent and passes its result to the next. Run by hand, on an interval, or daily while the app is open.
 - **Second brain** — thumbs up or down on a chat reply or a finished run. BlackAgents may draft a memory note, skill, or rule. Nothing is saved until you approve it on **Brain**.
 - **Jev (optional)** — a fast classifier for small choices: which artifact to load, which skill fits a task, whether a skill description is too wide, whether a workflow step should continue, whether a scheduled run is needed, and what is worth learning. The app still works with Jev off.
-- **Model Context Protocol (MCP)** — configure standard `.cursor/mcp.json` servers per workspace in **Settings → MCP Servers**. A server can be a local command, HTTP, or SSE. HTTP and SSE can send headers, such as `Authorization`. Each server is trusted, ask, or risky. Chat shows a trace for every tool call.
+- **Model Context Protocol (MCP)** — configure servers per workspace in **Settings → MCP Servers** (stored in `.black-agents/mcp.json`). A server can be a local command, HTTP, or SSE. HTTP and SSE can send headers, such as `Authorization`. Each server is trusted, ask, or risky. Chat shows a trace for every tool call.
 - **Assistant drafting (bring your own key)** — describe an artifact in plain language and the assistant proposes a standards-compliant draft you can open straight in the editor. Keys are stored locally (`0600`) and never leave your machine.
 
 ## Concepts
@@ -70,15 +70,15 @@ The internal model is platform-agnostic, so the same artifacts can be exported t
 - **CodeMirror** for the markdown body editor
 - **zod** for input validation, **jszip** for the `.zip` export
 - **Vitest** for unit and route integration tests, **Playwright** for end-to-end flows
-- Persistence: the local **filesystem** (your workspace). App settings live in `~/.black-agents/` (`config.json`, `settings.json`, and `secrets.json` for keys, written `0600`). Per-workspace workflows, brain notes, and MCP trust live in `<workspace>/.black-agents/`.
+- Persistence: the local **filesystem** (your workspace). App settings live in `~/.black-agents/` (`config.json`, `settings.json`, and `secrets.json` for keys, written `0600`). Per-workspace workflows, brain notes, MCP servers, and MCP trust live in `<workspace>/.black-agents/`.
 
 ## Model Context Protocol (MCP)
 
 BlackAgents provides first-class support for the **Model Context Protocol (MCP)**, allowing agents in any workspace to autonomously connect to external tools, databases, APIs, and execution environments.
 
-### Standard Configuration (`.cursor/mcp.json`)
+### Configuration (`.black-agents/mcp.json`)
 
-MCP servers are configured per-workspace in `.cursor/mcp.json`. This guarantees 100% interoperability with Cursor and Claude Desktop without proprietary config formats:
+MCP servers are configured per-workspace in `.black-agents/mcp.json` (BlackAgents owns this file). A legacy `.cursor/mcp.json` is migrated automatically on first read if the BlackAgents file is missing.
 
 ```json
 {
@@ -96,16 +96,18 @@ MCP servers are configured per-workspace in `.cursor/mcp.json`. This guarantees 
       "url": "https://example.com/api/mcp",
       "transport": "http",
       "headers": {
-        "Authorization": "Bearer …"
+        "Authorization": "${secret:mcp.docs-api.header.Authorization}"
       }
     }
   }
 }
 ```
 
+Auth tokens entered in **Settings → MCP Servers** are stored in `~/.black-agents/secrets.json` (mode `0600`). The workspace file keeps only `${secret:…}` placeholders so tokens are not committed. BlackAgents resolves them when connecting. If you also use Cursor’s MCP panel, configure that separately (Cursor does not read `.black-agents/mcp.json`).
+
 ### Key Capabilities
 
-- **Transports**: a local command (`npx`, `uvx`, `python`, `node`), streamable HTTP (POST), or SSE. A URL with no transport is treated as HTTP. HTTP and SSE send the headers saved on that server, such as a bearer token.
+- **Transports**: a local command (`npx`, `uvx`, `python`, `node`), streamable HTTP (POST), or SSE. A URL with no transport is treated as HTTP. HTTP and SSE send resolved headers (including secret-backed bearer tokens).
 - **Autonomous Tool Execution**: When chatting with an agent persona (e.g. `portfolio-rebalancer`), the agent discovers available tools from enabled servers and can call them inside a bounded loop (8 turns by default, up to 20 in **Settings → AI**).
 - **Trust**: each server is `trusted` (treated as a read), `ask` (needs approval, the default), or `risky` (needs approval every time). The choice is stored in `.black-agents/mcp-policy.json`.
 - **Settings & Tool Diagnostics**: Navigate to **Settings → MCP Servers** to view live connection statuses (Connected / Error / Disabled), inspect tool signatures, test server responsiveness with timeout boundaries, or add new servers.
@@ -120,7 +122,7 @@ When creating a new workspace in **Settings** or the header menu, you can start 
   - `risk-management.mdc` rule — enforces non-negotiable concentration limits (max 40% non-BTC/ETH, max 5% microcaps, 10% cash buffer).
   - `defi-lending-protocols` skill — guides health factor thresholds and borrow/supply rate mechanics (Aave, Morpho).
   - `weekly-portfolio-review` command — orchestrates weekly audits across wallets and agents.
-  - `.cursor/mcp.json` — preconfigured MCP server for external market data tools.
+  - `.black-agents/mcp.json` — preconfigured MCP server for external market data tools.
 - **Software Engineering (`software`)**:
   - `feature-developer` agent — plans, writes, and tests production code.
   - `typescript-strict.mdc` rule — enforces strict typing, error handling, and lint rules.
@@ -168,7 +170,7 @@ Minimizing the window hides it and leaves a menu-bar icon. Click the icon to ope
 3. **Chatting with workspace agents**: In **Assistant**, select an agent from the persona dropdown (e.g. `portfolio-rebalancer` or `feature-developer`). Type `@` to pick an artifact from the workspace. The chat loads it into the turn and shows it as a **Context** badge. `/name` also works when that name belongs to only one artifact.
 4. **Approvals**: a file write shows a card. Deny it, allow it for that message, or allow it for the chat. A command still asks every time. **Settings → AI → Allow file writes without asking** skips the file-write card. Turning that on shows a warning.
 5. **Files, voice, and YouTube**: attach a text file, image, or PDF, or paste a YouTube link. The assistant reads captions, not the picture. Use the microphone to fill the message. On **Skills → New**, add the same links and draft the skill from them.
-6. **MCP tools**: Configure MCP servers in **Settings → MCP Servers** (or edit `.cursor/mcp.json` directly) and set each server's trust. For HTTP or SSE, add headers when the server needs a token. Active tools are discovered when you chat.
+6. **MCP tools**: Configure MCP servers in **Settings → MCP Servers** (or edit `.black-agents/mcp.json` directly) and set each server's trust. For HTTP or SSE, add headers when the server needs a token. Active tools are discovered when you chat.
 7. **Workflows**: open **Workflows**, add steps that point at workspace agents, then run the line. A live run page shows each step, waiting approvals, and files changed. Interval and daily runs fire only while the app is open. In the assistant, `/workflow-name` starts a saved workflow.
 8. **Brain**: rate a reply or a finished run. Open **Brain** to approve or reject the proposed note, skill, or rule. Approved notes are added to later chats with that agent.
 9. **Jev** (optional): in **Settings → AI**, turn on **Use Jev**, pick a provider, and run **Test Jev**. With it off, chat, workflows, and learning still run. **Models by task** on the same screen picks the model for Voice, Vision, Fast, and Reasoning.

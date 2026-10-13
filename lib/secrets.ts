@@ -48,6 +48,11 @@ export interface SecretsFile {
   providers: Partial<Record<ProviderId, ProviderSecret>>
   defaults?: SecretsDefaults
   jev?: JevSecret
+  /**
+   * MCP header/env secrets keyed by id (`mcp.<server>.header.Authorization`).
+   * Referenced from `.black-agents/mcp.json` via `${secret:id}` placeholders.
+   */
+  mcp?: Record<string, string>
 }
 
 /** Redacted key status safe to send to the client. */
@@ -102,6 +107,7 @@ const secretsFileSchema = z.object({
       message: "At least one Jev key is required",
     })
     .optional(),
+  mcp: z.record(z.string().min(1), z.string().min(1)).optional(),
 })
 
 function expandHome(p: string): string {
@@ -267,4 +273,55 @@ export function jevKeyStatus(secrets: SecretsFile): KeyStatus {
 /** Redacted dedicated Jev OpenRouter key status, safe for the client. */
 export function jevOpenRouterKeyStatus(secrets: SecretsFile): KeyStatus {
   return keyStatus(secrets.jev?.openRouterApiKey)
+}
+
+/** All MCP secret values (id → raw secret). Server-only. */
+export async function getMcpSecrets(): Promise<Record<string, string>> {
+  const secrets = await readSecrets()
+  return secrets.mcp ?? {}
+}
+
+/**
+ * Merge MCP secrets into secrets.json. Empty string values are ignored;
+ * pass `removeIds` to delete keys.
+ */
+export async function setMcpSecrets(
+  upserts: Record<string, string>,
+  removeIds: string[] = []
+): Promise<SecretsFile> {
+  const secrets = await readSecrets()
+  const mcp: Record<string, string> = { ...(secrets.mcp ?? {}) }
+
+  for (const id of removeIds) {
+    delete mcp[id]
+  }
+  for (const [id, value] of Object.entries(upserts)) {
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    mcp[id] = value
+  }
+
+  if (Object.keys(mcp).length === 0) delete secrets.mcp
+  else secrets.mcp = mcp
+
+  await writeSecrets(secrets)
+  return secrets
+}
+
+/** Remove every MCP secret whose id is listed. */
+export async function removeMcpSecrets(ids: string[]): Promise<SecretsFile> {
+  return setMcpSecrets({}, ids)
+}
+
+/** Redacted status for a set of MCP secret ids (safe for the client). */
+export function mcpSecretsStatus(
+  secrets: SecretsFile,
+  ids: string[]
+): Record<string, KeyStatus> {
+  const mcp = secrets.mcp ?? {}
+  const statuses: Record<string, KeyStatus> = {}
+  for (const id of ids) {
+    statuses[id] = keyStatus(mcp[id])
+  }
+  return statuses
 }

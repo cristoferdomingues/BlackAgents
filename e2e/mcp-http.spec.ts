@@ -21,10 +21,18 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
               trust: "ask",
               config: {
                 url: "https://app.example/api/mcp",
-                headers: { Authorization: "Bearer blf_mcp_secret" },
+                headers: {
+                  Authorization: "${secret:mcp.blacklionfi.header.Authorization}",
+                },
                 args: [],
                 env: {},
                 disabled: false,
+              },
+              secretStatuses: {
+                "mcp.blacklionfi.header.Authorization": {
+                  configured: true,
+                  last4: "cret",
+                },
               },
             },
           },
@@ -46,10 +54,19 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
                   trust: "ask",
                   config: {
                     url: "https://app.example/api/mcp",
-                    headers: { Authorization: "Bearer blf_mcp_secret" },
+                    headers: {
+                      Authorization:
+                        "${secret:mcp.blacklionfi.header.Authorization}",
+                    },
                     args: [],
                     env: {},
                     disabled: false,
+                  },
+                  secretStatuses: {
+                    "mcp.blacklionfi.header.Authorization": {
+                      configured: true,
+                      last4: "cret",
+                    },
                   },
                 },
               ],
@@ -76,7 +93,7 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
   await page.getByRole("button", { name: "Test & Save Server" }).click()
 
   await expect(page.getByText("HTTP https://app.example/api/mcp")).toBeVisible()
-  await expect(page.getByText("Headers: Authorization")).toBeVisible()
+  await expect(page.getByText("Headers: Authorization (••••cret)")).toBeVisible()
   await expect(page.getByText("blf_mcp_secret")).toHaveCount(0)
 
   expect(saved).toEqual({
@@ -86,5 +103,6 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
       headers: { Authorization: "Bearer blf_mcp_secret" },
       transport: "http",
     },
+    secretHeaders: ["Authorization"],
   })
 })

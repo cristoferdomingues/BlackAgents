@@ -3,9 +3,8 @@ import { z } from "zod"
 import { pathExists, readText, resolveInWorkspace, writeText } from "@/lib/fs-service"
 
 /**
- * How much BlackAgents trusts each MCP server's tools. Kept in our own file
- * (`.black-agents/mcp-policy.json`) so Cursor's `.cursor/mcp.json` stays
- * untouched and valid for Cursor.
+ * How much BlackAgents trusts each MCP server's tools. Kept alongside the
+ * server list (`.black-agents/mcp.json`) in `.black-agents/mcp-policy.json`.
  *
  * - `trusted` — calls run without asking (read risk).
  * - `ask`     — calls need approval unless writes are allowed (write risk).

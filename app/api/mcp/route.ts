@@ -8,8 +8,13 @@ import {
   saveWorkspaceMcpServer,
 } from "@/lib/mcp/config"
 import { getWorkspaceServersStatus, testMcpServer } from "@/lib/mcp/client"
+import {
+  mcpSecretIdsForServer,
+  promoteMcpSecrets,
+} from "@/lib/mcp/promote-secrets"
 import { readMcpPolicy, trustOf } from "@/lib/mcp/policy"
 import { mcpServerConfigSchema } from "@/lib/mcp/types"
+import { getMcpSecrets, removeMcpSecrets, setMcpSecrets } from "@/lib/secrets"
 
 /**
  * List all configured MCP servers and their available tools for the active workspace.
@@ -43,10 +48,15 @@ const postSchema = z.object({
       "Use alphanumeric characters, dashes, or underscores for server name"
     ),
   config: mcpServerConfigSchema,
+  /** Header names whose values are stored in secrets.json (not mcp.json). */
+  secretHeaders: z.array(z.string().trim().min(1)).optional(),
+  /** Env keys whose values are stored in secrets.json (not mcp.json). */
+  secretEnv: z.array(z.string().trim().min(1)).optional(),
 })
 
 /**
- * Add or update an MCP server configuration in .cursor/mcp.json.
+ * Add or update an MCP server configuration in .black-agents/mcp.json.
+ * Optional secretHeaders / secretEnv move token values into ~/.black-agents/secrets.json.
  */
 export async function POST(req: Request) {
   return handle(async () => {
@@ -61,17 +71,31 @@ export async function POST(req: Request) {
       return fail(parsed.error.issues[0]?.message ?? "Invalid MCP server config")
     }
 
-    const { name, config: serverConfig } = parsed.data
+    const { name, config: serverConfig, secretHeaders, secretEnv } = parsed.data
 
     if (!serverConfig.command && !serverConfig.url) {
       return fail("Either 'command' or 'url' must be specified for an MCP server")
     }
 
-    // Save to workspace .cursor/mcp.json
-    await saveWorkspaceMcpServer(config.currentPath, name, serverConfig)
+    const existingSecrets = await getMcpSecrets()
+    const promoted = promoteMcpSecrets({
+      serverName: name,
+      config: serverConfig,
+      secretHeaders,
+      secretEnv,
+      existingSecrets,
+    })
+    if (!promoted.ok) {
+      return fail(promoted.error, 412)
+    }
 
-    // Test server status
-    const status = await testMcpServer(name, serverConfig, config.currentPath)
+    if (Object.keys(promoted.upserts).length > 0) {
+      await setMcpSecrets(promoted.upserts)
+    }
+
+    await saveWorkspaceMcpServer(config.currentPath, name, promoted.config)
+
+    const status = await testMcpServer(name, promoted.config, config.currentPath)
 
     return ok({
       saved: true,
@@ -81,7 +105,7 @@ export async function POST(req: Request) {
 }
 
 /**
- * Remove an MCP server configuration from .cursor/mcp.json.
+ * Remove an MCP server configuration from .black-agents/mcp.json.
  */
 export async function DELETE(req: Request) {
   return handle(async () => {
@@ -101,6 +125,13 @@ export async function DELETE(req: Request) {
     }
 
     await deleteWorkspaceMcpServer(config.currentPath, name)
+
+    const mcpSecrets = await getMcpSecrets()
+    const toRemove = mcpSecretIdsForServer(name, Object.keys(mcpSecrets))
+    if (toRemove.length > 0) {
+      await removeMcpSecrets(toRemove)
+    }
+
     return ok({ success: true, deleted: name })
   })
 }

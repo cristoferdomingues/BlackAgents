@@ -136,7 +136,7 @@ Sequence a comprehensive weekly crypto asset audit and rebalancing review.
 `,
       },
       {
-        relativePath: ".cursor/mcp.json",
+        relativePath: ".black-agents/mcp.json",
         content: JSON.stringify(
           {
             mcpServers: {

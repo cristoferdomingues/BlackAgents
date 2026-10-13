@@ -30,6 +30,7 @@ import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import { WORKSPACE_TEMPLATES } from "@/lib/workspace/templates"
 import { collectMcpHeaders, type McpHeaderRow } from "@/lib/mcp/headers"
 import type { McpTrust } from "@/lib/mcp/policy"
+import { mcpSecretId } from "@/lib/mcp/secret-refs"
 import type { McpServerConfig, McpServerStatus, McpTransportType } from "@/lib/mcp/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
@@ -75,6 +76,16 @@ function remoteLabel(config: McpServerConfig): string {
 
 function headerNameList(config: McpServerConfig): string[] {
   return Object.keys(config.headers ?? {})
+}
+
+function secretHint(
+  serverName: string,
+  headerName: string,
+  secretStatuses: Record<string, { configured: boolean; last4?: string }> | undefined
+): string | null {
+  const status = secretStatuses?.[mcpSecretId(serverName, "header", headerName)]
+  if (!status?.configured) return null
+  return status.last4 ? `••••${status.last4}` : "stored"
 }
 
 export function SettingsPage({ initialTab = "create" }: { initialTab?: string }) {
@@ -263,6 +274,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         .map((a) => a.trim())
         .filter(Boolean)
 
+      const headerNames = Object.keys(collected.headers)
       const payload = {
         name,
         config: {
@@ -272,6 +284,9 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
           headers: mcpType === "stdio" ? undefined : collected.headers,
           transport: mcpType,
         },
+        ...(mcpType !== "stdio" && headerNames.length > 0
+          ? { secretHeaders: headerNames }
+          : {}),
       }
 
       await apiFetch("/api/mcp", {
@@ -569,8 +584,10 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                         Active Workspace MCP Servers
                       </CardTitle>
                       <CardDescription>
-                        Configured in <code className="rounded bg-muted px-1">.cursor/mcp.json</code>.
-                        Tools provided by these servers are automatically available to your agent personas in Chat.
+                        Configured in <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
+                        Auth tokens are stored in{" "}
+                        <code className="rounded bg-muted px-1">~/.black-agents/secrets.json</code>, not
+                        the workspace file. Tools from these servers are available to agent personas in Chat.
                       </CardDescription>
                     </div>
                     <Button
@@ -666,7 +683,13 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                             </p>
                             {headerNameList(s.config).length > 0 ? (
                               <p className="font-sans">
-                                Headers: {headerNameList(s.config).join(", ")}
+                                Headers:{" "}
+                                {headerNameList(s.config)
+                                  .map((h) => {
+                                    const hint = secretHint(s.name, h, s.secretStatuses)
+                                    return hint ? `${h} (${hint})` : h
+                                  })
+                                  .join(", ")}
                               </p>
                             ) : null}
                           </div>
@@ -830,7 +853,12 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          For a token, set the name to Authorization and the value to Bearer blf_mcp_…
+                          For GitHub MCP, use Authorization and{" "}
+                          <span className="font-mono">Bearer ghp_…</span> (or a fine-grained PAT).
+                          Values are saved as secrets; only a{" "}
+                          <code className="rounded bg-muted px-1">{`\${secret:…}`}</code> placeholder
+                          is written to{" "}
+                          <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
                         </p>
                         {mcpHeaders.map((row, index) => (
                           <div key={index} className="flex gap-2">
@@ -851,8 +879,9 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                             />
                             <Input
                               className="min-w-0 flex-1"
+                              type="password"
                               aria-label={`Header ${index + 1} value`}
-                              placeholder="Bearer blf_mcp_…"
+                              placeholder="Bearer ghp_… or other token"
                               value={row.value}
                               onChange={(e) =>
                                 setMcpHeaders((rows) =>
@@ -862,7 +891,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                                 )
                               }
                               spellCheck={false}
-                              autoComplete="off"
+                              autoComplete="new-password"
                             />
                             <Button
                               type="button"

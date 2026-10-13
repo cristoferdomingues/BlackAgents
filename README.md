@@ -24,16 +24,18 @@ Agents can also **act** on that folder: they read files, call MCP tools, and —
 - **Authoring standards** — an editable, per-workspace standards baseline that drives inline hints (required sections, anti-patterns) as you write.
 - **Guided wizard** — a Type → Details → Body → Review flow for creating artifacts.
 - **Draft and review in the editor** — **Draft with assistant** writes a new body from the name and description. **Validate with assistant** reviews a draft or an existing artifact against the standards and lists findings. It does not rewrite the file.
+- **YouTube as a source** — paste a YouTube link in the assistant, or on **Skills → New**. BlackAgents reads the captions and the assistant uses that text. A new skill can be drafted from the videos, and the saved body keeps a **Sources** section. If a video has no captions, paste the transcript.
 - **Relationship graph** — an Obsidian-style force-directed graph of the cross-references between artifacts.
 - **Multi-platform export** — re-emit a workspace's artifacts in another platform's layout (`.cursor` / `.claude` / `.windsurf` / `.agents`) with a per-file diff (create / overwrite / unchanged), a cross-repo target folder, and a `.zip` download.
 - **Drift / sync view** — a read-only, per-platform report of which on-disk files are in-sync, drifted, or missing (semantic comparison, so cosmetic re-serialization isn't flagged).
-- **Chat with agent personas** — talk to any agent in the active workspace. It runs with that agent's persona, linked skills and rules, and memory notes.
+- **Chat with agent personas** — talk to any agent in the active workspace. It runs with that agent's persona, linked skills and rules, and memory notes. Attach text, images, and PDFs, or add a YouTube link. The microphone fills the message from your voice. You still press Send.
+- **Models by task** — in **Settings → AI**, pick a model for Voice, Vision, Fast, and Reasoning. An agent or a workflow step can use one of those jobs, or its own model. The most specific choice wins: step, then agent, then workflow, then the assistant default.
 - **Agent tools and approvals** — the assistant can list, read, and write workspace files. A file write asks you to deny it, allow it for that message, or allow it for the chat. **Settings → AI** can allow file writes with no ask. Commands still ask.
 - **Artifact bundles** — ask the assistant for a team and it proposes one agent plus up to three skills and three rules. **Create all** saves them after a standards check.
 - **Workflows** — a local production line. Each step runs one workspace agent and passes its result to the next. Run by hand, on an interval, or daily while the app is open.
 - **Second brain** — thumbs up or down on a chat reply or a finished run. BlackAgents may draft a memory note, skill, or rule. Nothing is saved until you approve it on **Brain**.
 - **Jev (optional)** — a fast classifier for small choices: which artifact to load, which skill fits a task, whether a skill description is too wide, whether a workflow step should continue, whether a scheduled run is needed, and what is worth learning. The app still works with Jev off.
-- **Model Context Protocol (MCP)** — configure standard `.cursor/mcp.json` servers (stdio commands or remote SSE endpoints) per workspace in **Settings → MCP Servers**. Each server is trusted, ask, or risky. Chat shows a trace for every tool call.
+- **Model Context Protocol (MCP)** — configure standard `.cursor/mcp.json` servers per workspace in **Settings → MCP Servers**. A server can be a local command, HTTP, or SSE. HTTP and SSE can send headers, such as `Authorization`. Each server is trusted, ask, or risky. Chat shows a trace for every tool call.
 - **Assistant drafting (bring your own key)** — describe an artifact in plain language and the assistant proposes a standards-compliant draft you can open straight in the editor. Keys are stored locally (`0600`) and never leave your machine.
 
 ## Concepts
@@ -59,7 +61,7 @@ The internal model is platform-agnostic, so the same artifacts can be exported t
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Model Context Protocol (MCP)**: `@modelcontextprotocol/sdk` (stdio and SSE client transports)
+- **Model Context Protocol (MCP)**: `@modelcontextprotocol/sdk` (stdio, streamable HTTP, and SSE)
 - **Jev** (optional): `@typesafe-ai/sdk`, used only by the decision layer
 - **Electron** for the desktop shell
 - **Tailwind CSS 3.4** + **shadcn/ui** (Radix + CVA) + **next-themes**
@@ -89,6 +91,13 @@ MCP servers are configured per-workspace in `.cursor/mcp.json`. This guarantees 
     "market-feed": {
       "url": "https://mcp.example.com/sse",
       "transport": "sse"
+    },
+    "docs-api": {
+      "url": "https://example.com/api/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer …"
+      }
     }
   }
 }
@@ -96,7 +105,7 @@ MCP servers are configured per-workspace in `.cursor/mcp.json`. This guarantees 
 
 ### Key Capabilities
 
-- **Transports**: Supports local command execution via `StdioClientTransport` (`npx`, `uvx`, `python`, `node`) and remote endpoints via `SSEClientTransport`.
+- **Transports**: a local command (`npx`, `uvx`, `python`, `node`), streamable HTTP (POST), or SSE. A URL with no transport is treated as HTTP. HTTP and SSE send the headers saved on that server, such as a bearer token.
 - **Autonomous Tool Execution**: When chatting with an agent persona (e.g. `portfolio-rebalancer`), the agent discovers available tools from enabled servers and can call them inside a bounded loop (8 turns by default, up to 20 in **Settings → AI**).
 - **Trust**: each server is `trusted` (treated as a read), `ask` (needs approval, the default), or `risky` (needs approval every time). The choice is stored in `.black-agents/mcp-policy.json`.
 - **Settings & Tool Diagnostics**: Navigate to **Settings → MCP Servers** to view live connection statuses (Connected / Error / Disabled), inspect tool signatures, test server responsiveness with timeout boundaries, or add new servers.
@@ -158,10 +167,11 @@ Minimizing the window hides it and leaves a menu-bar icon. Click the icon to ope
 2. **Drafting artifacts**: Open **Assistant** and describe a new artifact, or name an existing one to update it. A new draft opens in the editor. An existing name opens that artifact with the new text, or **Update all** saves a bundle over the current files.
 3. **Chatting with workspace agents**: In **Assistant**, select an agent from the persona dropdown (e.g. `portfolio-rebalancer` or `feature-developer`). Type `@` to pick an artifact from the workspace. The chat loads it into the turn and shows it as a **Context** badge. `/name` also works when that name belongs to only one artifact.
 4. **Approvals**: a file write shows a card. Deny it, allow it for that message, or allow it for the chat. A command still asks every time. **Settings → AI → Allow file writes without asking** skips the file-write card. Turning that on shows a warning.
-5. **MCP tools**: Configure MCP servers in **Settings → MCP Servers** (or edit `.cursor/mcp.json` directly) and set each server's trust. Active tools are discovered when you chat.
-6. **Workflows**: open **Workflows**, add steps that point at workspace agents, then run the line. A live run page shows each step, waiting approvals, and files changed. Interval and daily runs fire only while the app is open.
-7. **Brain**: rate a reply or a finished run. Open **Brain** to approve or reject the proposed note, skill, or rule. Approved notes are added to later chats with that agent.
-8. **Jev** (optional): in **Settings → AI**, turn on **Use Jev**, pick a provider, and run **Test Jev**. With it off, chat, workflows, and learning still run.
+5. **Files, voice, and YouTube**: attach a text file, image, or PDF, or paste a YouTube link. The assistant reads captions, not the picture. Use the microphone to fill the message. On **Skills → New**, add the same links and draft the skill from them.
+6. **MCP tools**: Configure MCP servers in **Settings → MCP Servers** (or edit `.cursor/mcp.json` directly) and set each server's trust. For HTTP or SSE, add headers when the server needs a token. Active tools are discovered when you chat.
+7. **Workflows**: open **Workflows**, add steps that point at workspace agents, then run the line. A live run page shows each step, waiting approvals, and files changed. Interval and daily runs fire only while the app is open. In the assistant, `/workflow-name` starts a saved workflow.
+8. **Brain**: rate a reply or a finished run. Open **Brain** to approve or reject the proposed note, skill, or rule. Approved notes are added to later chats with that agent.
+9. **Jev** (optional): in **Settings → AI**, turn on **Use Jev**, pick a provider, and run **Test Jev**. With it off, chat, workflows, and learning still run. **Models by task** on the same screen picks the model for Voice, Vision, Fast, and Reasoning.
 
 ## Roadmap
 
@@ -171,6 +181,8 @@ Shipped:
 - Multi-platform export (diff, `.zip`, cross-repo target) and the drift / sync view
 - Bring-your-own-key assistant, in-editor draft and standards review, agent personas, and artifact bundles
 - Agent tool loop with approvals, MCP trust, workflows, second brain, and optional Jev
+- Chat files, voice input, YouTube captions, and models by task
+- MCP over HTTP and SSE, with request headers
 - Workspace starter kits and the Electron desktop app
 
 Still open:

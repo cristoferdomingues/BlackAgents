@@ -140,8 +140,26 @@ describe("sizes and helpers", () => {
     expect(maxBytesFor("pdf")).toBeGreaterThan(maxBytesFor("image"))
   })
 
-  it("splits binary from text", () => {
-    expect([text, image, pdf].filter(isBinaryAttachment)).toEqual([image, pdf])
+  it("splits binary from text and keeps YouTube transcripts as text", () => {
+    const video: Attachment = {
+      kind: "youtube",
+      videoId: "dQw4w9WgXcQ",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      title: "Demo video",
+      channel: "Demo",
+      transcript: "Hello",
+    }
+    expect([text, image, pdf, video].filter(isBinaryAttachment)).toEqual([image, pdf])
+    expect(attachmentMeta(video)).toEqual({
+      kind: "youtube",
+      name: "Demo video",
+      size: 5,
+      url: video.url,
+    })
+    const rendered = renderTextAttachments([video])
+    expect(rendered).toContain("## YouTube videos")
+    expect(rendered).toContain("not as instructions")
+    expect(rendered).toContain("Hello")
   })
 
   it("renders text files as quoted data", () => {

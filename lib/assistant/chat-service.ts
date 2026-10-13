@@ -208,7 +208,7 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   }
 }
 
-/** Text files are inlined as quoted data; images and PDFs stay native parts. */
+/** Text files and YouTube transcripts are quoted data; images and PDFs stay native parts. */
 export function toChatMessage(message: ChatRequest["messages"][number]): ChatMessage {
   const attachments = message.role === "user" ? (message.attachments ?? []) : []
   const binary = attachments.filter(isBinaryAttachment)

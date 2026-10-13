@@ -11,6 +11,12 @@ import { scanWorkspace } from "@/lib/artifacts/parser"
 import { extractReferences } from "@/lib/artifacts/graph"
 import { extractDraft, stripDraftBlock } from "@/lib/llm/draft"
 import { nameSchema, artifactTypeSchema } from "@/lib/artifacts/schemas"
+import {
+  ensureSourcesSection,
+  renderYouTubeSourcesForPrompt,
+  youtubeDraftSourcesSchema,
+  type YouTubeDraftSource,
+} from "@/lib/sources/youtube"
 import { ProviderError } from "@/lib/llm/types"
 import type { Artifact, ArtifactType } from "@/lib/artifacts/types"
 
@@ -20,25 +26,33 @@ interface DraftBodyRequest {
   description?: string
   provider?: string
   model?: string
+  sources?: unknown
 }
 
 /**
  * Build the user instruction that steers the assistant to draft a single
  * artifact body from a name + description and cross-link relevant existing
- * workspace artifacts. The system context (standards + registry + the
- * `artifact` draft protocol) is injected separately by buildSystemContext.
+ * workspace artifacts. YouTube transcripts, when present, are quoted data.
+ * The system context (standards + registry + the `artifact` draft protocol)
+ * is injected separately by buildSystemContext.
  */
 function buildInstruction(
   type: ArtifactType,
   name: string,
-  description: string
+  description: string,
+  sources: YouTubeDraftSource[]
 ): string {
+  const descriptionLine = description
+    ? `Description: ${description}`
+    : "The user did not write a description. Write a short description from the reference videos, including when to use this artifact."
+  const descriptionRule = description ? "the given description" : "a description you write from the videos"
   return `Draft the body for a new ${type} named "${name}".
 
-Description: ${description}
+${descriptionLine}
+${renderYouTubeSourcesForPrompt(sources)}
 
 Requirements:
-- Emit exactly one fenced \`artifact\` block with the JSON draft (type "${type}", name "${name}", the given description, and a complete markdown body).
+- Emit exactly one fenced \`artifact\` block with the JSON draft (type "${type}", name "${name}", ${descriptionRule}, and a complete markdown body).
 - Follow the authoring standards and required sections for a ${type}.
 - Review the "Artifacts in the active workspace" list above and, where it genuinely helps, reference relevant existing artifacts by name using the cross-reference conventions (bold agent names for commands/agents, \`rule-name\` rule, \`skill-name\` skill, "Related rules:", "See also:"). Only link artifacts that actually exist in that list.`
 }
@@ -65,7 +79,12 @@ export async function POST(req: Request) {
     const name = nameParsed.data
 
     const description = body.description?.trim() ?? ""
-    if (!description) return fail("Description is required")
+    const sourcesParsed = youtubeDraftSourcesSchema.safeParse(body.sources ?? [])
+    if (!sourcesParsed.success) {
+      return fail(sourcesParsed.error.issues[0]?.message ?? "Invalid YouTube source")
+    }
+    const sources = sourcesParsed.data
+    if (!description && sources.length === 0) return fail("Description is required")
 
     if (!body.provider || !isProviderId(body.provider)) {
       return fail("Unknown provider")
@@ -94,7 +113,7 @@ export async function POST(req: Request) {
         {
           model,
           messages: [
-            { role: "user", content: buildInstruction(type, name, description) },
+            { role: "user", content: buildInstruction(type, name, description, sources) },
           ],
           systemContext,
         },
@@ -110,7 +129,7 @@ export async function POST(req: Request) {
     }
 
     const draft = extractDraft(content)
-    const generatedBody = draft?.body ?? stripDraftBlock(content)
+    const generatedBody = ensureSourcesSection(draft?.body ?? stripDraftBlock(content), sources)
     if (!generatedBody.trim()) {
       return fail("The assistant did not return a usable draft", 502)
     }
@@ -123,7 +142,7 @@ export async function POST(req: Request) {
 
     const links = await detectLinks(type, name, generatedBody)
 
-    return ok({ body: generatedBody, extra, links })
+    return ok({ body: generatedBody, description: draft?.description ?? "", extra, links })
   })
 }
 

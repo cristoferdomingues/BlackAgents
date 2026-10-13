@@ -9,6 +9,7 @@ import {
   Bot,
   FileImage,
   FileText,
+  Youtube,
   History,
   Loader2,
   MessageCircle,
@@ -46,7 +47,9 @@ import {
   totalAttachmentBytes,
   type Attachment,
   type AttachmentMeta,
+  type YouTubeAttachment,
 } from "@/lib/chat/attachments"
+import { YouTubeLinkButton } from "@/components/features/chat/youtube-link-dialog"
 import {
   extractWorkflowDraft,
   stripWorkflowBlock,
@@ -547,6 +550,22 @@ export function ChatPage({
     )
     setTurns(next)
     saveTurns(next)
+  }
+
+  function addYouTubeAttachment(attachment: YouTubeAttachment): void {
+    if (files.some((file) => file.kind === "youtube" && file.videoId === attachment.videoId)) {
+      toast.error("That video is already added")
+      return
+    }
+    if (files.length >= MAX_ATTACHMENTS) {
+      toast.error(`Attach at most ${MAX_ATTACHMENTS} files`)
+      return
+    }
+    if (totalAttachmentBytes([...files, attachment]) > MAX_TOTAL_ATTACHMENT_BYTES) {
+      toast.error(`Attachments can be at most ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)} in total`)
+      return
+    }
+    setFiles((current) => [...current, attachment])
   }
 
   async function addFiles(picked: File[]): Promise<void> {
@@ -1161,7 +1180,7 @@ export function ChatPage({
             aria-label="Attached files"
           >
             {files.map((file, index) => (
-              <li key={`${file.name}-${index}`}>
+              <li key={`${file.kind === "youtube" ? file.videoId : file.name}-${index}`}>
                 <AttachmentChip
                   meta={attachmentMeta(file)}
                   onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))}
@@ -1204,6 +1223,10 @@ export function ChatPage({
             </TooltipTrigger>
             <TooltipContent>Attach text, image, or PDF files</TooltipContent>
           </Tooltip>
+          <YouTubeLinkButton
+            disabled={!canChat || sending || readingFiles || files.length >= MAX_ATTACHMENTS}
+            onAdd={addYouTubeAttachment}
+          />
           {mentionOpen ? (
             <MentionMenu
               items={mentionItems}
@@ -1485,18 +1508,24 @@ function AttachmentChip({
   /** Restored from history: the file itself is no longer kept. */
   unavailable?: boolean
 }) {
-  const Icon = meta.kind === "image" ? FileImage : FileText
+  const Icon = meta.kind === "image" ? FileImage : meta.kind === "youtube" ? Youtube : FileText
   return (
     <span
       className={cn(
         "inline-flex max-w-64 items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs",
         unavailable && "opacity-60"
       )}
-      title={unavailable ? `${meta.name} (not kept after reload)` : meta.name}
+      title={
+        unavailable
+          ? `${meta.name} (not kept after reload)`
+          : meta.url ?? meta.name
+      }
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <span className="truncate font-medium">{meta.name}</span>
-      <span className="shrink-0 text-muted-foreground">{formatBytes(meta.size)}</span>
+      <span className="shrink-0 text-muted-foreground">
+        {meta.kind === "youtube" ? "video" : formatBytes(meta.size)}
+      </span>
       {onRemove ? (
         <button
           type="button"

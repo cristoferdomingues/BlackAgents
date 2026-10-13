@@ -52,6 +52,8 @@ import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { GlobsInput } from "@/components/features/editor/globs-input"
 import { StandardsHints } from "@/components/features/editor/standards-hints"
 import { SkillTriggerButton } from "@/components/features/skills/skill-trigger"
+import { YouTubeSourcesField } from "@/components/features/editor/youtube-sources"
+import type { YouTubeDraftSource } from "@/lib/sources/youtube"
 import type { ProvidersState } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,6 +108,7 @@ const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
 
 interface DraftBodyResponse {
   body: string
+  description: string
   extra: { parallel: boolean; alwaysApply: boolean; globs: string[] }
   links: Array<{ to: ArtifactType; toName: string; kind: string }>
 }
@@ -191,6 +194,7 @@ export function ArtifactEditor({
     null
   )
   const [validateOpen, setValidateOpen] = React.useState(false)
+  const [youtubeSources, setYoutubeSources] = React.useState<YouTubeDraftSource[]>([])
 
   // Load the provider catalog + redacted status to decide whether the assistant
   // actions (draft in create, validate in both) are available.
@@ -218,11 +222,13 @@ export function ArtifactEditor({
   const isNameValid = isEdit
     ? Boolean(nameValue?.trim())
     : nameSchema.safeParse(nameValue).success
-  const detailsValid =
-    hasProvider &&
-    isNameValid &&
-    (descriptionValue?.trim().length ?? 0) > 0
-  const canDraft = detailsValid
+  const hasDescription = (descriptionValue?.trim().length ?? 0) > 0
+  const canDraftFromVideos = type === "skill" && !isEdit && youtubeSources.length > 0
+  const detailsValid = hasProvider && isNameValid && hasDescription
+  const canDraft = hasProvider && isNameValid && (hasDescription || canDraftFromVideos)
+  const draftTitle = canDraftFromVideos
+    ? "Draft the body from the YouTube videos"
+    : "Draft the body from the name and description"
   const canValidate = detailsValid && (body?.trim().length ?? 0) > 0
 
   function resolveProviderModel(): { provider: string; model: string } | null {
@@ -267,6 +273,7 @@ export function ArtifactEditor({
     }
     setGenerating(true)
     try {
+      const sources = type === "skill" && !isEdit ? youtubeSources : []
       const res = await apiFetch<DraftBodyResponse>("/api/artifacts/draft-body", {
         method: "POST",
         body: JSON.stringify({
@@ -275,9 +282,13 @@ export function ArtifactEditor({
           description: form.getValues("description"),
           provider: resolved.provider,
           model: resolved.model,
+          ...(sources.length > 0 ? { sources } : {}),
         }),
       })
       form.setValue("body", res.body, { shouldDirty: true })
+      if (res.description && !form.getValues("description").trim()) {
+        form.setValue("description", res.description, { shouldDirty: true })
+      }
       if (type === "agent") form.setValue("parallel", res.extra.parallel)
       if (type === "rule") {
         form.setValue("alwaysApply", res.extra.alwaysApply)
@@ -287,7 +298,11 @@ export function ArtifactEditor({
         const linked = res.links.map((l) => `${l.to}/${l.toName}`).join(", ")
         toast.success(`Body drafted — linked: ${linked}`)
       } else {
-        toast.success("Body drafted by the assistant — review and edit")
+        toast.success(
+          sources.length > 0
+            ? "Body drafted from the videos — review and edit"
+            : "Body drafted by the assistant — review and edit"
+        )
       }
     } catch (err) {
       toast.error(
@@ -613,8 +628,10 @@ export function ArtifactEditor({
                 !hasProvider
                   ? "Verify an AI provider to enable assistant drafting"
                   : !canDraft
-                    ? "Enter a valid name and description first"
-                    : "Draft the body from the name and description"
+                    ? canDraftFromVideos
+                      ? "Enter a valid name first"
+                      : "Enter a valid name and description first"
+                    : draftTitle
               }
             >
               {generating ? (
@@ -781,6 +798,10 @@ export function ArtifactEditor({
               </p>
             ) : null}
           </div>
+
+          {type === "skill" && !isEdit ? (
+            <YouTubeSourcesField onReadyChange={setYoutubeSources} />
+          ) : null}
 
           {type === "rule" ? (
             <div className="space-y-2">

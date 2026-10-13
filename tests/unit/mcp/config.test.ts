@@ -61,6 +61,30 @@ describe("readWorkspaceMcpConfig", () => {
     const result = await readWorkspaceMcpConfig(workspaceDir)
     expect(result).toEqual({ mcpServers: {} })
   })
+
+  it("reads a URL server that has headers and no transport", async () => {
+    const cursorDir = path.join(workspaceDir, ".cursor")
+    await mkdir(cursorDir, { recursive: true })
+    await writeFile(
+      path.join(cursorDir, "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          blacklionfi: {
+            url: "https://app.example/api/mcp",
+            headers: { Authorization: "Bearer blf_mcp_token" },
+          },
+        },
+      }),
+      "utf8"
+    )
+
+    const result = await readWorkspaceMcpConfig(workspaceDir)
+    expect(result.mcpServers["blacklionfi"].url).toBe("https://app.example/api/mcp")
+    expect(result.mcpServers["blacklionfi"].headers).toEqual({
+      Authorization: "Bearer blf_mcp_token",
+    })
+    expect(result.mcpServers["blacklionfi"].transport).toBeUndefined()
+  })
 })
 
 describe("saveWorkspaceMcpServer", () => {
@@ -81,6 +105,7 @@ describe("saveWorkspaceMcpServer", () => {
       command: "node",
       args: ["server.js"],
       env: { PORT: "8080" },
+      headers: {},
       disabled: false,
     })
 
@@ -91,6 +116,51 @@ describe("saveWorkspaceMcpServer", () => {
     )
     const diskParsed = JSON.parse(content)
     expect(diskParsed.mcpServers["custom-node"].command).toBe("node")
+  })
+
+  it("saves an HTTP server with headers", async () => {
+    const updated = await saveWorkspaceMcpServer(workspaceDir, "blacklionfi", {
+      url: "https://app.example/api/mcp",
+      headers: { Authorization: "Bearer blf_mcp_token" },
+      transport: "http",
+    })
+
+    expect(updated.mcpServers["blacklionfi"]).toMatchObject({
+      url: "https://app.example/api/mcp",
+      headers: { Authorization: "Bearer blf_mcp_token" },
+      transport: "http",
+    })
+    const content = await readFile(
+      path.join(workspaceDir, ".cursor", "mcp.json"),
+      "utf8"
+    )
+    const diskParsed = JSON.parse(content) as {
+      mcpServers: Record<
+        string,
+        { url?: string; headers?: Record<string, string>; transport?: string }
+      >
+    }
+    expect(diskParsed.mcpServers["blacklionfi"].url).toBe("https://app.example/api/mcp")
+    expect(diskParsed.mcpServers["blacklionfi"].headers).toEqual({
+      Authorization: "Bearer blf_mcp_token",
+    })
+    expect(diskParsed.mcpServers["blacklionfi"].transport).toBeUndefined()
+  })
+
+  it("keeps transport sse on disk for an SSE server", async () => {
+    await saveWorkspaceMcpServer(workspaceDir, "legacy", {
+      url: "https://mcp.example.com/sse",
+      transport: "sse",
+    })
+
+    const content = await readFile(
+      path.join(workspaceDir, ".cursor", "mcp.json"),
+      "utf8"
+    )
+    const diskParsed = JSON.parse(content) as {
+      mcpServers: Record<string, { transport?: string }>
+    }
+    expect(diskParsed.mcpServers["legacy"].transport).toBe("sse")
   })
 
   it("updates an existing server configuration without removing others", async () => {

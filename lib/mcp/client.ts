@@ -1,9 +1,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 
 import { readWorkspaceMcpConfig } from "./config"
+import { mcpAuthRequestInit, resolveMcpTransport } from "./transport"
 import type {
   McpServerConfig,
   McpServerStatus,
@@ -48,10 +50,22 @@ export async function createMcpConnection(
     capabilities: {},
   })
 
+  const kind = resolveMcpTransport(config)
   let transport: Transport
 
-  if (config.url) {
-    transport = new SSEClientTransport(new URL(config.url))
+  if (kind === "http" || kind === "sse") {
+    if (!config.url) {
+      throw new Error(
+        kind === "http" ? "HTTP server needs a URL" : "SSE server needs a URL"
+      )
+    }
+    const url = new URL(config.url)
+    const requestInit = mcpAuthRequestInit(config)
+    const options = requestInit ? { requestInit } : undefined
+    transport =
+      kind === "http"
+        ? new StreamableHTTPClientTransport(url, options)
+        : new SSEClientTransport(url, options)
   } else if (config.command) {
     const envRecord: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) {
@@ -70,7 +84,7 @@ export async function createMcpConnection(
       cwd,
     })
   } else {
-    throw new Error("Invalid MCP server config: either 'command' or 'url' is required")
+    throw new Error("stdio server needs a command")
   }
 
   await withTimeout(client.connect(transport), DEFAULT_TIMEOUT_MS, "connecting to server")

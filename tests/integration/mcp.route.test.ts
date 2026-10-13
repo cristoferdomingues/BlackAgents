@@ -72,6 +72,69 @@ describe("POST /api/mcp", () => {
     expect(parsed.mcpServers["my-service"]).toBeDefined()
     expect(parsed.mcpServers["my-service"].command).toBe("node")
   })
+
+  it("saves an HTTP server with an Authorization header", async () => {
+    const res = await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "blacklionfi",
+        config: {
+          url: "https://app.example/api/mcp",
+          headers: { Authorization: "Bearer blf_mcp_token" },
+          transport: "http",
+          disabled: true,
+        },
+      })
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.success).toBe(true)
+    expect(json.data.server.status).toBe("disabled")
+    expect(json.data.server.config.transport).toBe("http")
+    expect(json.data.server.config.headers).toEqual({
+      Authorization: "Bearer blf_mcp_token",
+    })
+
+    const mcpContent = await readFile(
+      path.join(env.workspace, ".cursor", "mcp.json"),
+      "utf8"
+    )
+    const parsed = JSON.parse(mcpContent) as {
+      mcpServers: Record<string, { transport?: string; headers?: Record<string, string> }>
+    }
+    expect(parsed.mcpServers["blacklionfi"].transport).toBeUndefined()
+    expect(parsed.mcpServers["blacklionfi"].headers?.Authorization).toBe(
+      "Bearer blf_mcp_token"
+    )
+  })
+
+  it("rejects an HTTP server with no URL", async () => {
+    const res = await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "blacklionfi",
+        config: { transport: "http" },
+      })
+    )
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.success).toBe(false)
+    expect(json.error).toContain("URL is required")
+  })
+
+  it("rejects a header value with a line break", async () => {
+    const res = await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "blacklionfi",
+        config: {
+          url: "https://app.example/api/mcp",
+          transport: "http",
+          headers: { Authorization: "Bearer bad\ntoken" },
+        },
+      })
+    )
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.success).toBe(false)
+  })
 })
 
 describe("DELETE /api/mcp", () => {

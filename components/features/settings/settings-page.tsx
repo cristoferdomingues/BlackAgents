@@ -13,6 +13,7 @@ import {
   FolderPlus,
   Loader2,
   Plug,
+  Plus,
   Sparkles,
   Terminal,
   Trash2,
@@ -27,8 +28,9 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import { WORKSPACE_TEMPLATES } from "@/lib/workspace/templates"
+import { collectMcpHeaders, type McpHeaderRow } from "@/lib/mcp/headers"
 import type { McpTrust } from "@/lib/mcp/policy"
-import type { McpServerStatus } from "@/lib/mcp/types"
+import type { McpServerConfig, McpServerStatus, McpTransportType } from "@/lib/mcp/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
 import { McpTrustSelect } from "@/components/features/settings/mcp-trust-select"
@@ -63,6 +65,16 @@ const TEMPLATE_ICONS: Record<WorkspaceTemplate, React.ComponentType<{ className?
   crypto: Coins,
   software: Code2,
   blank: FileCode,
+}
+
+function remoteLabel(config: McpServerConfig): string {
+  if (config.transport === "sse") return "SSE "
+  if (config.transport === "http" || Boolean(config.url)) return "HTTP "
+  return ""
+}
+
+function headerNameList(config: McpServerConfig): string[] {
+  return Object.keys(config.headers ?? {})
 }
 
 export function SettingsPage({ initialTab = "create" }: { initialTab?: string }) {
@@ -100,10 +112,13 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
 
   // Add MCP server form
   const [mcpName, setMcpName] = React.useState("")
-  const [mcpType, setMcpType] = React.useState<"stdio" | "sse">("stdio")
+  const [mcpType, setMcpType] = React.useState<McpTransportType>("stdio")
   const [mcpCommand, setMcpCommand] = React.useState("")
   const [mcpArgs, setMcpArgs] = React.useState("")
   const [mcpUrl, setMcpUrl] = React.useState("")
+  const [mcpHeaders, setMcpHeaders] = React.useState<McpHeaderRow[]>([
+    { name: "", value: "" },
+  ])
   const [savingMcp, setSavingMcp] = React.useState(false)
   const [deletingMcp, setDeletingMcp] = React.useState<string | null>(null)
 
@@ -229,8 +244,15 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       toast.error("Command is required for stdio server")
       return
     }
-    if (mcpType === "sse" && !mcpUrl.trim()) {
-      toast.error("URL is required for SSE server")
+    if (mcpType !== "stdio" && !mcpUrl.trim()) {
+      toast.error("URL is required for a remote server")
+      return
+    }
+
+    const collected =
+      mcpType === "stdio" ? { ok: true as const, headers: {} } : collectMcpHeaders(mcpHeaders)
+    if (!collected.ok) {
+      toast.error(collected.error)
       return
     }
 
@@ -246,7 +268,8 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         config: {
           command: mcpType === "stdio" ? mcpCommand.trim() : undefined,
           args: mcpType === "stdio" ? args : undefined,
-          url: mcpType === "sse" ? mcpUrl.trim() : undefined,
+          url: mcpType === "stdio" ? undefined : mcpUrl.trim(),
+          headers: mcpType === "stdio" ? undefined : collected.headers,
           transport: mcpType,
         },
       }
@@ -261,6 +284,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       setMcpCommand("")
       setMcpArgs("")
       setMcpUrl("")
+      setMcpHeaders([{ name: "", value: "" }])
       await loadMcp()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to configure MCP server")
@@ -629,14 +653,22 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                             </div>
                           </div>
 
-                          <div className="text-xs text-muted-foreground font-mono bg-muted/40 p-2 rounded">
-                            {s.config.command ? (
-                              <span>
-                                {s.config.command} {(s.config.args ?? []).join(" ")}
-                              </span>
-                            ) : (
-                              <span>{s.config.url}</span>
-                            )}
+                          <div className="text-xs text-muted-foreground font-mono bg-muted/40 p-2 rounded space-y-1">
+                            <p>
+                              <span className="font-sans">{remoteLabel(s.config)}</span>
+                              {s.config.command ? (
+                                <span>
+                                  {s.config.command} {(s.config.args ?? []).join(" ")}
+                                </span>
+                              ) : (
+                                <span>{s.config.url}</span>
+                              )}
+                            </p>
+                            {headerNameList(s.config).length > 0 ? (
+                              <p className="font-sans">
+                                Headers: {headerNameList(s.config).join(", ")}
+                              </p>
+                            ) : null}
                           </div>
 
                           {s.error ? (
@@ -678,7 +710,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                 <CardHeader>
                   <CardTitle className="text-base">Add an MCP Server</CardTitle>
                   <CardDescription>
-                    Connect a standard Model Context Protocol server via stdio command subprocess or SSE URL.
+                    Add a local command, an HTTP server (POST), or an old SSE server.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -696,24 +728,36 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
 
                     <div className="space-y-2">
                       <Label>Transport Type</Label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant={mcpType === "stdio" ? "default" : "outline"}
                           size="sm"
                           onClick={() => setMcpType("stdio")}
+                          aria-pressed={mcpType === "stdio"}
                           className="flex-1"
                         >
-                          Command (stdio)
+                          Command
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={mcpType === "http" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setMcpType("http")}
+                          aria-pressed={mcpType === "http"}
+                          className="flex-1"
+                        >
+                          HTTP
                         </Button>
                         <Button
                           type="button"
                           variant={mcpType === "sse" ? "default" : "outline"}
                           size="sm"
                           onClick={() => setMcpType("sse")}
+                          aria-pressed={mcpType === "sse"}
                           className="flex-1"
                         >
-                          Remote URL (SSE)
+                          SSE
                         </Button>
                       </div>
                     </div>
@@ -743,15 +787,102 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <Label htmlFor="mcp-url">Server URL (SSE)</Label>
-                      <Input
-                        id="mcp-url"
-                        placeholder="https://mcp.example.com/sse"
-                        value={mcpUrl}
-                        onChange={(e) => setMcpUrl(e.target.value)}
-                        spellCheck={false}
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="mcp-url">
+                          {mcpType === "http" ? "Server URL" : "Server URL (SSE)"}
+                        </Label>
+                        <Input
+                          id="mcp-url"
+                          placeholder={
+                            mcpType === "http"
+                              ? "https://your-app/api/mcp"
+                              : "https://mcp.example.com/sse"
+                          }
+                          value={mcpUrl}
+                          onChange={(e) => setMcpUrl(e.target.value)}
+                          spellCheck={false}
+                        />
+                        {mcpType === "http" ? (
+                          <p className="text-xs text-muted-foreground">
+                            Uses HTTP POST. The address should end with the MCP path, like /api/mcp.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Old SSE connection. It opens the URL with GET.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>Headers</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setMcpHeaders((rows) => [...rows, { name: "", value: "" }])
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add header
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          For a token, set the name to Authorization and the value to Bearer blf_mcp_…
+                        </p>
+                        {mcpHeaders.map((row, index) => (
+                          <div key={index} className="flex gap-2">
+                            <Input
+                              className="min-w-0 flex-1"
+                              aria-label={`Header ${index + 1} name`}
+                              placeholder="Authorization"
+                              value={row.name}
+                              onChange={(e) =>
+                                setMcpHeaders((rows) =>
+                                  rows.map((item, i) =>
+                                    i === index ? { ...item, name: e.target.value } : item
+                                  )
+                                )
+                              }
+                              spellCheck={false}
+                              autoComplete="off"
+                            />
+                            <Input
+                              className="min-w-0 flex-1"
+                              aria-label={`Header ${index + 1} value`}
+                              placeholder="Bearer blf_mcp_…"
+                              value={row.value}
+                              onChange={(e) =>
+                                setMcpHeaders((rows) =>
+                                  rows.map((item, i) =>
+                                    i === index ? { ...item, value: e.target.value } : item
+                                  )
+                                )
+                              }
+                              spellCheck={false}
+                              autoComplete="off"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0"
+                              aria-label={`Remove header ${index + 1}`}
+                              onClick={() =>
+                                setMcpHeaders((rows) =>
+                                  rows.length === 1
+                                    ? [{ name: "", value: "" }]
+                                    : rows.filter((_, i) => i !== index)
+                                )
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 

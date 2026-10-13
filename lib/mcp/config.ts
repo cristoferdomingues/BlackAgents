@@ -9,8 +9,21 @@ import {
   mcpConfigSchema,
   mcpServerConfigSchema,
   type McpConfig,
+  type McpServerConfig,
   type McpServerConfigInput,
 } from "./types"
+
+/**
+ * Cursor treats a URL with no transport as HTTP POST.
+ * `transport: "http"` is omitted so the file is not read as SSE.
+ * SSE stays marked, because a bare URL would otherwise use HTTP.
+ */
+function forCursorMcpFile(server: McpServerConfig): McpServerConfig {
+  if (server.transport !== "http") return server
+  const next = { ...server }
+  delete next.transport
+  return next
+}
 
 function getMcpConfigPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, ".cursor", "mcp.json")
@@ -44,7 +57,15 @@ export async function writeWorkspaceMcpConfig(
   config: McpConfig
 ): Promise<void> {
   const abs = getMcpConfigPath(workspaceRoot)
-  await writeText(abs, JSON.stringify(config, null, 2) + "\n")
+  const onDisk: McpConfig = {
+    mcpServers: Object.fromEntries(
+      Object.entries(config.mcpServers).map(([name, server]) => [
+        name,
+        forCursorMcpFile(server),
+      ])
+    ),
+  }
+  await writeText(abs, JSON.stringify(onDisk, null, 2) + "\n")
 }
 
 export async function saveWorkspaceMcpServer(

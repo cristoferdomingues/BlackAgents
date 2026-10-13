@@ -33,13 +33,20 @@ export function stopRecording(workspaceRoot: string): BrowserRecordingSession | 
 
 export function appendRecordingSteps(
   workspaceRoot: string,
-  steps: BrowserFlowStep[]
+  steps: Array<Omit<BrowserFlowStep, "id" | "kind" | "args"> & {
+    id?: string
+    kind?: BrowserFlowStep["kind"]
+    args?: Record<string, unknown>
+    tool: string
+  }>
 ): BrowserRecordingSession | null {
   const session = sessions.get(workspaceRoot)
   if (!session) return null
   for (const step of steps) {
     session.steps.push({
       ...step,
+      args: step.args ?? {},
+      kind: step.kind ?? "action",
       id: `step_${session.steps.length + 1}`,
     })
   }

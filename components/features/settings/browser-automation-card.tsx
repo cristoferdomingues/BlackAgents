@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 
 interface BrowserFlowSummary {
   name: string
@@ -32,6 +33,7 @@ interface BrowserFlowSummary {
   profile: string
   startUrl?: string
   updatedAt: string
+  secretIds?: string[]
 }
 
 interface BrowserStatus {
@@ -42,6 +44,8 @@ interface BrowserStatus {
   profileExists: boolean
   reason: string | null
   flows: BrowserFlowSummary[]
+  updateFlowsOnHeal?: boolean
+  secretStatuses?: Record<string, { configured: boolean; last4?: string }>
   recording: {
     startedAt: string
     stepCount: number
@@ -56,6 +60,9 @@ export function BrowserAutomationCard() {
   const [busy, setBusy] = React.useState(false)
   const [flowName, setFlowName] = React.useState("my-browser-flow")
   const [dailyAt, setDailyAt] = React.useState("09:05")
+  const [secretDrafts, setSecretDrafts] = React.useState<Record<string, string>>({})
+  const [newSecretId, setNewSecretId] = React.useState("browser.timesheet.password")
+  const [newSecretValue, setNewSecretValue] = React.useState("")
 
   const load = React.useCallback(async () => {
     if (!workspace) {
@@ -182,6 +189,64 @@ export function BrowserAutomationCard() {
     }
   }
 
+  async function setUpdateFlowsOnHeal(next: boolean) {
+    setBusy(true)
+    try {
+      await apiFetch("/api/settings/ai", {
+        method: "PUT",
+        body: JSON.stringify({ browser: { updateFlowsOnHeal: next } }),
+      })
+      toast.success(
+        next
+          ? "Successful self-heals will update saved flows"
+          : "Self-heals will not rewrite saved flows"
+      )
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save setting")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveSecret(id: string, value: string) {
+    setBusy(true)
+    try {
+      await apiFetch("/api/browser/secrets", {
+        method: "PUT",
+        body: JSON.stringify({ secrets: { [id]: value } }),
+      })
+      toast.success(`Saved secret ${id}`)
+      setSecretDrafts((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setNewSecretValue("")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save secret")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeSecret(id: string) {
+    setBusy(true)
+    try {
+      await apiFetch("/api/browser/secrets", {
+        method: "PUT",
+        body: JSON.stringify({ secrets: {}, removeIds: [id] }),
+      })
+      toast.success(`Removed ${id}`)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not remove secret")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (!workspace) {
     return (
       <Card>
@@ -248,6 +313,22 @@ export function BrowserAutomationCard() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleCheck className="h-4 w-4" />}
                 Enable Playwright MCP
               </Button>
+
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="heal-writeback">Update flows on heal</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When a step self-heals successfully, write the new tool args back into the
+                    saved flow (default off).
+                  </p>
+                </div>
+                <Switch
+                  id="heal-writeback"
+                  checked={Boolean(status.updateFlowsOnHeal)}
+                  disabled={busy}
+                  onCheckedChange={(v) => void setUpdateFlowsOnHeal(v)}
+                />
+              </div>
             </div>
           ) : null}
         </CardContent>
@@ -313,6 +394,114 @@ export function BrowserAutomationCard() {
               Start recording
             </Button>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Flow secrets</CardTitle>
+          <CardDescription>
+            Values for <code className="rounded bg-muted px-1">secretId</code> on fill steps
+            (e.g. <code className="rounded bg-muted px-1">browser.timesheet.password</code>).
+            Never stored in flow JSON.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {(() => {
+            const ids = [
+              ...new Set([
+                ...Object.keys(status?.secretStatuses ?? {}),
+                ...(status?.flows.flatMap((f) => f.secretIds ?? []) ?? []),
+              ]),
+            ].sort()
+            if (ids.length === 0) {
+              return (
+                <p className="text-sm text-muted-foreground">
+                  No flow secrets referenced yet. Password-like fills are promoted when you save
+                  a flow.
+                </p>
+              )
+            }
+            return (
+              <ul className="space-y-2">
+                {ids.map((id) => {
+                  const st = status?.secretStatuses?.[id]
+                  return (
+                    <li key={id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-mono truncate">{id}</p>
+                        <Badge variant={st?.configured ? "default" : "secondary"}>
+                          {st?.configured
+                            ? `configured ···${st.last4 ?? ""}`
+                            : "missing"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          type="password"
+                          placeholder="New value"
+                          value={secretDrafts[id] ?? ""}
+                          onChange={(e) =>
+                            setSecretDrafts((prev) => ({ ...prev, [id]: e.target.value }))
+                          }
+                          className="max-w-xs"
+                          autoComplete="off"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={busy || !(secretDrafts[id]?.trim())}
+                          onClick={() => void saveSecret(id, secretDrafts[id] ?? "")}
+                        >
+                          Save
+                        </Button>
+                        {st?.configured ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => void removeSecret(id)}
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )
+          })()}
+
+          <div className="flex flex-wrap items-end gap-2 border-t pt-3">
+            <div className="space-y-1">
+              <Label htmlFor="new-secret-id">Add secret id</Label>
+              <Input
+                id="new-secret-id"
+                value={newSecretId}
+                onChange={(e) => setNewSecretId(e.target.value)}
+                className="w-64 font-mono text-xs"
+                spellCheck={false}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new-secret-value">Value</Label>
+              <Input
+                id="new-secret-value"
+                type="password"
+                value={newSecretValue}
+                onChange={(e) => setNewSecretValue(e.target.value)}
+                className="w-48"
+                autoComplete="off"
+              />
+            </div>
+            <Button
+              size="sm"
+              disabled={busy || !newSecretId.trim() || !newSecretValue.trim()}
+              onClick={() => void saveSecret(newSecretId.trim(), newSecretValue)}
+            >
+              Add
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

@@ -3,11 +3,14 @@ import { z } from "zod"
 import { ok, fail, handle } from "@/lib/api-response"
 import {
   browserMcpStatus,
+  collectFlowSecretIds,
   ensureBrowserMcpSetup,
   getRecording,
   listBrowserFlows,
 } from "@/lib/browser"
 import { readConfig } from "@/lib/config"
+import { browserSecretsStatus, readSecrets } from "@/lib/secrets"
+import { readAiSettings } from "@/lib/settings"
 
 /** Browser automation status for the active workspace (desktop gate + flows). */
 export async function GET() {
@@ -23,17 +26,26 @@ export async function GET() {
         reason: "No active workspace selected",
         flows: [],
         recording: null,
+        updateFlowsOnHeal: false,
+        secretStatuses: {},
       })
     }
 
-    const [status, flows] = await Promise.all([
+    const [status, flows, settings, secrets] = await Promise.all([
       browserMcpStatus(config.currentPath),
       listBrowserFlows(config.currentPath),
+      readAiSettings(),
+      readSecrets(),
     ])
     const recording = getRecording(config.currentPath)
+    const secretIds = [
+      ...new Set(flows.flatMap((f) => collectFlowSecretIds(f.steps))),
+    ]
 
     return ok({
       ...status,
+      updateFlowsOnHeal: settings.browser.updateFlowsOnHeal,
+      secretStatuses: browserSecretsStatus(secrets, secretIds),
       flows: flows.map((f) => ({
         name: f.name,
         description: f.description,
@@ -41,6 +53,7 @@ export async function GET() {
         profile: f.profile,
         startUrl: f.startUrl,
         updatedAt: f.updatedAt,
+        secretIds: collectFlowSecretIds(f.steps),
       })),
       recording: recording
         ? {

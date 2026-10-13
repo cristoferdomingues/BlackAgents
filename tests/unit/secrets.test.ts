@@ -111,3 +111,19 @@ describe("mcp secrets", () => {
     expect((await readSecrets()).mcp).toBeUndefined()
   })
 })
+
+describe("browser secrets", () => {
+  it("stores and removes browser flow secret values", async () => {
+    const { getBrowserSecrets, setBrowserSecrets, removeBrowserSecrets } =
+      await import("@/lib/secrets")
+    await setBrowserSecrets({
+      "browser.time-registration.password": "s3cret",
+    })
+    expect(await getBrowserSecrets()).toEqual({
+      "browser.time-registration.password": "s3cret",
+    })
+    await removeBrowserSecrets(["browser.time-registration.password"])
+    expect(await getBrowserSecrets()).toEqual({})
+    expect((await readSecrets()).browser).toBeUndefined()
+  })
+})

@@ -117,6 +117,8 @@ Auth tokens entered in **Settings → MCP Servers** are stored in `~/.black-agen
 
 Electron only (`npm run desktop:dev` / packaged app). **Settings → Browser** enables Playwright MCP (`@playwright/mcp`) with a persistent Chromium profile. Teach a site by **recording** (Settings) or **coaching in chat**, then **Save as browser flow**. Replay with the builtin `browser_run_flow` tool or the `time-registrar` agent. Install Chromium once with `npm run desktop:install-browser`.
 
+Flows store an **intent** per step. Replay is deterministic-first, then **LLM self-heal** (Fast/Reasoning model + a11y snapshot) on selector failures, optional **assert** steps, **secret-aware fills** (`browser.*` in `secrets.json`), and a local **action cache** under `.black-agents/browser-cache/`. Toggle **Update flows on heal** in Settings → Browser (default off).
+
 ## Workspace Starter Kits
 
 When creating a new workspace in **Settings** or the header menu, you can start from scratch or choose a domain template:

@@ -1,10 +1,8 @@
 import { z } from "zod"
 
-import { BROWSER_MCP_SERVER } from "@/lib/browser/constants"
 import { readBrowserFlow } from "@/lib/browser/flows/store"
 import { browserUnavailableReason } from "@/lib/browser/platform"
-import { ensureBrowserProfile, reLoginHint } from "@/lib/browser/profile"
-import { executeWorkspaceTool } from "@/lib/mcp/client"
+import { replayBrowserFlow } from "@/lib/browser/replay"
 
 import type { RuntimeTool } from "../types"
 
@@ -17,19 +15,6 @@ const argsSchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Flow name must be kebab-case"),
 })
 
-function looksLikeAuthFailure(message: string): boolean {
-  const lower = message.toLowerCase()
-  return (
-    lower.includes("login") ||
-    lower.includes("sign in") ||
-    lower.includes("unauthorized") ||
-    lower.includes("401") ||
-    lower.includes("403") ||
-    lower.includes("session") ||
-    lower.includes("authenticate")
-  )
-}
-
 export const browserRunFlowTool: RuntimeTool = {
   name: "browser_run_flow",
   originalName: "browser_run_flow",
@@ -37,7 +22,7 @@ export const browserRunFlowTool: RuntimeTool = {
   source: "builtin",
   risk: "exec",
   description:
-    "Replay a saved browser flow from .black-agents/browser-flows/<name>.json using the Playwright MCP server. Desktop (Electron) only.",
+    "Replay a saved browser flow from .black-agents/browser-flows/<name>.json using the Playwright MCP server. Desktop (Electron) only. Supports intent self-heal, asserts, and secret fills.",
   parameters: {
     type: "object",
     properties: {
@@ -67,47 +52,14 @@ export const browserRunFlowTool: RuntimeTool = {
       }
     }
 
-    const profile = await ensureBrowserProfile(flow.profile)
-    if (!profile.ok) {
-      return { error: profile.error }
-    }
-    if (!profile.exists) {
+    const outcome = await replayBrowserFlow(ctx.workspaceRoot, flow)
+    if (!outcome.ok) {
       return {
-        error: reLoginHint(profile.profileDir),
+        error: outcome.error,
+        result: outcome.result,
       }
     }
 
-    if (flow.steps.length === 0) {
-      return { error: `Flow "${flow.name}" has no steps to run` }
-    }
-
-    const results: Array<{ tool: string; ok: boolean; error?: string }> = []
-    for (const step of flow.steps) {
-      const trace = await executeWorkspaceTool(
-        ctx.workspaceRoot,
-        BROWSER_MCP_SERVER,
-        step.tool,
-        step.args
-      )
-      if (trace.error) {
-        const hint = looksLikeAuthFailure(trace.error)
-          ? ` ${reLoginHint(profile.profileDir)}`
-          : ""
-        results.push({ tool: step.tool, ok: false, error: trace.error })
-        return {
-          error: `Flow "${flow.name}" failed on ${step.tool}: ${trace.error}.${hint}`,
-          result: { flow: flow.name, results },
-        }
-      }
-      results.push({ tool: step.tool, ok: true })
-    }
-
-    return {
-      result: {
-        flow: flow.name,
-        stepsRun: results.length,
-        results,
-      },
-    }
+    return { result: outcome.result }
   },
 }

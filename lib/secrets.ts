@@ -53,6 +53,11 @@ export interface SecretsFile {
    * Referenced from `.black-agents/mcp.json` via `${secret:id}` placeholders.
    */
   mcp?: Record<string, string>
+  /**
+   * Browser flow fill secrets keyed by id (`browser.<flow>.password`).
+   * Referenced from flow step args via `secretId` (never stored as plaintext in flows).
+   */
+  browser?: Record<string, string>
 }
 
 /** Redacted key status safe to send to the client. */
@@ -108,6 +113,7 @@ const secretsFileSchema = z.object({
     })
     .optional(),
   mcp: z.record(z.string().min(1), z.string().min(1)).optional(),
+  browser: z.record(z.string().min(1), z.string().min(1)).optional(),
 })
 
 function expandHome(p: string): string {
@@ -322,6 +328,57 @@ export function mcpSecretsStatus(
   const statuses: Record<string, KeyStatus> = {}
   for (const id of ids) {
     statuses[id] = keyStatus(mcp[id])
+  }
+  return statuses
+}
+
+/** All browser-flow secret values (id → raw secret). Server-only. */
+export async function getBrowserSecrets(): Promise<Record<string, string>> {
+  const secrets = await readSecrets()
+  return secrets.browser ?? {}
+}
+
+/**
+ * Merge browser secrets into secrets.json. Empty string values are ignored;
+ * pass `removeIds` to delete keys.
+ */
+export async function setBrowserSecrets(
+  upserts: Record<string, string>,
+  removeIds: string[] = []
+): Promise<SecretsFile> {
+  const secrets = await readSecrets()
+  const browser: Record<string, string> = { ...(secrets.browser ?? {}) }
+
+  for (const id of removeIds) {
+    delete browser[id]
+  }
+  for (const [id, value] of Object.entries(upserts)) {
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    browser[id] = value
+  }
+
+  if (Object.keys(browser).length === 0) delete secrets.browser
+  else secrets.browser = browser
+
+  await writeSecrets(secrets)
+  return secrets
+}
+
+/** Remove every browser secret whose id is listed. */
+export async function removeBrowserSecrets(ids: string[]): Promise<SecretsFile> {
+  return setBrowserSecrets({}, ids)
+}
+
+/** Redacted status for a set of browser secret ids (safe for the client). */
+export function browserSecretsStatus(
+  secrets: SecretsFile,
+  ids: string[]
+): Record<string, KeyStatus> {
+  const browser = secrets.browser ?? {}
+  const statuses: Record<string, KeyStatus> = {}
+  for (const id of ids) {
+    statuses[id] = keyStatus(browser[id])
   }
   return statuses
 }

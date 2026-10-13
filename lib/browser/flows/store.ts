@@ -8,6 +8,7 @@ import {
 } from "@/lib/fs-service"
 
 import { BROWSER_FLOWS_DIR } from "../constants"
+import { promoteFlowSecrets } from "../secrets"
 import {
   browserFlowInputSchema,
   browserFlowSchema,
@@ -59,13 +60,14 @@ export async function saveBrowserFlow(
   const parsed = browserFlowInputSchema.parse(input)
   const now = new Date().toISOString()
   const existing = await readBrowserFlow(workspaceRoot, parsed.name)
+  const steps = await promoteFlowSecrets(parsed.name, parsed.steps)
   const flow: BrowserFlow = browserFlowSchema.parse({
     name: parsed.name,
     description: parsed.description ?? existing?.description ?? "",
-    version: 1,
+    version: 2,
     profile: parsed.profile ?? existing?.profile ?? "default",
     startUrl: parsed.startUrl ?? existing?.startUrl,
-    steps: parsed.steps,
+    steps,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   })

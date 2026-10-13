@@ -4,6 +4,19 @@ import { nameSchema } from "@/lib/artifacts/schemas"
 
 import { DEFAULT_BROWSER_PROFILE } from "../constants"
 
+/** How a step is interpreted during replay. */
+export const browserFlowStepKindSchema = z.enum(["action", "assert", "extract"])
+export type BrowserFlowStepKind = z.infer<typeof browserFlowStepKindSchema>
+
+/** Post-condition checked after a snapshot (assert / extract). */
+export const browserFlowExpectSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("text_includes"),
+    value: z.string().trim().min(1).max(500),
+  }),
+])
+export type BrowserFlowExpect = z.infer<typeof browserFlowExpectSchema>
+
 /** One replayable browser action (usually a Playwright MCP tool call). */
 export const browserFlowStepSchema = z.object({
   id: z.string().trim().min(1).max(80),
@@ -12,13 +25,23 @@ export const browserFlowStepSchema = z.object({
   args: z.record(z.unknown()).default({}),
   /** Optional human note shown in the skill / UI. */
   note: z.string().trim().max(500).optional(),
+  /** Natural-language goal used for self-heal and cache keys. */
+  intent: z.string().trim().max(500).optional(),
+  kind: browserFlowStepKindSchema.default("action"),
+  /** Checked against a page snapshot for assert / extract steps. */
+  expect: browserFlowExpectSchema.optional(),
+  /** Pause before running the step (ms). */
+  waitForMs: z.number().int().min(0).max(60_000).optional(),
+  /** Pause after a successful action step (ms). */
+  settleMs: z.number().int().min(0).max(10_000).optional(),
 })
 export type BrowserFlowStep = z.infer<typeof browserFlowStepSchema>
 
 export const browserFlowSchema = z.object({
   name: nameSchema,
   description: z.string().trim().max(500).default(""),
-  version: z.literal(1).default(1),
+  /** v1 = legacy action-only; v2 = intent / assert / settle fields. */
+  version: z.union([z.literal(1), z.literal(2)]).default(2),
   profile: z.string().trim().min(1).max(64).default(DEFAULT_BROWSER_PROFILE),
   /** Optional first URL (also stored as a navigate step when recorded). */
   startUrl: z.string().url().optional(),
@@ -35,4 +58,5 @@ export const browserFlowInputSchema = z.object({
   startUrl: z.string().url().optional(),
   steps: z.array(browserFlowStepSchema).max(200),
 })
-export type BrowserFlowInput = z.infer<typeof browserFlowInputSchema>
+/** Accepts omit of defaulted step fields (`kind`, etc.). */
+export type BrowserFlowInput = z.input<typeof browserFlowInputSchema>

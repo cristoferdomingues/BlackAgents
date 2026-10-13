@@ -57,6 +57,13 @@ export const aiSettingsSchema = z.object({
       reasoning: taskChoiceSchema.optional(),
     })
     .default({}),
+  /** Desktop browser flow replay options. */
+  browser: z
+    .object({
+      /** When true, successful LLM self-heals overwrite the saved flow step. */
+      updateFlowsOnHeal: z.boolean().default(false),
+    })
+    .default({}),
 })
 export type AiSettings = z.infer<typeof aiSettingsSchema>
 
@@ -83,6 +90,12 @@ export const aiSettingsPatchSchema = z.object({
       vision: taskChoiceSchema.nullable(),
       fast: taskChoiceSchema.nullable(),
       reasoning: taskChoiceSchema.nullable(),
+    })
+    .partial()
+    .optional(),
+  browser: z
+    .object({
+      updateFlowsOnHeal: z.boolean(),
     })
     .partial()
     .optional(),
@@ -129,6 +142,7 @@ export async function updateAiSettings(patch: AiSettingsPatch): Promise<AiSettin
     assistant: { ...current.assistant, ...patch.assistant },
     jev: { ...current.jev, ...patch.jev },
     models: mergeModels(current.models, patch.models),
+    browser: { ...current.browser, ...patch.browser },
   })
   await fs.mkdir(configDir(), { recursive: true })
   await fs.writeFile(settingsFile(), `${JSON.stringify(next, null, 2)}\n`, "utf8")

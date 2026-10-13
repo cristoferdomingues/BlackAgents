@@ -35,7 +35,8 @@ describe("browser flow store", () => {
     })
 
     expect(flow.name).toBe("time-registration")
-    expect(flow.version).toBe(1)
+    expect(flow.version).toBe(2)
+    expect(flow.steps[0]?.intent).toBeUndefined()
 
     const listed = await listBrowserFlows(root)
     expect(listed.map((f) => f.name)).toEqual(["time-registration"])

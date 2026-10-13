@@ -3,6 +3,8 @@
 import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft, FileText, Loader2, Square } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
@@ -145,8 +147,8 @@ export function RunView({ id }: { id: string }) {
                 <CardContent className="space-y-3">
                   {step.error ? <p className="text-sm text-destructive">{step.error}</p> : null}
                   {step.output ? (
-                    <div className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/30 p-3 text-sm">
-                      {step.output}
+                    <div className="prose-ba max-h-96 overflow-auto break-words rounded-md bg-muted/30 p-3">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{step.output}</ReactMarkdown>
                     </div>
                   ) : null}
                   {step.filesChanged.length > 0 ? (

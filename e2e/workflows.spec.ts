@@ -202,6 +202,35 @@ test.describe("workflows", () => {
     await expect(page.getByText("Anthropic · claude-sonnet-4-20250514 · from agent")).toBeVisible()
   })
 
+  test("renders a step result as markdown", async ({ page }) => {
+    await page.route("**/api/runs/run-1/events", (route) =>
+      fulfillSse(route, [
+        [
+          "run",
+          run({
+            steps: [
+              {
+                id: "plan",
+                agent: "planner",
+                status: "succeeded",
+                attempts: 1,
+                output: "## Fees\n\n**APR** is 12%.\n\n- Pool is in range",
+                toolExecutions: [],
+                filesChanged: [],
+              },
+            ],
+          }),
+        ],
+      ])
+    )
+
+    await page.goto("/workflows/runs/run-1")
+    await expect(page.getByRole("heading", { name: "Fees" })).toBeVisible()
+    await expect(page.locator("strong", { hasText: "APR" })).toBeVisible()
+    await expect(page.getByRole("list", { name: "Steps" }).getByRole("list").getByText("Pool is in range")).toBeVisible()
+    await expect(page.getByText("**APR**")).toHaveCount(0)
+  })
+
   test("shows the agent model when the step inherits, and keeps a task kind", async ({ page }) => {
     await page.route("**/api/artifacts", (route) => {
       if (route.request().method() !== "GET") return route.fallback()

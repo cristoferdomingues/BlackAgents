@@ -62,6 +62,11 @@ export const aiSettingsSchema = z.object({
     .object({
       /** When true, successful LLM self-heals overwrite the saved flow step. */
       updateFlowsOnHeal: z.boolean().default(false),
+      /**
+       * When true, Playwright MCP starts Chromium with no window.
+       * Default false so the user can see the page and log in.
+       */
+      headless: z.boolean().default(false),
     })
     .default({}),
 })
@@ -96,6 +101,7 @@ export const aiSettingsPatchSchema = z.object({
   browser: z
     .object({
       updateFlowsOnHeal: z.boolean(),
+      headless: z.boolean(),
     })
     .partial()
     .optional(),

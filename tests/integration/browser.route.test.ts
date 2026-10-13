@@ -52,6 +52,11 @@ describe("POST /api/browser setup", () => {
     const browserCmd = mcp.mcpServers.browser.command ?? ""
     expect(browserCmd === "npx" || /npx/.test(browserCmd)).toBe(true)
     expect(mcp.mcpServers.browser.args).toContain("@playwright/mcp@latest")
+    expect(mcp.mcpServers.browser.args).not.toContain("--headless")
+    expect(
+      (mcp.mcpServers.browser as { env?: Record<string, string> }).env
+        ?.PLAYWRIGHT_MCP_HEADLESS
+    ).toBe("false")
 
     const policyRaw = await readFile(
       path.join(env.workspace, ".black-agents", "mcp-policy.json"),
@@ -59,6 +64,32 @@ describe("POST /api/browser setup", () => {
     )
     const policy = JSON.parse(policyRaw) as { servers: Record<string, string> }
     expect(policy.servers.browser).toBe("risky")
+  })
+
+  it("can start Chromium with no window", async () => {
+    const res = await postBrowser(
+      jsonRequest("http://t/api/browser", "POST", {
+        action: "setup",
+        headless: true,
+      })
+    )
+    expect(res.status).toBe(200)
+
+    const mcpRaw = await readFile(
+      path.join(env.workspace, ".black-agents", "mcp.json"),
+      "utf8"
+    )
+    const mcp = JSON.parse(mcpRaw) as {
+      mcpServers: Record<
+        string,
+        { args?: string[]; env?: Record<string, string> }
+      >
+    }
+    expect(mcp.mcpServers.browser.args).toContain("--headless")
+    expect(mcp.mcpServers.browser.env?.PLAYWRIGHT_MCP_HEADLESS).toBe("true")
+
+    const status = await (await getBrowser()).json()
+    expect(status.data.headless).toBe(true)
   })
 
   it("rejects setup when not on desktop", async () => {

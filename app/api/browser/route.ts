@@ -21,6 +21,7 @@ export async function GET() {
         desktop: false,
         configured: false,
         disabled: false,
+        headless: false,
         profileDir: "",
         profileExists: false,
         reason: "No active workspace selected",
@@ -69,6 +70,7 @@ export async function GET() {
 const postSchema = z.object({
   action: z.literal("setup"),
   profile: z.string().trim().min(1).max(64).optional(),
+  headless: z.boolean().optional(),
 })
 
 /** Register Playwright MCP + risky trust (desktop only). */
@@ -87,7 +89,8 @@ export async function POST(req: Request) {
 
     const result = await ensureBrowserMcpSetup(
       config.currentPath,
-      parsed.data.profile
+      parsed.data.profile,
+      { headless: parsed.data.headless }
     )
     if (!result.configured) {
       return fail(result.reason ?? "Could not configure browser MCP", 412)

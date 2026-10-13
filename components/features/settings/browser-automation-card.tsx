@@ -40,6 +40,7 @@ interface BrowserStatus {
   desktop: boolean
   configured: boolean
   disabled: boolean
+  headless?: boolean
   profileDir: string
   profileExists: boolean
   reason: string | null
@@ -189,6 +190,33 @@ export function BrowserAutomationCard() {
     }
   }
 
+  async function setShowBrowserWindow(show: boolean) {
+    setBusy(true)
+    try {
+      const headless = !show
+      await apiFetch("/api/settings/ai", {
+        method: "PUT",
+        body: JSON.stringify({ browser: { headless } }),
+      })
+      if (status?.configured && status.desktop) {
+        await apiFetch("/api/browser", {
+          method: "POST",
+          body: JSON.stringify({ action: "setup", headless }),
+        })
+      }
+      toast.success(
+        show
+          ? "Browser window will open. Start a new chat if a session is already running."
+          : "Browser will stay hidden. Start a new chat if a session is already running."
+      )
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save browser mode")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function setUpdateFlowsOnHeal(next: boolean) {
     setBusy(true)
     try {
@@ -313,6 +341,23 @@ export function BrowserAutomationCard() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleCheck className="h-4 w-4" />}
                 Enable Playwright MCP
               </Button>
+
+              <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="show-browser-window">Show browser window</Label>
+                  <p className="text-xs text-muted-foreground">
+                    On: Chromium opens so you can log in and watch. Off: the browser
+                    stays hidden. A session that is already open keeps its old mode
+                    until you start a new chat.
+                  </p>
+                </div>
+                <Switch
+                  id="show-browser-window"
+                  checked={!status.headless}
+                  disabled={busy}
+                  onCheckedChange={(v) => void setShowBrowserWindow(v)}
+                />
+              </div>
 
               <div className="flex items-center justify-between gap-3 rounded-md border p-3">
                 <div className="space-y-0.5">

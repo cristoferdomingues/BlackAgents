@@ -9,6 +9,7 @@ import { getMcpSecrets } from "@/lib/secrets"
 
 import { readWorkspaceMcpConfig } from "./config"
 import { mcpServerSecretStatuses, resolveMcpServerSecrets } from "./resolve-secrets"
+import { prepareStdioLaunch } from "./stdio-command"
 import { mcpAuthRequestInit, resolveMcpTransport } from "./transport"
 import type {
   McpServerConfig,
@@ -74,20 +75,11 @@ export async function createMcpConnection(
         ? new StreamableHTTPClientTransport(url, options)
         : new SSEClientTransport(url, options)
   } else if (resolved.command) {
-    const envRecord: Record<string, string> = {}
-    for (const [k, v] of Object.entries(process.env)) {
-      if (typeof v === "string") envRecord[k] = v
-    }
-    if (resolved.env) {
-      for (const [k, v] of Object.entries(resolved.env)) {
-        envRecord[k] = v
-      }
-    }
-
+    const launch = prepareStdioLaunch(resolved.command, resolved.env)
     transport = new StdioClientTransport({
-      command: resolved.command,
+      command: launch.command,
       args: resolved.args ?? [],
-      env: envRecord,
+      env: launch.env,
       cwd,
     })
   } else {
@@ -149,12 +141,18 @@ export async function testMcpServer(
       secretStatuses,
     }
   } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    const error =
+      /ENOENT/i.test(raw) && config.command
+        ? `${raw}. Could not find "${config.command}" on PATH. ` +
+          `Install Node.js (includes npx), or re-enable the server from Settings so the command is resolved to an absolute path.`
+        : raw
     return {
       name,
       config,
       status: "error",
       tools: [],
-      error: err instanceof Error ? err.message : String(err),
+      error,
       secretStatuses,
     }
   } finally {

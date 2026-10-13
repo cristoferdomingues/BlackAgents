@@ -3,6 +3,7 @@ import {
   saveWorkspaceMcpServer,
 } from "@/lib/mcp/config"
 import { setMcpServerTrust } from "@/lib/mcp/policy"
+import { prepareStdioLaunch } from "@/lib/mcp/stdio-command"
 import type { McpServerConfig } from "@/lib/mcp/types"
 
 import { BROWSER_MCP_SERVER, DEFAULT_BROWSER_PROFILE } from "./constants"
@@ -20,8 +21,10 @@ export interface BrowserSetupResult {
 
 /** Build the stdio MCP config for @playwright/mcp with a persistent profile. */
 export function browserMcpServerConfig(profileDir: string): McpServerConfig {
+  // Resolve `npx` against an enriched PATH so GUI-launched Node finds Homebrew.
+  const launch = prepareStdioLaunch("npx", {})
   return {
-    command: "npx",
+    command: launch.command,
     args: [
       "-y",
       "@playwright/mcp@latest",

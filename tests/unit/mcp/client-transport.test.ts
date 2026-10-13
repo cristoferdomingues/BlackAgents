@@ -3,9 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-const { httpCalls, sseCalls } = vi.hoisted(() => ({
+const { httpCalls, sseCalls, stdioCalls } = vi.hoisted(() => ({
   httpCalls: [] as Array<{ url: string; opts: unknown }>,
   sseCalls: [] as Array<{ url: string; opts: unknown }>,
+  stdioCalls: [] as Array<{ command: string; args: string[]; env?: Record<string, string> }>,
 }))
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -35,6 +36,13 @@ vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
 
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
   StdioClientTransport: class {
+    constructor(opts: { command: string; args?: string[]; env?: Record<string, string> }) {
+      stdioCalls.push({
+        command: opts.command,
+        args: opts.args ?? [],
+        env: opts.env,
+      })
+    }
     close = async (): Promise<void> => undefined
   },
 }))
@@ -55,6 +63,7 @@ describe("createMcpConnection", () => {
   beforeEach(async () => {
     httpCalls.length = 0
     sseCalls.length = 0
+    stdioCalls.length = 0
     configDir = await mkdtemp(path.join(tmpdir(), "ba-mcp-conn-"))
     process.env.BLACK_AGENTS_CONFIG_DIR = configDir
   })
@@ -103,6 +112,20 @@ describe("createMcpConnection", () => {
       { url: "https://mcp.example.com/sse", opts: undefined },
     ])
     expect(httpCalls).toEqual([])
+  })
+
+  it("resolves bare stdio commands against an enriched PATH", async () => {
+    await createMcpConnection({
+      ...emptyConfig,
+      command: "npx",
+      args: ["-y", "@playwright/mcp@latest"],
+    })
+
+    expect(stdioCalls).toHaveLength(1)
+    expect(stdioCalls[0]?.env?.PATH).toBeTruthy()
+    // Prefer absolute path when npx exists on this machine.
+    const cmd = stdioCalls[0]?.command ?? ""
+    expect(cmd === "npx" || path.isAbsolute(cmd)).toBe(true)
   })
 
   it("resolves ${secret:…} headers before opening the HTTP client", async () => {

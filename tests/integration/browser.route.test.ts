@@ -48,7 +48,9 @@ describe("POST /api/browser setup", () => {
     const mcp = JSON.parse(mcpRaw) as {
       mcpServers: Record<string, { command?: string; args?: string[] }>
     }
-    expect(mcp.mcpServers.browser.command).toBe("npx")
+    // Absolute path when Homebrew/nvm npx is found; otherwise bare "npx".
+    const browserCmd = mcp.mcpServers.browser.command ?? ""
+    expect(browserCmd === "npx" || /npx/.test(browserCmd)).toBe(true)
     expect(mcp.mcpServers.browser.args).toContain("@playwright/mcp@latest")
 
     const policyRaw = await readFile(

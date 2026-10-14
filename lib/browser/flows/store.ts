@@ -67,6 +67,7 @@ export async function saveBrowserFlow(
     version: 2,
     profile: parsed.profile ?? existing?.profile ?? "default",
     startUrl: parsed.startUrl ?? existing?.startUrl,
+    autoAccept: parsed.autoAccept ?? existing?.autoAccept ?? false,
     steps,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -76,6 +77,44 @@ export async function saveBrowserFlow(
     `${JSON.stringify(flow, null, 2)}\n`
   )
   return flow
+}
+
+/** Turn auto-accept on or off without rewriting the saved steps. */
+export async function setBrowserFlowAutoAccept(
+  workspaceRoot: string,
+  name: string,
+  autoAccept: boolean
+): Promise<BrowserFlow | null> {
+  const existing = await readBrowserFlow(workspaceRoot, name)
+  if (!existing) return null
+  const flow: BrowserFlow = browserFlowSchema.parse({
+    ...existing,
+    autoAccept,
+    updatedAt: new Date().toISOString(),
+  })
+  await writeText(
+    resolveInWorkspace(workspaceRoot, flowRelPath(flow.name)),
+    `${JSON.stringify(flow, null, 2)}\n`
+  )
+  return flow
+}
+
+/** Saved flows the user marked as already tested. */
+export async function loadAutoAcceptedFlows(workspaceRoot: string): Promise<{
+  flowNames: string[]
+  calls: Array<{ tool: string; args: Record<string, unknown> }>
+}> {
+  const flows = await listBrowserFlows(workspaceRoot)
+  const flowNames: string[] = []
+  const calls: Array<{ tool: string; args: Record<string, unknown> }> = []
+  for (const flow of flows) {
+    if (!flow.autoAccept) continue
+    flowNames.push(flow.name)
+    for (const step of flow.steps) {
+      calls.push({ tool: step.tool, args: step.args })
+    }
+  }
+  return { flowNames, calls }
 }
 
 export async function deleteBrowserFlow(

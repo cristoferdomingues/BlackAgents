@@ -32,6 +32,7 @@ interface BrowserFlowSummary {
   stepCount: number
   profile: string
   startUrl?: string
+  autoAccept?: boolean
   updatedAt: string
   secretIds?: string[]
 }
@@ -170,6 +171,26 @@ export function BrowserAutomationCard() {
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bind failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setFlowAutoAccept(name: string, autoAccept: boolean) {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/browser/flows/${encodeURIComponent(name)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ autoAccept }),
+      })
+      toast.success(
+        autoAccept
+          ? `"${name}" will run its steps without asking.`
+          : `"${name}" will ask before it runs.`
+      )
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the flow option")
     } finally {
       setBusy(false)
     }
@@ -553,7 +574,9 @@ export function BrowserAutomationCard() {
         <CardHeader>
           <CardTitle className="text-base">Saved flows</CardTitle>
           <CardDescription>
-            Bind a daily workflow (runs while the desktop app is open). Default time:
+            Bind a daily workflow (runs while the desktop app is open). Turn on Run
+            without asking for a flow you already tested. Its steps then run with no
+            approval. Default time:
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -578,7 +601,7 @@ export function BrowserAutomationCard() {
               {status.flows.map((f) => (
                 <li
                   key={f.name}
-                  className="flex items-center justify-between gap-2 rounded-md border p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
                 >
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{f.name}</p>
@@ -586,6 +609,17 @@ export function BrowserAutomationCard() {
                       {f.stepCount} steps
                       {f.startUrl ? ` · ${f.startUrl}` : ""}
                     </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={`auto-accept-${f.name}`} className="text-xs font-normal">
+                      Run without asking
+                    </Label>
+                    <Switch
+                      id={`auto-accept-${f.name}`}
+                      checked={Boolean(f.autoAccept)}
+                      disabled={busy}
+                      onCheckedChange={(v) => void setFlowAutoAccept(f.name, v)}
+                    />
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button

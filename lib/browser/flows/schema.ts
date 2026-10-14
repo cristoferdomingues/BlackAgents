@@ -46,6 +46,11 @@ export const browserFlowSchema = z.object({
   /** Optional first URL (also stored as a navigate step when recorded). */
   startUrl: z.string().url().optional(),
   steps: z.array(browserFlowStepSchema).max(200).default([]),
+  /**
+   * The flow was already tested. When true, its saved steps and
+   * `browser_run_flow` run without an approval card.
+   */
+  autoAccept: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 })
@@ -56,6 +61,7 @@ export const browserFlowInputSchema = z.object({
   description: z.string().trim().max(500).optional(),
   profile: z.string().trim().min(1).max(64).optional(),
   startUrl: z.string().url().optional(),
+  autoAccept: z.boolean().optional(),
   steps: z.array(browserFlowStepSchema).max(200),
 })
 /** Accepts omit of defaulted step fields (`kind`, etc.). */

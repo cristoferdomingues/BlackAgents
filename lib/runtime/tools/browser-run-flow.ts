@@ -22,7 +22,7 @@ export const browserRunFlowTool: RuntimeTool = {
   source: "builtin",
   risk: "exec",
   description:
-    "Replay a saved browser flow from .black-agents/browser-flows/<name>.json using the Playwright MCP server. Desktop (Electron) only. Supports intent self-heal, asserts, and secret fills.",
+    "Replay a saved browser flow from .black-agents/browser-flows/<name>.json using the Playwright MCP server. Desktop (Electron) only. Supports intent self-heal, asserts, and secret fills. A flow with auto-accept runs its saved steps with no approval card.",
   parameters: {
     type: "object",
     properties: {

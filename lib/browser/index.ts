@@ -27,8 +27,10 @@ export {
 export {
   deleteBrowserFlow,
   listBrowserFlows,
+  loadAutoAcceptedFlows,
   readBrowserFlow,
   saveBrowserFlow,
+  setBrowserFlowAutoAccept,
 } from "./flows/store"
 export { extractHealedStep, healBrowserStep, HEAL_FENCE } from "./heal"
 export { browserUnavailableReason, isDesktopRuntime } from "./platform"

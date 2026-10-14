@@ -7,7 +7,8 @@ import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import type { ModelLayer } from "@/lib/llm/model-ref"
 import { ProviderError } from "@/lib/llm/types"
 import { readAiSettings } from "@/lib/settings"
-import { createApprovalPolicy } from "@/lib/runtime/approval-policy"
+import { loadAutoAcceptedFlows } from "@/lib/browser"
+import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
 import { runAgentLoop } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover } from "@/lib/runtime/ask-user"
 import { agentToolScope, type ToolScope } from "@/lib/runtime/tools"
@@ -91,6 +92,11 @@ export async function executeRun(
     AbortSignal.timeout(workflow.limits.runTimeoutMinutes * 60_000),
   ])
   const policy = createApprovalPolicy(false)
+  const grants = await loadAutoAcceptedFlows(run.workspaceRoot)
+  for (const name of grants.flowNames) policy.autoAcceptFlows.add(name)
+  for (const call of grants.calls) {
+    policy.autoAcceptedCalls.add(preapprovedCallKey(call.tool, call.args))
+  }
 
   const update = async (): Promise<void> => {
     await deps.save(run)

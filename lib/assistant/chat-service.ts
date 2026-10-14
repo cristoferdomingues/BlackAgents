@@ -27,7 +27,8 @@ import type { ChatModelTask } from "@/lib/llm/task-models"
 import type { ChatMessage, LLMCredentials, LLMProvider, ProviderId } from "@/lib/llm/types"
 import type { ProviderSecret } from "@/lib/secrets"
 import { readAiSettings } from "@/lib/settings"
-import { createApprovalPolicy } from "@/lib/runtime/approval-policy"
+import { loadAutoAcceptedFlows } from "@/lib/browser"
+import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
 import { runAgentLoop, type AgentLoopResult } from "@/lib/runtime/agent-loop"
 import type { Approver } from "@/lib/runtime/ask-user"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, buildToolset } from "@/lib/runtime/tools"
@@ -219,11 +220,19 @@ export function toChatMessage(message: ChatRequest["messages"][number]): ChatMes
   }
 }
 
-export function runChat(
+export async function runChat(
   chat: PreparedChat,
   options: { approve: Approver; onEvent?: (event: AgentLoopEvent) => void; signal?: AbortSignal }
 ): Promise<AgentLoopResult> {
   const messages: ChatMessage[] = chat.request.messages.map(toChatMessage)
+  const policy = createApprovalPolicy(Boolean(chat.request.allowWrites), chat.allowFileWrites)
+  if (chat.workspaceRoot) {
+    const grants = await loadAutoAcceptedFlows(chat.workspaceRoot)
+    for (const name of grants.flowNames) policy.autoAcceptFlows.add(name)
+    for (const call of grants.calls) {
+      policy.autoAcceptedCalls.add(preapprovedCallKey(call.tool, call.args))
+    }
+  }
   return runAgentLoop({
     provider: chat.provider,
     credentials: chat.credentials,
@@ -234,7 +243,7 @@ export function runChat(
     tools: chat.tools,
     maxTurns: chat.maxTurns,
     workspaceRoot: chat.workspaceRoot ?? process.cwd(),
-    policy: createApprovalPolicy(Boolean(chat.request.allowWrites), chat.allowFileWrites),
+    policy,
     approve: options.approve,
     onEvent: options.onEvent,
     signal: options.signal,

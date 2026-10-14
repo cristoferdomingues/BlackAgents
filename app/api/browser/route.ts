@@ -53,6 +53,7 @@ export async function GET() {
         stepCount: f.steps.length,
         profile: f.profile,
         startUrl: f.startUrl,
+        autoAccept: f.autoAccept,
         updatedAt: f.updatedAt,
         secretIds: collectFlowSecretIds(f.steps),
       })),

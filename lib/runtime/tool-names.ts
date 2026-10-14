@@ -25,6 +25,6 @@ export const BUILTIN_TOOL_LABELS: Record<BuiltinToolName, { label: string; hint:
   shell_run: { label: "Run commands", hint: "Needs approval for every command" },
   browser_run_flow: {
     label: "Run browser flow",
-    hint: "Replay a saved flow (desktop / Electron only)",
+    hint: "Replay a saved flow. Turn on Run without asking to skip approval.",
   },
 }

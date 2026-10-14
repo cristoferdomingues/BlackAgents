@@ -6,7 +6,9 @@ import path from "node:path"
 import {
   deleteBrowserFlow,
   listBrowserFlows,
+  loadAutoAcceptedFlows,
   saveBrowserFlow,
+  setBrowserFlowAutoAccept,
 } from "@/lib/browser/flows/store"
 
 let root: string
@@ -41,7 +43,29 @@ describe("browser flow store", () => {
     const listed = await listBrowserFlows(root)
     expect(listed.map((f) => f.name)).toEqual(["time-registration"])
 
+    expect(flow.autoAccept).toBe(false)
     expect(await deleteBrowserFlow(root, "time-registration")).toBe(true)
     expect(await listBrowserFlows(root)).toEqual([])
+  })
+
+  it("keeps auto-accept when a later save omits it", async () => {
+    await saveBrowserFlow(root, {
+      name: "clock-in",
+      steps: [{ id: "step_1", tool: "browser_click", args: { element: "Clock in" } }],
+    })
+    const turnedOn = await setBrowserFlowAutoAccept(root, "clock-in", true)
+    expect(turnedOn?.autoAccept).toBe(true)
+
+    const savedAgain = await saveBrowserFlow(root, {
+      name: "clock-in",
+      steps: [{ id: "step_1", tool: "browser_click", args: { element: "Clock in" } }],
+    })
+    expect(savedAgain.autoAccept).toBe(true)
+
+    const grants = await loadAutoAcceptedFlows(root)
+    expect(grants.flowNames).toEqual(["clock-in"])
+    expect(grants.calls).toEqual([{ tool: "browser_click", args: { element: "Clock in" } }])
+
+    expect(await setBrowserFlowAutoAccept(root, "missing", true)).toBeNull()
   })
 })

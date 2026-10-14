@@ -4,6 +4,7 @@ import {
   callKey,
   createApprovalPolicy,
   needsApproval,
+  preapprovedCallKey,
   rememberCall,
 } from "@/lib/runtime/approval-policy"
 import {
@@ -54,6 +55,26 @@ describe("approval policy", () => {
     rememberCall(policy, tool, { a: 1 })
     expect(needsApproval(tool, { a: 1 }, policy)).toBe(false)
     expect(needsApproval(tool, { a: 2 }, policy)).toBe(true)
+  })
+
+  it("skips approval for a saved flow the user marked as already tested", () => {
+    const policy = createApprovalPolicy()
+    const run = fakeTool("browser_run_flow", "exec")
+    const click = {
+      ...fakeTool("browser__browser_click", "exec"),
+      originalName: "browser_click",
+      server: "browser",
+    }
+    expect(needsApproval(run, { name: "clock-in" }, policy)).toBe(true)
+    expect(needsApproval(click, { element: "Clock in" }, policy)).toBe(true)
+
+    policy.autoAcceptFlows.add("clock-in")
+    policy.autoAcceptedCalls.add(preapprovedCallKey("browser_click", { element: "Clock in" }))
+
+    expect(needsApproval(run, { name: "clock-in" }, policy)).toBe(false)
+    expect(needsApproval(click, { element: "Clock in" }, policy)).toBe(false)
+    expect(needsApproval(click, { element: "Somewhere else" }, policy)).toBe(true)
+    expect(needsApproval(run, { name: "other-flow" }, policy)).toBe(true)
   })
 
   it("builds the same key regardless of argument order", () => {

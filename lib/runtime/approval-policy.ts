@@ -8,10 +8,25 @@ export interface ApprovalPolicy {
   allowFileWrites: boolean
   /** Exact `exec` calls the user allowed for the rest of this run. */
   allowedCalls: Set<string>
+  /** Saved browser flow names that may run without an approval card. */
+  autoAcceptFlows: Set<string>
+  /** Exact tool + args already approved as part of a saved flow. */
+  autoAcceptedCalls: Set<string>
 }
 
 export function createApprovalPolicy(allowWrites = false, allowFileWrites = false): ApprovalPolicy {
-  return { allowWrites, allowFileWrites, allowedCalls: new Set() }
+  return {
+    allowWrites,
+    allowFileWrites,
+    allowedCalls: new Set(),
+    autoAcceptFlows: new Set(),
+    autoAcceptedCalls: new Set(),
+  }
+}
+
+/** Identity of a saved flow step (`originalName` + arguments). */
+export function preapprovedCallKey(toolName: string, args: Record<string, unknown>): string {
+  return `${toolName}:${stableStringify(args)}`
 }
 
 function stableStringify(value: unknown): string {
@@ -39,6 +54,16 @@ export function needsApproval(
   args: Record<string, unknown>,
   policy: ApprovalPolicy
 ): boolean {
+  if (
+    tool.originalName === "browser_run_flow" &&
+    typeof args.name === "string" &&
+    policy.autoAcceptFlows.has(args.name.trim())
+  ) {
+    return false
+  }
+  if (policy.autoAcceptedCalls.has(preapprovedCallKey(tool.originalName, args))) {
+    return false
+  }
   const risk = riskOf(tool, args)
   if (risk === "read") return false
   if (risk === "write" && policy.allowWrites) return false

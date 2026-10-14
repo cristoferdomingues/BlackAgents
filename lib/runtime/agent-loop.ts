@@ -18,8 +18,8 @@ import type {
   ToolExecutionTrace,
 } from "./types"
 
-export const DEFAULT_MAX_TURNS = 8
-export const MAX_TURNS_LIMIT = 20
+export const DEFAULT_MAX_TURNS = 25
+export const MAX_TURNS_LIMIT = 100
 export const DEFAULT_TOOL_TIMEOUT_MS = 60_000
 export const MAX_TOOL_RESULT_CHARS = 12_000
 

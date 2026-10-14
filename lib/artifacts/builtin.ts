@@ -140,17 +140,17 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
   - At run time, the executor resolves each handle to its metadata and \`absolutePath\` on disk and injects a \`## Files for this step\` section into the step prompt.
   - Users can also override a step's files for a single manual run in the **Run workflow** panel or Assistant **WorkflowRunCard** (\`stepFiles\` map) without modifying the saved workflow definition.
   - You can also write \`@file:<name>\` inside \`task\` or step \`instructions\` to auto-attach that file.
-- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_write\`, \`shell_exec\`, \`browser_run_flow\`). Defaults to the agent's frontmatter \`tools\`.
+- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_find\`, \`fs_search\`, \`fs_write\`, \`fs_edit\`, \`shell_run\`, \`browser_run_flow\`). Defaults to the agent's frontmatter \`tools\`. Read access also brings \`fs_find\` and \`fs_search\`; \`fs_write\` also brings \`fs_edit\`.
 - \`mcpServers\`: Optional override of MCP server names (e.g. \`["browser"]\`). Defaults to the agent's frontmatter \`mcpServers\`.
-- \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools and \`fs_write\` auto-approve during this step (\`shell_exec\` and protected paths still ask for approval).
-- \`maxTurns\`: \`1..8\` tool turns per step (default \`6\`).
+- \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools, \`fs_write\` and \`fs_edit\` auto-approve during this step (\`shell_run\` and protected paths still ask for approval).
+- \`maxTurns\`: \`1..100\` tool turns per step (default \`30\`). Building or changing code needs many turns: use 30 or more for implementation steps.
 - \`gate\`: Boolean (default \`false\`). When \`true\` and **Jev** is enabled in **Settings → AI**, Jev evaluates the step output (\`continue\`, \`retry\`, or \`stop\`) at \`>= 0.8\` confidence. If \`retry\`, the step re-runs up to \`limits.maxRetries\` with reviewer feedback.
 - \`login\`: Boolean (default \`false\`). Turn this on when the step must sign in to a website. The builder shows **Username** and **Password** fields. Those values are saved as secrets (\`browser.<workflow>.<step>.username\` and \`.password\`) and are never written into the workflow file. If they are missing when the step runs, the run pauses on **Needs login**, shows the same two fields, and then continues that step. The agent calls \`browser_fill_login\` with the secret ids. If the user already signed in in the browser window, they can choose **I already signed in**.
 - \`model\` / \`provider\`: Optional per-step model override. Supports concrete model IDs or task references (\`task:fast\`, \`task:reasoning\`, \`task:vision\`). Resolution order: **step → workflow → agent → verified default**.
 
 ### 4. Limits & Second Brain (\`selfAssess\`)
-- \`limits.stepTimeoutMinutes\`: \`1..30\` minutes (default \`10\`).
-- \`limits.runTimeoutMinutes\`: \`1..180\` minutes (default \`60\`).
+- \`limits.stepTimeoutMinutes\`: \`1..240\` minutes (default \`30\`). Time spent waiting for an approval counts.
+- \`limits.runTimeoutMinutes\`: \`1..1440\` minutes (default \`180\`).
 - \`limits.maxRetries\`: \`0..2\` retries when a Jev gate requests a retry (default \`1\`).
 - \`selfAssess\`: Boolean (default \`false\`). When \`true\`, after a completed run each participating agent reflects on the run and proposes durable learnings for the **Second Brain** (\`/brain\`).
 

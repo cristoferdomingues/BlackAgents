@@ -12,6 +12,7 @@ import {
   setApprovalSoundMuted,
 } from "@/lib/audio/approval-alert"
 import { cn } from "@/lib/utils"
+import { isFileWriteTool } from "@/lib/runtime/tool-names"
 import type { ApprovalRequest, FileWritePermission } from "@/lib/runtime/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -48,7 +49,10 @@ export function ApprovalCard({
     if (!next) void playApprovalChime()
   }
   const fileWriteChoice =
-    approval.scope.kind === "chat" && approval.tool === "fs_write" && approval.risk === "write"
+    approval.scope.kind === "chat" &&
+    approval.server === "builtin" &&
+    isFileWriteTool(approval.tool) &&
+    approval.risk === "write"
 
   async function decide(
     approved: boolean,

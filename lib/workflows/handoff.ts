@@ -1,5 +1,6 @@
 import { composeFilesPrompt } from "../files/prompt"
 import type { WorkspaceFile } from "../files/schema"
+import { isFileWriteTool } from "../runtime/tool-names"
 import type { ToolExecutionTrace } from "../runtime/types"
 import { loginStepNote } from "./login"
 import type { StepRun, Workflow, WorkflowStep } from "./schema"
@@ -13,11 +14,11 @@ export interface Handoff {
   filesChanged: string[]
 }
 
-/** Files a step wrote, from its successful `fs_write` calls. */
+/** Files a step wrote, from its successful `fs_write` / `fs_edit` calls. */
 export function filesChangedBy(traces: ToolExecutionTrace[]): string[] {
   const files = new Set<string>()
   for (const t of traces) {
-    if (t.tool !== "fs_write" || t.server !== "builtin" || t.error) continue
+    if (!isFileWriteTool(t.tool) || t.server !== "builtin" || t.error) continue
     const result: unknown = t.result
     if (result && typeof result === "object" && "path" in result && typeof result.path === "string") {
       files.add(result.path)

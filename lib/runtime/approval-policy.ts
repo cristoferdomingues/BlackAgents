@@ -1,3 +1,4 @@
+import { isFileWriteTool } from "./tool-names"
 import type { RuntimeTool, ToolRisk } from "./types"
 
 /** Per-request (chat) or per-run (workflow) approval state. */
@@ -67,7 +68,14 @@ export function needsApproval(
   const risk = riskOf(tool, args)
   if (risk === "read") return false
   if (risk === "write" && policy.allowWrites) return false
-  if (risk === "write" && policy.allowFileWrites && tool.originalName === "fs_write") return false
+  if (
+    risk === "write" &&
+    policy.allowFileWrites &&
+    tool.source === "builtin" &&
+    isFileWriteTool(tool.originalName)
+  ) {
+    return false
+  }
   return !policy.allowedCalls.has(callKey(tool, args))
 }
 

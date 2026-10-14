@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Shell tools must not load the developer's own shell profile.
+    env: { SHELL: "/bin/sh" },
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",

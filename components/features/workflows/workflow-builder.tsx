@@ -13,8 +13,13 @@ import { parseStoredWorkflowDraft, WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/
 import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, DEFAULT_AGENT_TOOLS, type BuiltinToolName } from "@/lib/runtime/tool-names"
 import { loginSecretIds } from "@/lib/workflows/login"
 import {
+  DEFAULT_RUN_TIMEOUT_MINUTES,
+  DEFAULT_STEP_TIMEOUT_MINUTES,
+  DEFAULT_STEP_TURNS,
   MAX_GATE_RETRIES,
+  MAX_RUN_TIMEOUT_MINUTES,
   MAX_STEP_FILES,
+  MAX_STEP_TIMEOUT_MINUTES,
   MAX_STEP_TURNS,
   MAX_WORKFLOW_STEPS,
   workflowSchema,
@@ -102,7 +107,7 @@ function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
     ownTools: true,
     tools: [...DEFAULT_AGENT_TOOLS],
     allowWrites: false,
-    maxTurns: 6,
+    maxTurns: DEFAULT_STEP_TURNS,
     gate: false,
     login: false,
     username: "",
@@ -226,8 +231,8 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     triggerType: "manual",
     everyMinutes: 60,
     at: "09:00",
-    stepTimeoutMinutes: 10,
-    runTimeoutMinutes: 60,
+    stepTimeoutMinutes: DEFAULT_STEP_TIMEOUT_MINUTES,
+    runTimeoutMinutes: DEFAULT_RUN_TIMEOUT_MINUTES,
     maxRetries: 1,
     selfAssess: false,
     steps: [emptyStep(0, "", "step-initial")],
@@ -732,23 +737,23 @@ export function WorkflowBuilder({ name }: { name?: string }) {
             </div>
           ) : null}
           <div className="space-y-1.5">
-            <Label htmlFor="wf-step-timeout">Step time limit (min)</Label>
+            <Label htmlFor="wf-step-timeout">Step time limit (1–{MAX_STEP_TIMEOUT_MINUTES} min)</Label>
             <Input
               id="wf-step-timeout"
               type="number"
               min={1}
-              max={30}
+              max={MAX_STEP_TIMEOUT_MINUTES}
               value={draft.stepTimeoutMinutes}
               onChange={(e) => set("stepTimeoutMinutes", numberValue(e.target.value, draft.stepTimeoutMinutes))}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="wf-run-timeout">Run time limit (min)</Label>
+            <Label htmlFor="wf-run-timeout">Run time limit (1–{MAX_RUN_TIMEOUT_MINUTES} min)</Label>
             <Input
               id="wf-run-timeout"
               type="number"
               min={1}
-              max={180}
+              max={MAX_RUN_TIMEOUT_MINUTES}
               value={draft.runTimeoutMinutes}
               onChange={(e) => set("runTimeoutMinutes", numberValue(e.target.value, draft.runTimeoutMinutes))}
             />

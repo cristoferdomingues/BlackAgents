@@ -14,7 +14,12 @@ import type { ApprovalRequest, ToolExecutionTrace } from "../runtime/types"
  */
 
 export const MAX_WORKFLOW_STEPS = 10
-export const MAX_STEP_TURNS = 8
+export const MAX_STEP_TURNS = 100
+export const DEFAULT_STEP_TURNS = 30
+export const MAX_STEP_TIMEOUT_MINUTES = 240
+export const DEFAULT_STEP_TIMEOUT_MINUTES = 30
+export const MAX_RUN_TIMEOUT_MINUTES = 1_440
+export const DEFAULT_RUN_TIMEOUT_MINUTES = 180
 export const MAX_GATE_RETRIES = 2
 export const MAX_STEP_FILES = 10
 
@@ -38,7 +43,7 @@ export const workflowStepSchema = z.object({
   mcpServers: z.array(z.string().trim().min(1)).optional(),
   /** Auto-approve file writes in this step (commands still ask). */
   allowWrites: z.boolean().default(false),
-  maxTurns: z.number().int().min(1).max(MAX_STEP_TURNS).default(6),
+  maxTurns: z.number().int().min(1).max(MAX_STEP_TURNS).default(DEFAULT_STEP_TURNS),
   /** Ask Jev after this step: continue, retry the step, or stop the line. */
   gate: z.boolean().default(false),
   /**
@@ -74,8 +79,8 @@ export const workflowSchema = z
     steps: z.array(workflowStepSchema).min(1, "Add at least one step").max(MAX_WORKFLOW_STEPS),
     limits: z
       .object({
-        stepTimeoutMinutes: z.number().int().min(1).max(30).default(10),
-        runTimeoutMinutes: z.number().int().min(1).max(180).default(60),
+        stepTimeoutMinutes: z.number().int().min(1).max(MAX_STEP_TIMEOUT_MINUTES).default(DEFAULT_STEP_TIMEOUT_MINUTES),
+        runTimeoutMinutes: z.number().int().min(1).max(MAX_RUN_TIMEOUT_MINUTES).default(DEFAULT_RUN_TIMEOUT_MINUTES),
         maxRetries: z.number().int().min(0).max(MAX_GATE_RETRIES).default(1),
       })
       .default({}),

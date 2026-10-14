@@ -20,7 +20,7 @@ describe("/api/settings/ai", () => {
     const body = await (await GET()).json()
     expect(body.data).toEqual({
       settings: {
-        assistant: { maxToolTurns: 8, autoApproveFileWrites: false },
+        assistant: { maxToolTurns: 25, autoApproveFileWrites: false },
         jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
         models: {},
         browser: { updateFlowsOnHeal: false, headless: false },
@@ -89,7 +89,7 @@ describe("/api/settings/ai", () => {
   })
 
   it("rejects invalid values", async () => {
-    expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { assistant: { maxToolTurns: 99 } }))).status).toBe(400)
+    expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { assistant: { maxToolTurns: 101 } }))).status).toBe(400)
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevApiKey: "x" }))).status).toBe(400)
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevOpenRouterApiKey: "x" }))).status).toBe(400)
   })

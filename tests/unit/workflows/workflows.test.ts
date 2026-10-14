@@ -44,8 +44,8 @@ describe("workflowSchema", () => {
   it("fills defaults", () => {
     const parsed = wf()
     expect(parsed.trigger).toEqual({ type: "manual" })
-    expect(parsed.limits).toEqual({ stepTimeoutMinutes: 10, runTimeoutMinutes: 60, maxRetries: 1 })
-    expect(parsed.steps[0]).toMatchObject({ input: "previous", allowWrites: false, maxTurns: 6, gate: false })
+    expect(parsed.limits).toEqual({ stepTimeoutMinutes: 30, runTimeoutMinutes: 180, maxRetries: 1 })
+    expect(parsed.steps[0]).toMatchObject({ input: "previous", allowWrites: false, maxTurns: 30, gate: false })
   })
 
   it("accepts a step model and still parses workflows saved without one", () => {
@@ -148,15 +148,16 @@ describe("handoff", () => {
     expect(text).toContain("final result")
   })
 
-  it("collects files from successful builtin fs_write calls only", () => {
+  it("collects files from successful builtin fs_write and fs_edit calls only", () => {
     expect(
       filesChangedBy([
         { id: "1", server: "builtin", tool: "fs_write", args: {}, result: { path: "a.md" } },
         { id: "2", server: "builtin", tool: "fs_write", args: {}, error: "denied" },
         { id: "3", server: "github", tool: "fs_write", args: {}, result: { path: "b.md" } },
         { id: "4", server: "builtin", tool: "fs_write", args: {}, result: { path: "a.md" } },
+        { id: "5", server: "builtin", tool: "fs_edit", args: {}, result: { path: "c.ts" } },
       ])
-    ).toEqual(["a.md"])
+    ).toEqual(["a.md", "c.ts"])
   })
 })
 

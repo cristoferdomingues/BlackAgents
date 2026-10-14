@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { ok, fail, handle } from "@/lib/api-response"
 import { getPendingApproval, resolveApproval } from "@/lib/runtime/approvals"
+import { isFileWriteTool } from "@/lib/runtime/tool-names"
 import { FILE_WRITE_PERMISSIONS, type FileWritePermission } from "@/lib/runtime/types"
 
 const decisionSchema = z.object({
@@ -26,7 +27,8 @@ export async function POST(req: Request, ctx: RouteContext) {
     const fileWritePermission: FileWritePermission | undefined =
       parsed.data.approved &&
       pending.scope.kind === "chat" &&
-      pending.tool === "fs_write" &&
+      pending.server === "builtin" &&
+      isFileWriteTool(pending.tool) &&
       pending.risk === "write"
         ? parsed.data.fileWritePermission
         : undefined

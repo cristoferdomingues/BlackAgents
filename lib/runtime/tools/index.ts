@@ -2,25 +2,31 @@ import type { Artifact } from "@/lib/artifacts/types"
 
 import {
   DEFAULT_AGENT_TOOLS,
+  expandBuiltinTools,
   isBuiltinToolName,
   type BuiltinToolName,
 } from "../tool-names"
+import { commandEnv } from "../shell-env"
 import type { RuntimeTool } from "../types"
 import { browserRunFlowTool } from "./browser-run-flow"
-import { fsListTool, fsReadTool, fsWriteTool } from "./fs"
+import { fsEditTool, fsFindTool, fsListTool, fsReadTool, fsSearchTool, fsWriteTool } from "./fs"
 import { loadMcpRuntimeTools } from "./mcp"
 import { shellRunTool } from "./shell"
 
 const BUILTIN_TOOLS: Record<BuiltinToolName, RuntimeTool> = {
   fs_list: fsListTool,
   fs_read: fsReadTool,
+  fs_find: fsFindTool,
+  fs_search: fsSearchTool,
   fs_write: fsWriteTool,
+  fs_edit: fsEditTool,
   shell_run: shellRunTool,
   browser_run_flow: browserRunFlowTool,
 }
 
+/** The runtime tools for these names, plus the tools each one brings along. */
 export function builtinTools(names: readonly BuiltinToolName[]): RuntimeTool[] {
-  return [...new Set(names)].map((name) => BUILTIN_TOOLS[name])
+  return expandBuiltinTools(names).map((name) => BUILTIN_TOOLS[name])
 }
 
 export interface ToolScope {
@@ -46,15 +52,17 @@ export function agentToolScope(agent: Artifact): ToolScope {
   }
 }
 
-/** The generic assistant: read files, write files, and every MCP server. */
+/** The generic assistant: read, search, write and edit files, run commands, and every MCP server. */
 export const ASSISTANT_TOOL_SCOPE: ToolScope = {
-  builtins: [...DEFAULT_AGENT_TOOLS, "fs_write"],
+  builtins: [...DEFAULT_AGENT_TOOLS, "fs_write", "shell_run"],
 }
 
 export async function buildToolset(
   workspaceRoot: string,
   scope: ToolScope
 ): Promise<RuntimeTool[]> {
+  const builtins = builtinTools(scope.builtins)
+  if (builtins.includes(shellRunTool)) void commandEnv()
   const mcp = await loadMcpRuntimeTools(workspaceRoot, scope.mcpServers)
-  return [...builtinTools(scope.builtins), ...mcp]
+  return [...builtins, ...mcp]
 }

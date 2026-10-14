@@ -22,6 +22,8 @@ describe("buildSystemContext", () => {
     expect(context).toContain("```artifact")
     expect(context).toContain("Authoring standards")
     expect(context).toContain("fs_write")
+    expect(context).toContain("shell_run")
+    expect(context).toContain("Do not stop at a plan")
   })
 
   it("includes the workflow protocol and lists workspace workflows", async () => {
@@ -87,6 +89,10 @@ describe("buildSystemContext", () => {
     )
     expect(context).not.toContain("## Draft protocol")
     expect(context).not.toContain(DEFAULT_STANDARDS_MD.slice(0, 40))
+    expect(context).toContain("## Working in the workspace")
+    expect(context.indexOf("## Working in the workspace")).toBeLessThan(
+      context.indexOf("## Selected workspace agent")
+    )
   })
 
   it("rejects non-agent artifacts as personas", () => {

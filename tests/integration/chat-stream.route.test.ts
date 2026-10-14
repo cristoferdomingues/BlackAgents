@@ -113,7 +113,7 @@ describe("POST /api/chat streaming", () => {
       tools: Array<{ function: { name: string } }>
     }
     expect(system.messages[0].content).toContain("Use short sentences.")
-    expect(system.tools.map((t) => t.function.name)).toEqual(["fs_write"])
+    expect(system.tools.map((t) => t.function.name)).toEqual(["fs_write", "fs_edit"])
   })
 
   it("gives the assistant fs_write and allows the rest of the message after one yes", async () => {
@@ -155,7 +155,15 @@ describe("POST /api/chat streaming", () => {
     const system = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
       tools: Array<{ function: { name: string } }>
     }
-    expect(system.tools.map((tool) => tool.function.name)).toEqual(["fs_list", "fs_read", "fs_write"])
+    expect(system.tools.map((tool) => tool.function.name)).toEqual([
+      "fs_list",
+      "fs_read",
+      "fs_find",
+      "fs_search",
+      "fs_write",
+      "fs_edit",
+      "shell_run",
+    ])
   })
 
   it("skips the file-write ask when the Assistant setting is on", async () => {

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Workflow as WorkflowIcon } from "lucide-react"
+import { FolderOpen, Workflow as WorkflowIcon } from "lucide-react"
 
 import { metaForType } from "@/lib/artifacts/constants"
 import type { MentionTargetType } from "@/lib/artifacts/mentions"
@@ -20,6 +20,9 @@ function mentionMeta(type: MentionTargetType): {
 } {
   if (type === "workflow") {
     return { icon: WorkflowIcon, labelPlural: "Workflows", colorClass: "text-primary" }
+  }
+  if (type === "file") {
+    return { icon: FolderOpen, labelPlural: "Files", colorClass: "text-sky-500" }
   }
   return metaForType(type)
 }

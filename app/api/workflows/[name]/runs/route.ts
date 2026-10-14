@@ -7,14 +7,17 @@ import { CredentialStateError } from "@/lib/llm/credentials"
 import { ModelRefError } from "@/lib/llm/model-ref"
 import { ensureWorkflowModels, resolveRunLlm } from "@/lib/workflows/llm"
 import { getRunner } from "@/lib/workflows/runner"
-import { summarizeRun } from "@/lib/workflows/schema"
+import { MAX_STEP_FILES, summarizeRun } from "@/lib/workflows/schema"
 import { listRuns, readWorkflow } from "@/lib/workflows/store"
 
 interface RouteContext {
   params: Promise<{ name: string }>
 }
 
-const startSchema = z.object({ task: z.string().max(4_000).optional() })
+const startSchema = z.object({
+  task: z.string().max(4_000).optional(),
+  stepFiles: z.record(z.string(), z.array(nameSchema).max(MAX_STEP_FILES)).optional(),
+})
 
 export async function GET(_req: Request, ctx: RouteContext) {
   return handle(async () => {
@@ -50,6 +53,7 @@ export async function POST(req: Request, ctx: RouteContext) {
       workflow,
       trigger: "manual",
       task: parsed.data.task,
+      stepFiles: parsed.data.stepFiles,
     })
     return ok({ run }, 201)
   })

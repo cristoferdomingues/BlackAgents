@@ -2,6 +2,7 @@ import { composeArtifactPrompt, linkedArtifacts } from "@/lib/assistant/turn-art
 import type { Artifact } from "@/lib/artifacts/types"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
+import { parseFileMentions, resolveWorkspaceFiles, type WorkspaceFile } from "@/lib/files"
 import { buildAgentPersonaContext } from "@/lib/llm/context"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import type { ModelLayer } from "@/lib/llm/model-ref"
@@ -32,6 +33,7 @@ export interface ExecutorDeps {
     task: string
     resolved: ResolvedDecisionClient | null
   }) => Promise<string>
+  resolveFiles?: (root: string, names: readonly string[]) => Promise<WorkspaceFile[]>
   save: (run: WorkflowRun) => Promise<void>
   emit: (run: WorkflowRun) => void
   runLoop?: typeof runAgentLoop
@@ -43,6 +45,7 @@ export function newRun(params: {
   workspaceRoot: string
   trigger: WorkflowRun["trigger"]
   task: string
+  stepFiles?: Record<string, string[]>
   now?: Date
 }): WorkflowRun {
   return {
@@ -52,6 +55,7 @@ export function newRun(params: {
     status: "queued",
     trigger: params.trigger,
     task: params.task,
+    ...(params.stepFiles && Object.keys(params.stepFiles).length > 0 ? { stepFiles: params.stepFiles } : {}),
     createdAt: (params.now ?? new Date()).toISOString(),
     steps: params.workflow.steps.map((s) => ({
       id: s.id,
@@ -165,6 +169,17 @@ export async function executeRun(
         resolved,
       })
       if (brain) sections.push(brain)
+      const configuredFiles = run.stepFiles?.[step.id] ?? step.files ?? []
+      const mentionedFiles = [
+        ...parseFileMentions(run.task),
+        ...parseFileMentions(step.instructions),
+      ]
+      const wantedFileNames = [...new Set([...configuredFiles, ...mentionedFiles])]
+      const fileResolver = deps.resolveFiles ?? resolveWorkspaceFiles
+      const stepWorkspaceFiles =
+        wantedFileNames.length > 0
+          ? await fileResolver(run.workspaceRoot, wantedFileNames)
+          : []
       policy.allowWrites = step.allowWrites
       policy.allowFileWrites = false
 
@@ -213,6 +228,7 @@ export async function executeRun(
                   index,
                   task: run.task,
                   handoffs: handoffsFor(step, run.steps.slice(0, index)),
+                  files: stepWorkspaceFiles,
                   retryNote,
                 }),
               },

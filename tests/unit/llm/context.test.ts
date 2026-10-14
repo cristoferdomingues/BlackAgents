@@ -56,6 +56,19 @@ describe("buildSystemContext", () => {
     expect(context).toContain("agent/tester — .cursor/agents/tester.md — Runs tests")
   })
 
+  it("lists saved workspace files in the Media & Files section", async () => {
+    const { saveWorkspaceFile } = await import("@/lib/files")
+    await saveWorkspaceFile(env.workspace, {
+      name: "company-logo",
+      originalName: "Logo.png",
+      mimeType: "image/png",
+      bytes: new Uint8Array([137, 80, 78, 71]),
+      description: "Main brand logo",
+    })
+    const context = await buildSystemContext()
+    expect(context).toContain("@file:company-logo (Logo.png, image/png) — Main brand logo")
+  })
+
   it("keeps persona chat distinct from the artifact-authoring assistant", () => {
     const context = buildAgentPersonaContext({
       name: "tester",

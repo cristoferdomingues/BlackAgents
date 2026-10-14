@@ -83,6 +83,16 @@ describe("workflow routes", () => {
     )
     expect(ghost.status).toBe(400)
     expect(ghost.body.error).toContain("ghost")
+    const missingFile = await json(
+      await POST(
+        jsonRequest("http://t/api/workflows", "POST", {
+          ...body,
+          steps: [{ id: "plan", agent: "planner", files: ["nonexistent-file"] }],
+        })
+      )
+    )
+    expect(missingFile.status).toBe(400)
+    expect(missingFile.body.error).toContain("@file:nonexistent-file")
     expect((await json(await GET_ONE(new Request("http://t"), named("Bad Name")))).status).toBe(400)
   })
 

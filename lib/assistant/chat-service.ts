@@ -11,6 +11,7 @@ import {
 } from "@/lib/chat/attachments"
 import { readConfig } from "@/lib/config"
 import { loadDecisionClient } from "@/lib/decision/client"
+import { composeFilesPrompt, parseFileMentions, resolveWorkspaceFiles } from "@/lib/files"
 import { buildAgentPersonaContext, buildSystemContext } from "@/lib/llm/context"
 import { getVerifiedCredentials, CredentialStateError } from "@/lib/llm/credentials"
 import {
@@ -174,6 +175,17 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   const sections = [persona ? buildAgentPersonaContext(persona) : await buildSystemContext()]
   if (selection.prompt) sections.push(selection.prompt)
   if (root) {
+    const fileMentions = new Set<string>()
+    for (const msg of request.messages) {
+      if (msg.role === "user") {
+        for (const name of parseFileMentions(msg.content)) fileMentions.add(name)
+      }
+    }
+    if (fileMentions.size > 0) {
+      const workspaceFiles = await resolveWorkspaceFiles(root, [...fileMentions])
+      const filesPrompt = composeFilesPrompt(workspaceFiles)
+      if (filesPrompt) sections.push(filesPrompt)
+    }
     const brain = await loadBrainContext({
       workspaceRoot: root,
       agent: persona?.name,

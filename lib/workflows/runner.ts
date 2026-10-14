@@ -124,6 +124,7 @@ export class WorkflowRunner {
     workflow: Workflow
     trigger: WorkflowRun["trigger"]
     task?: string
+    stepFiles?: Record<string, string[]>
   }): Promise<WorkflowRun> {
     const run = newRun({
       id: randomUUID(),
@@ -131,6 +132,7 @@ export class WorkflowRunner {
       workspaceRoot: params.root,
       trigger: params.trigger,
       task: params.task?.trim() || params.workflow.task,
+      stepFiles: params.stepFiles,
     })
     await saveRun(run)
     this.emit(run)

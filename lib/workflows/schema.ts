@@ -16,6 +16,7 @@ import type { ApprovalRequest, ToolExecutionTrace } from "../runtime/types"
 export const MAX_WORKFLOW_STEPS = 10
 export const MAX_STEP_TURNS = 8
 export const MAX_GATE_RETRIES = 2
+export const MAX_STEP_FILES = 10
 
 const stepIdSchema = z
   .string()
@@ -30,6 +31,8 @@ export const workflowStepSchema = z.object({
   instructions: z.string().max(4_000).default(""),
   /** What the step receives: the previous output, only the task, or every earlier output. */
   input: z.enum(["previous", "task", "all"]).default("previous"),
+  /** Workspace file handles (`@file:<name>`) bound to this step for browser uploads or reading. */
+  files: z.array(nameSchema).max(MAX_STEP_FILES).default([]),
   /** Overrides the agent's own `tools` frontmatter when set. */
   tools: z.array(builtinToolNameSchema).optional(),
   mcpServers: z.array(z.string().trim().min(1)).optional(),
@@ -156,6 +159,8 @@ export interface WorkflowRun {
   status: RunStatus
   trigger: "manual" | "schedule"
   task: string
+  /** Optional per-step file overrides for this run (`stepId -> fileNames[]`). */
+  stepFiles?: Record<string, string[]>
   createdAt: string
   startedAt?: string
   finishedAt?: string

@@ -9,6 +9,7 @@ import {
   Bot,
   FileImage,
   FileText,
+  FolderOpen,
   Youtube,
   History,
   Loader2,
@@ -50,6 +51,8 @@ import {
   type YouTubeAttachment,
 } from "@/lib/chat/attachments"
 import { YouTubeLinkButton } from "@/components/features/chat/youtube-link-dialog"
+import { FilePickerDialog } from "@/components/features/files/file-picker"
+import type { WorkspaceFile } from "@/lib/files/schema"
 import {
   extractWorkflowDraft,
   stripWorkflowBlock,
@@ -287,6 +290,7 @@ export function ChatPage({
   const [readingFiles, setReadingFiles] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [workflows, setWorkflows] = React.useState<WorkflowListItem[]>([])
+  const [workspaceFiles, setWorkspaceFiles] = React.useState<WorkspaceFile[]>([])
   const voiceBaseRef = React.useRef("")
   const voice = useVoiceInput({
     provider,
@@ -427,7 +431,10 @@ export function ChatPage({
   }, [])
 
   React.useEffect(() => {
-    if (!workspace?.path) return
+    if (!workspace?.path) {
+      setWorkspaceFiles([])
+      return
+    }
     let cancelled = false
     apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
       .then((data) => {
@@ -436,10 +443,28 @@ export function ChatPage({
       .catch(() => {
         if (!cancelled) setWorkflows([])
       })
+    apiFetch<{ files: WorkspaceFile[] }>("/api/files")
+      .then((data) => {
+        if (!cancelled) setWorkspaceFiles(data.files)
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspaceFiles([])
+      })
     return () => {
       cancelled = true
     }
   }, [workspace?.path])
+
+  React.useEffect(() => {
+    const prefill = sessionStorage.getItem("black-agents:prefill-chat")
+    if (!prefill) return
+    sessionStorage.removeItem("black-agents:prefill-chat")
+    setInput((current) => {
+      const next = current ? `${current.replace(/\s+$/, "")} ${prefill}` : prefill
+      setCaret(next.length)
+      return next
+    })
+  }, [])
 
   React.useEffect(() => {
     if (voice.error) toast.error(voice.error)
@@ -775,6 +800,16 @@ export function ChatPage({
       }))
       .filter((item) => mentionMatches(item, mention?.query ?? ""))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    ...workspaceFiles
+      .map((file) => ({
+        type: "file" as const,
+        name: file.name,
+        description: file.description
+          ? `${file.originalName} — ${file.description}`
+          : file.originalName,
+      }))
+      .filter((item) => mentionMatches(item, mention?.query ?? ""))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   ]
   const mentionOpen = mention !== null && dismissedMentionKey !== mentionKey && !sending
   const mentionIndex =
@@ -782,6 +817,20 @@ export function ChatPage({
 
   function rememberCaret(element: HTMLTextAreaElement) {
     setCaret(element.selectionStart ?? element.value.length)
+  }
+
+  function insertFileToken(file: WorkspaceFile) {
+    const token = `@file:${file.name}`
+    setInput((current) => {
+      const next = current.trim() ? `${current.replace(/\s+$/, "")} ${token} ` : `${token} `
+      setCaret(next.length)
+      return next
+    })
+    requestAnimationFrame(() => {
+      const element = inputRef.current
+      if (!element) return
+      element.focus()
+    })
   }
 
   function pickMention(item: ChatMention) {
@@ -1227,6 +1276,23 @@ export function ChatPage({
             disabled={!canChat || sending || readingFiles || files.length >= MAX_ATTACHMENTS}
             onAdd={addYouTubeAttachment}
           />
+          <FilePickerDialog
+            disabled={!canChat || sending || !workspace}
+            onPick={insertFileToken}
+            onFilesUpdated={setWorkspaceFiles}
+            trigger={
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={!canChat || sending || !workspace}
+                aria-label="Workspace files"
+                title="Insert a workspace file (@file:name) for browser uploads or tasks"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            }
+          />
           {mentionOpen ? (
             <MentionMenu
               items={mentionItems}
@@ -1486,6 +1552,7 @@ function Message({
         <div className="w-full min-w-0 max-w-xl">
           <WorkflowRunCard
             run={turn.workflowRun}
+            workflow={runTarget}
             description={runTarget?.description}
             available={Boolean(runTarget) || Boolean(turn.workflowRun.runId)}
             onStarted={onWorkflowStarted}

@@ -1,5 +1,6 @@
 import { readConfig } from "../config"
 import { scanWorkspace } from "../artifacts/parser"
+import { listWorkspaceFiles } from "../files/store"
 import { loadStandards } from "../standards"
 import { BUILTIN_TOOL_NAMES } from "../runtime/tool-names"
 import { BUNDLE_FENCE, MAX_BUNDLE_RULES, MAX_BUNDLE_SKILLS } from "./bundle"
@@ -20,10 +21,12 @@ export async function buildSystemContext(): Promise<string> {
   const config = await readConfig()
   let registry = "No workspace is selected yet."
   let workflowRegistry = "No workspace is selected yet."
+  let filesRegistry = "No workspace is selected yet."
   if (config.currentPath) {
-    const [artifacts, workflows] = await Promise.all([
+    const [artifacts, workflows, files] = await Promise.all([
       scanWorkspace(config.currentPath),
       listWorkflows(config.currentPath).catch(() => []),
+      listWorkspaceFiles(config.currentPath).catch(() => []),
     ])
     workflowRegistry =
       workflows.length === 0
@@ -32,6 +35,15 @@ export async function buildSystemContext(): Promise<string> {
             .map(
               (w) =>
                 `- ${w.name} — ${w.description || "(no description)"} — steps: ${w.steps.map((s) => s.agent).join(" → ")}`
+            )
+            .join("\n")
+    filesRegistry =
+      files.length === 0
+        ? "The active workspace has no saved files in Media & Files yet."
+        : files
+            .map(
+              (f) =>
+                `- @file:${f.name} (${f.originalName}, ${f.mimeType})${f.description ? ` — ${f.description}` : ""} — path: ${f.absolutePath}`
             )
             .join("\n")
     if (artifacts.length === 0) {
@@ -106,6 +118,10 @@ Rules for the bundle block:
 
 ${workflowRegistry}
 
+## Workspace files (Media & Files library)
+
+${filesRegistry}
+
 ## Workflow protocol
 
 When the user wants a workflow (agents that run one after another, each handing its output to the next), emit ONE fenced code block tagged \`${WORKFLOW_DRAFT_FENCE}\`:
@@ -117,7 +133,7 @@ When the user wants a workflow (agents that run one after another, each handing 
   "task": "default task text used when the run has no input",
   "trigger": { "type": "manual" },
   "steps": [
-    { "id": "kebab-step-id", "agent": "existing-agent-name", "instructions": "what this step does", "input": "previous", "gate": false }
+    { "id": "kebab-step-id", "agent": "existing-agent-name", "instructions": "what this step does", "input": "previous", "files": [], "gate": false }
   ]
 }
 \`\`\`
@@ -125,6 +141,7 @@ When the user wants a workflow (agents that run one after another, each handing 
 Rules for the workflow block:
 - 1 to ${MAX_WORKFLOW_STEPS} steps. Every "agent" must be an agent listed in the workspace artifacts above. If a needed agent is missing, say so and propose it first (draft or bundle).
 - Step "input" is "previous" (last output), "task" (only the run's task), or "all" (every earlier output). Step ids are unique kebab-case.
+- Step "files" is an optional array of file handle names (e.g. ["october-invoice"]) from the Workspace files list above that the step uses (for example, to upload in a browser form via \`browser_file_upload\`).
 - A step may set "model" and "provider" only when the user asks for a specific model on that step.
 - "trigger" is { "type": "manual" }, { "type": "interval", "everyMinutes": 5-1440 }, or { "type": "daily", "at": "HH:MM" }.
 - To update a workflow listed above, keep its name and return the full definition.

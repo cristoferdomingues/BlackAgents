@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   FileOutput,
+  FolderOpen,
   GitCompare,
   KeyRound,
   LayoutDashboard,
@@ -34,6 +35,7 @@ const topNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Assistant", icon: Sparkles },
   { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/files", label: "Files", icon: FolderOpen },
   { href: "/brain", label: "Brain", icon: Brain },
 ]
 

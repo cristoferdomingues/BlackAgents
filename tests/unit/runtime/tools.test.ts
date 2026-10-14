@@ -37,6 +37,7 @@ describe("file tools", () => {
   it("blocks traversal and protected folders", async () => {
     await expect(fsReadTool.execute({ path: "../secret" }, ctx())).rejects.toThrow(/escapes/)
     expect((await fsWriteTool.execute({ path: ".black-agents/brain/x.md", content: "x" }, ctx())).error).toMatch(/not allowed/)
+    expect((await fsWriteTool.execute({ path: ".black-agents/files/x/a.txt", content: "x" }, ctx())).error).toMatch(/not allowed/)
     expect((await fsWriteTool.execute({ path: ".git/config", content: "x" }, ctx())).error).toMatch(/not allowed/)
     expect((await fsReadTool.execute({ path: "missing.txt" }, ctx())).error).toMatch(/Not a file/)
     expect((await fsListTool.execute({ path: "nope" }, ctx())).error).toMatch(/Not found/)

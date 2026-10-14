@@ -289,4 +289,32 @@ describe("POST /api/chat streaming", () => {
     })
     expect(bad.status).toBe(400)
   })
+
+  it("injects @file:<name> workspace file metadata and absolutePath into the chat system context", async () => {
+    const { saveWorkspaceFile } = await import("@/lib/files")
+    const savedFile = await saveWorkspaceFile(env.workspace, {
+      name: "expense-receipt",
+      originalName: "Receipt_2026.pdf",
+      mimeType: "application/pdf",
+      bytes: new TextEncoder().encode("%PDF-1.4 receipt"),
+      description: "Expense receipt for form upload",
+    })
+    const fetchMock = vi.fn().mockResolvedValueOnce(openAIReply({ content: "Uploaded your receipt." }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const response = await POST(
+      streamRequest({
+        agent: "writer",
+        messages: [{ role: "user", content: "Upload @file:expense-receipt in the browser form" }],
+      })
+    )
+    await response.text()
+
+    const payload = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      messages: Array<{ content: string }>
+    }
+    expect(payload.messages[0].content).toContain("## Workspace files for this task")
+    expect(payload.messages[0].content).toContain(savedFile.absolutePath)
+    expect(payload.messages[0].content).toContain("browser_file_upload")
+  })
 })

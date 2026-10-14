@@ -22,7 +22,7 @@ const HIDDEN_DIRS = new Set([".git", "node_modules", ".next"])
  * every time). The brain is only changed through the review inbox.
  */
 const PROTECTED_PREFIXES = [".cursor/", ".claude/", ".black-agents/", ".agents/", ".git/"]
-const BLOCKED_PREFIXES = [".git/", ".black-agents/brain/", ".black-agents/runs/"]
+const BLOCKED_PREFIXES = [".git/", ".black-agents/brain/", ".black-agents/runs/", ".black-agents/files/"]
 
 function normalizeRel(root: string, relPath: string): string {
   const abs = resolveInWorkspace(root, relPath)

@@ -3,15 +3,17 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowDown, ArrowUp, Loader2, Play, Plus, Save, Trash2, Workflow as WorkflowIcon } from "lucide-react"
+import { ArrowDown, ArrowUp, FolderOpen, Loader2, Play, Plus, Save, Trash2, Workflow as WorkflowIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import type { WorkspaceFile } from "@/lib/files/schema"
 import type { ProviderId } from "@/lib/llm/types"
 import { parseStoredWorkflowDraft, WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
 import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, DEFAULT_AGENT_TOOLS, type BuiltinToolName } from "@/lib/runtime/tool-names"
 import {
   MAX_GATE_RETRIES,
+  MAX_STEP_FILES,
   MAX_STEP_TURNS,
   MAX_WORKFLOW_STEPS,
   workflowSchema,
@@ -31,6 +33,7 @@ import {
 import { useSavedTaskModels } from "@/components/features/models/model-choice-fields"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
+import { FilePickerDialog, WorkspaceFileChip } from "@/components/features/files/file-picker"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -54,6 +57,7 @@ interface StepDraft {
   agent: string
   instructions: string
   input: WorkflowStep["input"]
+  files: string[]
   ownTools: boolean
   tools: BuiltinToolName[]
   mcpServers?: string[]
@@ -90,6 +94,7 @@ function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
     agent,
     instructions: "",
     input: "previous",
+    files: [],
     ownTools: true,
     tools: [...DEFAULT_AGENT_TOOLS],
     allowWrites: false,
@@ -122,6 +127,7 @@ function toDraft(wf: Workflow): Draft {
         agent: s.agent,
         instructions: s.instructions,
         input: s.input,
+        files: s.files ?? [],
         ownTools: !s.tools,
         tools: s.tools ?? [...DEFAULT_AGENT_TOOLS],
         mcpServers: s.mcpServers,
@@ -145,6 +151,7 @@ function toInput(d: Draft): { body: unknown; error: string | null } {
       agent: s.agent,
       instructions: s.instructions,
       input: s.input,
+      files: s.files,
       tools: s.ownTools ? undefined : s.tools,
       mcpServers: s.mcpServers,
       allowWrites: s.allowWrites,
@@ -216,6 +223,7 @@ export function WorkflowBuilder({ name }: { name?: string }) {
   }))
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [workspaceFiles, setWorkspaceFiles] = React.useState<WorkspaceFile[]>([])
   const needsTaskModels =
     draft.model.trim().startsWith("task:") ||
     draft.steps.some((step) => isTaskSelectValue(step.modelChoice)) ||
@@ -223,6 +231,16 @@ export function WorkflowBuilder({ name }: { name?: string }) {
       (agent) => typeof agent.frontmatter.model === "string" && agent.frontmatter.model.trim().startsWith("task:")
     )
   const taskModels = useSavedTaskModels(needsTaskModels)
+
+  React.useEffect(() => {
+    if (!workspace?.path) {
+      setWorkspaceFiles([])
+      return
+    }
+    apiFetch<{ files: WorkspaceFile[] }>("/api/files")
+      .then((data) => setWorkspaceFiles(data.files))
+      .catch(() => setWorkspaceFiles([]))
+  }, [workspace?.path])
 
   React.useEffect(() => {
     if (!name || !workspace) return
@@ -462,6 +480,56 @@ export function WorkflowBuilder({ name }: { name?: string }) {
                   onChange={(e) => setStep(step.key, { instructions: e.target.value })}
                 />
               </div>
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <Label>Files for this step</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Attached files get passed with their disk path so the agent can upload them in browser forms or read them.
+                    </p>
+                  </div>
+                  <FilePickerDialog
+                    selectedNames={step.files}
+                    multiSelect
+                    disabled={step.files.length >= MAX_STEP_FILES}
+                    onFilesUpdated={setWorkspaceFiles}
+                    onPick={(picked) => {
+                      const exists = step.files.includes(picked.name)
+                      const next = exists
+                        ? step.files.filter((f) => f !== picked.name)
+                        : step.files.length < MAX_STEP_FILES
+                          ? [...step.files, picked.name]
+                          : step.files
+                      setStep(step.key, { files: next })
+                    }}
+                    trigger={
+                      <Button type="button" variant="outline" size="sm">
+                        <FolderOpen className="h-4 w-4" />
+                        Select or upload files
+                      </Button>
+                    }
+                  />
+                </div>
+                {step.files.length > 0 ? (
+                  <ul className="flex flex-wrap gap-1.5" aria-label={`Files for step ${index + 1}`}>
+                    {step.files.map((fileName) => {
+                      const meta = workspaceFiles.find((f) => f.name === fileName)
+                      return (
+                        <li key={fileName}>
+                          <WorkspaceFileChip
+                            name={fileName}
+                            originalName={meta?.originalName}
+                            kind={meta?.kind}
+                            onRemove={() =>
+                              setStep(step.key, { files: step.files.filter((f) => f !== fileName) })
+                            }
+                          />
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor={`${step.key}-input`}>Input</Label>
                 <Select
@@ -637,7 +705,15 @@ export function WorkflowBuilder({ name }: { name?: string }) {
         </CardContent>
       </Card>
 
-      {editing && name ? <RunPanel name={name} defaultTask={draft.task} /> : null}
+      {editing && name ? (
+        <RunPanel
+          name={name}
+          defaultTask={draft.task}
+          steps={draft.steps}
+          workspaceFiles={workspaceFiles}
+          onFilesUpdated={setWorkspaceFiles}
+        />
+      ) : null}
     </div>
   )
 }
@@ -672,11 +748,43 @@ function DeleteButton({ name }: { name: string }) {
   )
 }
 
-function RunPanel({ name, defaultTask }: { name: string; defaultTask: string }) {
+function RunPanel({
+  name,
+  defaultTask,
+  steps,
+  workspaceFiles,
+  onFilesUpdated,
+}: {
+  name: string
+  defaultTask: string
+  steps: StepDraft[]
+  workspaceFiles: WorkspaceFile[]
+  onFilesUpdated: (files: WorkspaceFile[]) => void
+}) {
   const router = useRouter()
   const [task, setTask] = React.useState("")
+  const [stepFiles, setStepFiles] = React.useState<Record<string, string[]>>(() => {
+    const initial: Record<string, string[]> = {}
+    for (const s of steps) {
+      if (s.id.trim()) initial[s.id.trim()] = [...s.files]
+    }
+    return initial
+  })
   const [runs, setRuns] = React.useState<RunSummary[] | null>(null)
   const [starting, setStarting] = React.useState(false)
+
+  // Keep run-panel step defaults synced when the builder's step files change.
+  React.useEffect(() => {
+    setStepFiles((current) => {
+      const next: Record<string, string[]> = {}
+      for (const s of steps) {
+        const id = s.id.trim()
+        if (!id) continue
+        next[id] = current[id] ?? [...s.files]
+      }
+      return next
+    })
+  }, [steps])
 
   React.useEffect(() => {
     apiFetch<{ runs: RunSummary[] }>(`/api/workflows/${encodeURIComponent(name)}/runs`)
@@ -687,9 +795,14 @@ function RunPanel({ name, defaultTask }: { name: string; defaultTask: string }) 
   async function start() {
     setStarting(true)
     try {
+      const hasFileOverrides = Object.values(stepFiles).some((list) => list.length > 0) ||
+        steps.some((s) => s.files.length > 0)
       const { run } = await apiFetch<{ run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(name)}/runs`, {
         method: "POST",
-        body: JSON.stringify({ task: task.trim() || undefined }),
+        body: JSON.stringify({
+          task: task.trim() || undefined,
+          ...(hasFileOverrides ? { stepFiles } : {}),
+        }),
       })
       router.push(`/workflows/runs/${run.id}`)
     } catch (err) {
@@ -715,6 +828,76 @@ function RunPanel({ name, defaultTask }: { name: string; defaultTask: string }) 
             onChange={(e) => setTask(e.target.value)}
           />
         </div>
+        {steps.length > 0 ? (
+          <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+            <div>
+              <p className="text-xs font-medium">Files for this run (per step)</p>
+              <p className="text-xs text-muted-foreground">
+                Uses each step&apos;s default files. Swap or upload files here to override for this run only.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {steps.map((step, index) => {
+                const stepId = step.id.trim() || `step-${index + 1}`
+                const currentFiles = stepFiles[stepId] ?? step.files
+                return (
+                  <div key={step.key} className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background px-2.5 py-2">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs font-medium">
+                        {index + 1}. {stepId} <span className="font-normal text-muted-foreground">({step.agent || "no agent"})</span>
+                      </p>
+                      {currentFiles.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {currentFiles.map((fileName) => {
+                            const meta = workspaceFiles.find((f) => f.name === fileName)
+                            return (
+                              <WorkspaceFileChip
+                                key={fileName}
+                                name={fileName}
+                                originalName={meta?.originalName}
+                                kind={meta?.kind}
+                                disabled={starting}
+                                onRemove={() =>
+                                  setStepFiles((prev) => ({
+                                    ...prev,
+                                    [stepId]: currentFiles.filter((f) => f !== fileName),
+                                  }))
+                                }
+                              />
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No files selected</p>
+                      )}
+                    </div>
+                    <FilePickerDialog
+                      selectedNames={currentFiles}
+                      multiSelect
+                      disabled={starting}
+                      onFilesUpdated={onFilesUpdated}
+                      onPick={(picked) => {
+                        const exists = currentFiles.includes(picked.name)
+                        const next = exists
+                          ? currentFiles.filter((f) => f !== picked.name)
+                          : currentFiles.length < MAX_STEP_FILES
+                            ? [...currentFiles, picked.name]
+                            : currentFiles
+                        setStepFiles((prev) => ({ ...prev, [stepId]: next }))
+                      }}
+                      trigger={
+                        <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={starting}>
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          Files
+                        </Button>
+                      }
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
         <Button onClick={() => void start()} disabled={starting}>
           {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           Run now

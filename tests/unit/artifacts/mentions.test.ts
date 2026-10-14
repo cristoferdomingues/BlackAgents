@@ -14,6 +14,7 @@ describe("mentionToken", () => {
   it("encodes type and name so same-named artifacts never collide", () => {
     expect(mentionToken("agent", "review")).toBe("@agent:review")
     expect(mentionToken("skill", "review")).toBe("@skill:review")
+    expect(mentionToken("file", "invoice-pdf")).toBe("@file:invoice-pdf")
   })
 })
 

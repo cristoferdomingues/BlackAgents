@@ -425,4 +425,49 @@ describe("executeRun", () => {
     const run = await executeRun(start(wf), wf, d, new AbortController().signal)
     expect(run).toMatchObject({ status: "failed", error: "No verified AI provider" })
   })
+
+  it("injects step files and run-time stepFiles overrides with absolutePath into step messages", async () => {
+    const { saveWorkspaceFile } = await import("@/lib/files")
+    await saveWorkspaceFile(env.workspace, {
+      name: "default-form",
+      originalName: "DefaultForm.pdf",
+      mimeType: "application/pdf",
+      bytes: new TextEncoder().encode("%PDF-1.4 default"),
+      description: "Default PDF form",
+    })
+    const overrideFile = await saveWorkspaceFile(env.workspace, {
+      name: "override-form",
+      originalName: "OverrideForm.pdf",
+      mimeType: "application/pdf",
+      bytes: new TextEncoder().encode("%PDF-1.4 override"),
+      description: "Override PDF form",
+    })
+
+    const provider = scriptedProvider([{ content: "uploaded default" }, { content: "uploaded override" }])
+    const wf = workflow({
+      steps: [
+        { id: "plan", agent: "planner", files: ["default-form"] },
+        { id: "build", agent: "builder", files: ["default-form"] },
+      ],
+    })
+    const runInput = newRun({
+      id: "run-files",
+      workflow: wf,
+      workspaceRoot: env.workspace,
+      trigger: "manual",
+      task: wf.task,
+      stepFiles: { build: ["override-form"] },
+    })
+    const run = await executeRun(runInput, wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("succeeded")
+
+    const firstPrompt = provider.requests[0]?.messages.at(-1)?.content ?? ""
+    expect(firstPrompt).toContain("## Files for this step")
+    expect(firstPrompt).toContain("DefaultForm.pdf")
+    expect(firstPrompt).toContain("browser_file_upload")
+
+    const secondPrompt = provider.requests[1]?.messages.at(-1)?.content ?? ""
+    expect(secondPrompt).toContain(overrideFile.absolutePath)
+    expect(secondPrompt).not.toContain("DefaultForm.pdf")
+  })
 })

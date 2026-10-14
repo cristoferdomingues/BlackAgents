@@ -108,6 +108,17 @@ test.describe("Media & Files module, @file mentions, and Workflow step files", (
     await expect(page.getByRole("dialog")).toContainText("Invoice_Oct_2026.pdf")
     await page.getByRole("option", { name: /@file:october-invoice/ }).click()
     await expect(input).toHaveValue("@file:october-invoice ")
+
+    // Built-in skills appear in the @ mention menu
+    await input.fill("")
+    await input.pressSequentially("Check @workflows-guide")
+    await expect(page.getByRole("option", { name: /workflows-guide/ })).toBeVisible()
+
+    // Switch to built-in workflow-architect agent from the Assistant persona dropdown
+    await page.getByRole("button", { name: "Switch assistant persona" }).click()
+    await page.getByRole("menuitem", { name: /workflow-architect/ }).click()
+    await expect(page).toHaveURL(/\/chat\?agent=workflow-architect$/)
+    await expect(page.getByRole("heading", { name: "Chat with workflow-architect" })).toBeVisible()
   })
 
   test("binds files to a workflow step and overrides them at run time", async ({ page }) => {

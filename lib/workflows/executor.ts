@@ -1,4 +1,5 @@
 import { composeArtifactPrompt, linkedArtifacts } from "@/lib/assistant/turn-artifacts"
+import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import type { Artifact } from "@/lib/artifacts/types"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
@@ -126,11 +127,12 @@ export async function executeRun(
   await update()
 
   try {
-    const [settings, all, resolved] = await Promise.all([
+    const [settings, workspaceArtifacts, resolved] = await Promise.all([
       readAiSettings(),
       deps.artifacts(run.workspaceRoot),
       deps.decision(),
     ])
+    const all = withBuiltinArtifacts(workspaceArtifacts)
     const credentialCache = new Map<string, ResolvedLlm>()
 
     for (const [index, step] of workflow.steps.entries()) {

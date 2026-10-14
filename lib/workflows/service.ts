@@ -1,3 +1,4 @@
+import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import { scanWorkspace } from "@/lib/artifacts/parser"
 import { listWorkspaceFiles } from "@/lib/files/store"
 
@@ -34,10 +35,11 @@ export async function parseWorkflowBody(root: string, body: unknown): Promise<Pa
     const where = issue?.path.length ? `${issue.path.join(".")}: ` : ""
     return { ok: false, message: `${where}${issue?.message ?? "Invalid workflow"}` }
   }
-  const [artifacts, files] = await Promise.all([
+  const [workspaceArtifacts, files] = await Promise.all([
     scanWorkspace(root),
     listWorkspaceFiles(root).catch(() => []),
   ])
+  const artifacts = withBuiltinArtifacts(workspaceArtifacts)
   const agents = new Set(artifacts.filter((a) => a.type === "agent").map((a) => a.name))
   const missing = parsed.data.steps.find((s) => !agents.has(s.agent))
   if (missing) return { ok: false, message: `Step "${missing.id}": agent "${missing.agent}" was not found` }

@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { findBuiltinArtifact, withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import { findArtifact, scanWorkspace } from "@/lib/artifacts/parser"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import type { Artifact } from "@/lib/artifacts/types"
@@ -102,7 +103,9 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   const root = config.currentPath ?? null
   let persona: Artifact | undefined
   if (request.agent) {
-    const agent = root ? await findArtifact(root, "agent", request.agent) : null
+    const agent =
+      (root ? await findArtifact(root, "agent", request.agent) : null) ??
+      findBuiltinArtifact("agent", request.agent)
     if (!agent) return { ok: false, message: `Agent "${request.agent}" was not found`, status: 404 }
     persona = agent
   }
@@ -164,11 +167,12 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
     throw error
   }
 
-  const [all, resolved, settings] = await Promise.all([
+  const [workspaceArtifacts, resolved, settings] = await Promise.all([
     root ? scanWorkspace(root) : Promise.resolve([] as Artifact[]),
     loadDecisionClient(),
     settingsPromise,
   ])
+  const all = withBuiltinArtifacts(workspaceArtifacts)
   const message = lastUserMessage(request.messages)
   const selection = await selectTurnArtifacts({ message, all, persona, resolved })
 

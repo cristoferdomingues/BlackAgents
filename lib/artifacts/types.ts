@@ -35,6 +35,8 @@ export interface Artifact {
   relativePath: string
   /** Skills only: supporting files bundled in the skill directory. */
   supportingFiles?: string[]
+  /** True when this artifact is embedded in BlackAgents rather than stored in the workspace. */
+  builtin?: boolean
 }
 
 /** A directed cross-reference detected between two artifacts. */

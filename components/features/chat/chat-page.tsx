@@ -30,6 +30,7 @@ import { apiFetch } from "@/lib/api"
 import { streamPost, type SseEvent } from "@/lib/sse-client"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
+import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import {
   activeMentionQuery,
   filterMentions,
@@ -197,6 +198,8 @@ const SUGGESTIONS = [
   "Create a rule that enforces conventional commit messages.",
   "Design an agent that reviews PRs for security issues.",
   "Write a command that orchestrates a release workflow.",
+  "Help me design a multi-step Workflow with a daily schedule.",
+  "Guide me on setting up Automated Browsing and recording a browser flow.",
 ]
 
 // Remember the last provider + the last model id per provider, so the pickers
@@ -308,7 +311,11 @@ export function ChatPage({
   const persistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const conversationIdRef = React.useRef(conversationId)
   conversationIdRef.current = conversationId
-  const agents = byType("agent")
+  const allArtifacts = React.useMemo(() => withBuiltinArtifacts(artifacts), [artifacts])
+  const agents = React.useMemo(
+    () => allArtifacts.filter((artifact) => artifact.type === "agent"),
+    [allArtifacts]
+  )
   const selectedAgent = selectedAgentName
     ? agents.find((agent) => agent.name === selectedAgentName)
     : undefined
@@ -785,10 +792,12 @@ export function ChatPage({
   }
   const mentionItems: ChatMention[] = [
     ...filterMentions(
-      artifacts.map((artifact) => ({
+      allArtifacts.map((artifact) => ({
         type: artifact.type,
         name: artifact.name,
-        description: artifact.description,
+        description: artifact.builtin
+          ? `${artifact.description} (built-in)`
+          : artifact.description,
       })),
       mention?.query ?? ""
     ),
@@ -894,16 +903,81 @@ export function ChatPage({
         <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
           <h1 className="text-lg font-semibold">Assistant</h1>
-          {selectedAgent ? (
-            <Badge
-              variant="secondary"
-              className="max-w-52 gap-1.5 truncate"
-              title={selectedAgent.description}
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              {selectedAgent.name}
-            </Badge>
-          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant={selectedAgent ? "secondary" : "outline"}
+                size="sm"
+                disabled={sending}
+                aria-label="Switch assistant persona"
+                className="h-7 max-w-56 gap-1.5 px-2.5 text-xs font-normal"
+                title={selectedAgent ? selectedAgent.description : "Switch to a workspace or built-in agent"}
+              >
+                {selectedAgent ? (
+                  <>
+                    <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{selectedAgent.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-muted-foreground">All modules</span>
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72">
+              <DropdownMenuLabel>Persona</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={() => router.push("/chat")}
+                className="flex flex-col items-start gap-0.5"
+              >
+                <span className="font-medium">Generic Assistant</span>
+                <span className="text-xs text-muted-foreground">
+                  Authoring assistant for agents, skills, rules, commands, and workflows
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Built-in BlackAgents Guides</DropdownMenuLabel>
+              {agents
+                .filter((a) => a.builtin)
+                .map((agent) => (
+                  <DropdownMenuItem
+                    key={agent.name}
+                    onSelect={() => router.push(`/chat?agent=${encodeURIComponent(agent.name)}`)}
+                    className="flex flex-col items-start gap-0.5"
+                  >
+                    <span className="font-medium">{agent.name}</span>
+                    <span className="line-clamp-2 text-xs text-muted-foreground">
+                      {agent.description}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              {agents.some((a) => !a.builtin) ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Workspace Agents</DropdownMenuLabel>
+                  {agents
+                    .filter((a) => !a.builtin)
+                    .map((agent) => (
+                      <DropdownMenuItem
+                        key={agent.name}
+                        onSelect={() => router.push(`/chat?agent=${encodeURIComponent(agent.name)}`)}
+                        className="flex flex-col items-start gap-0.5"
+                      >
+                        <span className="font-medium">{agent.name}</span>
+                        {agent.description ? (
+                          <span className="line-clamp-2 text-xs text-muted-foreground">
+                            {agent.description}
+                          </span>
+                        ) : null}
+                      </DropdownMenuItem>
+                    ))}
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {mcpToolsCount > 0 ? (
             <Link
               href="/settings"

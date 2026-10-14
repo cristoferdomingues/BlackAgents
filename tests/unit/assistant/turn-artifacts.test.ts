@@ -105,4 +105,35 @@ describe("selectTurnArtifacts", () => {
     const result = await selectTurnArtifacts({ message, all: many, resolved: null })
     expect(result.artifacts).toHaveLength(5)
   })
+
+  it("automatically loads built-in skills and linked guardrails for workflow or browser questions when Jev is off", async () => {
+    const { withBuiltinArtifacts } = await import("@/lib/artifacts/builtin")
+    const catalog = withBuiltinArtifacts(all)
+
+    const wfTurn = await selectTurnArtifacts({
+      message: "Help me create a workflow with a daily trigger",
+      all: catalog,
+      resolved: null,
+    })
+    expect(wfTurn.artifacts).toEqual([
+      { type: "skill", name: "workflows-guide", source: "auto" },
+      { type: "rule", name: "workflow-guardrails", source: "linked" },
+      { type: "skill", name: "platform-modules", source: "linked" },
+    ])
+    expect(wfTurn.prompt).toContain("BlackAgents Workflows Guide")
+    expect(wfTurn.prompt).toContain("Workflow Design Guardrails")
+
+    const browserTurn = await selectTurnArtifacts({
+      message: "How do I use automated browsing and browser_run_flow?",
+      all: catalog,
+      resolved: null,
+    })
+    expect(browserTurn.artifacts).toEqual([
+      { type: "skill", name: "browser-automation", source: "auto" },
+      { type: "rule", name: "browser-automation-guardrails", source: "linked" },
+      { type: "skill", name: "platform-modules", source: "linked" },
+    ])
+    expect(browserTurn.prompt).toContain("BlackAgents Automated Browsing Guide")
+    expect(browserTurn.prompt).toContain("Browser Automation Guardrails")
+  })
 })

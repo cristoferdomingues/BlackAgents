@@ -1,3 +1,4 @@
+import { matchBuiltinTopicArtifacts } from "@/lib/artifacts/builtin"
 import { extractReferences } from "@/lib/artifacts/graph"
 import { MENTION_TOKEN_RE } from "@/lib/artifacts/mentions"
 import type { Artifact, ArtifactType } from "@/lib/artifacts/types"
@@ -151,6 +152,13 @@ export async function selectTurnArtifacts(params: {
       jev = "none"
     } else if (decision.kind === "error") {
       jev = "error"
+    }
+  }
+
+  if (mentioned.length === 0 && !persona && seeds.length === 0) {
+    for (const builtinSkill of matchBuiltinTopicArtifacts(message, all)) {
+      seeds.push(builtinSkill)
+      chosen.push({ type: builtinSkill.type, name: builtinSkill.name, source: "auto" })
     }
   }
 

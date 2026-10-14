@@ -317,4 +317,43 @@ describe("POST /api/chat streaming", () => {
     expect(payload.messages[0].content).toContain(savedFile.absolutePath)
     expect(payload.messages[0].content).toContain("browser_file_upload")
   })
+
+  it("supports built-in agents and auto-loads built-in skills and rules for workflow or browser questions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(openAIReply({ content: "Here is your workflow." }))
+      .mockResolvedValueOnce(openAIReply({ content: "Use Settings -> Browser." }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    // 1. Direct built-in agent persona (`workflow-architect`) loads its linked rule and skills
+    const personaRes = await POST(
+      streamRequest({
+        agent: "workflow-architect",
+        messages: [{ role: "user", content: "Design a daily workflow" }],
+      })
+    )
+    const { events: personaEvents } = parseSseFrames(await personaRes.text())
+    expect(personaEvents[0].data).toMatchObject({
+      artifacts: [
+        { type: "rule", name: "workflow-guardrails", source: "linked" },
+        { type: "skill", name: "workflows-guide", source: "linked" },
+        { type: "skill", name: "platform-modules", source: "linked" },
+      ],
+    })
+
+    // 2. Generic assistant auto-loads `browser-automation` skill + `browser-automation-guardrails` rule
+    const genericRes = await POST(
+      streamRequest({
+        messages: [{ role: "user", content: "How do I use automated browsing and record a flow?" }],
+      })
+    )
+    const { events: genericEvents } = parseSseFrames(await genericRes.text())
+    expect(genericEvents[0].data).toMatchObject({
+      artifacts: [
+        { type: "skill", name: "browser-automation", source: "auto" },
+        { type: "rule", name: "browser-automation-guardrails", source: "linked" },
+        { type: "skill", name: "platform-modules", source: "linked" },
+      ],
+    })
+  })
 })

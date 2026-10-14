@@ -1,4 +1,5 @@
 import { readConfig } from "../config"
+import { BUILTIN_ARTIFACTS } from "../artifacts/builtin"
 import { scanWorkspace } from "../artifacts/parser"
 import { listWorkspaceFiles } from "../files/store"
 import { loadStandards } from "../standards"
@@ -71,6 +72,10 @@ ${standards.content}
 ## Artifacts in the active workspace
 
 ${registry}
+
+## Built-in BlackAgents guidance artifacts
+
+${BUILTIN_ARTIFACTS.map((a) => `- ${a.type}/${a.name} (built-in) — ${a.description}`).join("\n")}
 
 ## Draft protocol
 

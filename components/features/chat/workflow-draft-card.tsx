@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Save, Wand2, Workflow as Workflow
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import { WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
 import type { Workflow } from "@/lib/workflows/schema"
 import { useWorkspace } from "@/components/providers/workspace-provider"
@@ -25,7 +26,11 @@ export function WorkflowDraftCard({
 }): React.ReactElement {
   const router = useRouter()
   const { byType } = useWorkspace()
-  const agentNames = new Set(byType("agent").map((a) => a.name))
+  const agentNames = new Set(
+    withBuiltinArtifacts(byType("agent"))
+      .filter((a) => a.type === "agent")
+      .map((a) => a.name)
+  )
   const missing = [...new Set(workflow.steps.map((s) => s.agent).filter((a) => !agentNames.has(a)))]
   const [saving, setSaving] = React.useState(false)
   const [saved, setSaved] = React.useState(false)

@@ -183,6 +183,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       options.credentials
     )
     content = result.content
+    if (result.reasoning) options.onEvent?.({ type: "thinking", turn, content: result.reasoning })
     if (content) options.onEvent?.({ type: "token", turn, content })
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
@@ -232,6 +233,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     },
     options.credentials
   )
+  if (final.reasoning) {
+    options.onEvent?.({ type: "thinking", turn: maxTurns, content: final.reasoning })
+  }
   content = final.content || "I reached the tool-call limit before finishing."
   if (content) options.onEvent?.({ type: "token", turn: maxTurns, content })
   return { content, toolExecutions, messages, turns: maxTurns, stoppedAtLimit: true }

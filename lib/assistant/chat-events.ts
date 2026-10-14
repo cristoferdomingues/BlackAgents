@@ -49,6 +49,13 @@ export const chatContextEventSchema = z.object({
   model: chatContextModelSchema.optional().catch(undefined),
 })
 export const chatTokenEventSchema = z.object({ content: z.string() })
+export const chatThinkingEventSchema = z.object({ turn: z.number().optional(), content: z.string() })
+export const chatToolCallEventSchema = z.object({
+  id: z.string(),
+  tool: z.string(),
+  server: z.string(),
+  args: z.record(z.unknown()).default({}),
+})
 export const chatToolResultEventSchema = z.object({ trace: toolTraceSchema })
 export const chatApprovalRequiredEventSchema = z.object({ approval: approvalRequestSchema })
 export const chatApprovalResolvedEventSchema = z.object({ id: z.string(), approved: z.boolean() })

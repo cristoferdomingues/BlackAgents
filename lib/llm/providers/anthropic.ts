@@ -12,6 +12,7 @@ import {
 interface AnthropicContentBlock {
   type: string
   text?: string
+  thinking?: string
   id?: string
   name?: string
   input?: Record<string, unknown>
@@ -153,6 +154,11 @@ export const anthropicProvider: LLMProvider = {
       .map((block) => block.text ?? "")
       .join("")
 
+    const reasoning = (json?.content ?? [])
+      .filter((block) => block.type === "thinking" && Boolean(block.thinking?.trim()))
+      .map((block) => block.thinking!.trim())
+      .join("\n\n")
+
     const toolCalls: ToolCall[] = (json?.content ?? [])
       .filter((block) => block.type === "tool_use" && Boolean(block.id && block.name))
       .map((block) => ({
@@ -169,6 +175,7 @@ export const anthropicProvider: LLMProvider = {
       content,
       model: request.model,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      ...(reasoning ? { reasoning } : {}),
     }
   },
 }

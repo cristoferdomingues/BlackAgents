@@ -8,7 +8,7 @@ import type { RuntimeTool, ToolRisk } from "@/lib/runtime/types"
 
 /** A provider that replays scripted replies and records each request. */
 export function scriptedProvider(
-  replies: Array<{ content?: string; toolCalls?: ToolCall[] } | Error>
+  replies: Array<{ content?: string; reasoning?: string; toolCalls?: ToolCall[] } | Error>
 ): LLMProvider & { requests: LLMGenerateRequest[] } {
   const requests: LLMGenerateRequest[] = []
   let index = 0
@@ -23,7 +23,12 @@ export function scriptedProvider(
       const reply = replies[Math.min(index, replies.length - 1)]
       index++
       if (reply instanceof Error) throw reply
-      return { content: reply.content ?? "", model: request.model, toolCalls: reply.toolCalls }
+      return {
+        content: reply.content ?? "",
+        model: request.model,
+        toolCalls: reply.toolCalls,
+        ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
+      }
     },
   }
 }

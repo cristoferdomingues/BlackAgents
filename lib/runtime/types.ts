@@ -72,6 +72,7 @@ export interface ApprovalDecision {
 }
 
 export type AgentLoopEvent =
+  | { type: "thinking"; turn: number; content: string }
   | { type: "token"; turn: number; content: string }
   | {
       type: "tool_call"

@@ -52,6 +52,16 @@ describe("runAgentLoop", () => {
     expect(events.map((e) => e.type)).toEqual(["tool_call", "tool_result", "token"])
   })
 
+  it("emits the model's reasoning before its reply", async () => {
+    const provider = scriptedProvider([{ content: "answer", reasoning: "plan" }])
+    const events: AgentLoopEvent[] = []
+    await runAgentLoop(options({ provider, onEvent: (e) => events.push(e) }))
+    expect(events).toEqual([
+      { type: "thinking", turn: 0, content: "plan" },
+      { type: "token", turn: 0, content: "answer" },
+    ])
+  })
+
   it("asks before write and exec calls, and reports denials to the model", async () => {
     const write = fakeTool("write", "write")
     const exec = fakeTool("exec", "exec")

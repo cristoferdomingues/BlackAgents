@@ -1,10 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { Check, Loader2, ShieldAlert, X } from "lucide-react"
+import { Bell, BellOff, Check, Loader2, ShieldAlert, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import {
+  alertForApproval,
+  isApprovalSoundMuted,
+  playApprovalChime,
+  setApprovalSoundMuted,
+} from "@/lib/audio/approval-alert"
 import { cn } from "@/lib/utils"
 import type { ApprovalRequest, FileWritePermission } from "@/lib/runtime/types"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +35,18 @@ export function ApprovalCard({
   className?: string
 }) {
   const [busy, setBusy] = React.useState<"approve" | "deny" | "remember" | "message" | "session" | null>(null)
+  const [muted, setMuted] = React.useState(isApprovalSoundMuted)
+
+  React.useEffect(() => {
+    void alertForApproval(approval.id)
+  }, [approval.id])
+
+  function toggleSound(): void {
+    const next = !muted
+    setApprovalSoundMuted(next)
+    setMuted(next)
+    if (!next) void playApprovalChime()
+  }
   const fileWriteChoice =
     approval.scope.kind === "chat" && approval.tool === "fs_write" && approval.risk === "write"
 
@@ -79,6 +97,18 @@ export function ApprovalCard({
         <span className="text-xs text-muted-foreground">
           {approval.server === "builtin" ? approval.tool : `${approval.server} → ${approval.tool}`}
         </span>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="ml-auto h-7 w-7 text-muted-foreground"
+          onClick={toggleSound}
+          aria-pressed={!muted}
+          aria-label={muted ? "Turn on approval sound" : "Turn off approval sound"}
+          title={muted ? "Turn on approval sound" : "Turn off approval sound"}
+        >
+          {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+        </Button>
       </div>
       <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/60 p-2 font-mono text-xs">
         {approval.summary}

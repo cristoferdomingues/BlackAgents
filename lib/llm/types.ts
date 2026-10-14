@@ -49,6 +49,8 @@ export interface LLMGenerateRequest {
 export interface LLMGenerateResult {
   content: string
   model: string
+  /** The model's own reasoning, when the provider returns it. Display only. */
+  reasoning?: string
   toolCalls?: ToolCall[]
   toolExecutions?: ToolExecutionTrace[]
 }

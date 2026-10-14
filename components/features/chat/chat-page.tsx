@@ -76,12 +76,20 @@ import {
   type ChatContextModel,
   chatDoneEventSchema,
   chatErrorEventSchema,
+  chatThinkingEventSchema,
   chatTokenEventSchema,
+  chatToolCallEventSchema,
   chatToolResultEventSchema,
 } from "@/lib/assistant/chat-events"
+import {
+  addReasoning,
+  addToolCall,
+  completeToolCall,
+  type ThinkingStep,
+} from "@/lib/assistant/thinking"
 import type { TurnArtifact } from "@/lib/assistant/turn-artifacts"
 import type { AiSettings } from "@/lib/settings"
-import type { ApprovalRequest, ToolExecutionTrace } from "@/lib/runtime/types"
+import type { ApprovalRequest } from "@/lib/runtime/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Button } from "@/components/ui/button"
@@ -114,6 +122,7 @@ import {
   ToolExecutionsSection,
 } from "@/components/features/chat/message-parts"
 import { BundleCard } from "@/components/features/chat/bundle-card"
+import { ThinkingPanel } from "@/components/features/chat/thinking-panel"
 import { FeedbackBar } from "@/components/features/chat/feedback-bar"
 import { WorkflowDraftCard } from "@/components/features/chat/workflow-draft-card"
 import { WorkflowRunCard } from "@/components/features/chat/workflow-run-card"
@@ -154,13 +163,13 @@ function turnAttachments(turn: Turn): AttachmentMeta[] {
 /** The assistant reply while it is still streaming. */
 interface LiveTurn {
   content: string
-  toolExecutions: ToolExecutionTrace[]
+  thinking: ThinkingStep[]
   approvals: ApprovalRequest[]
   artifacts: TurnArtifact[]
   model?: ChatContextModel
 }
 
-const EMPTY_LIVE: LiveTurn = { content: "", toolExecutions: [], approvals: [], artifacts: [] }
+const EMPTY_LIVE: LiveTurn = { content: "", thinking: [], approvals: [], artifacts: [] }
 
 function applyEvent(live: LiveTurn, { event, data }: SseEvent): LiveTurn {
   switch (event) {
@@ -173,13 +182,24 @@ function applyEvent(live: LiveTurn, { event, data }: SseEvent): LiveTurn {
         ...(parsed.data.model ? { model: parsed.data.model } : {}),
       }
     }
+    case "thinking": {
+      const parsed = chatThinkingEventSchema.safeParse(data)
+      return parsed.success ? { ...live, thinking: addReasoning(live.thinking, parsed.data.content) } : live
+    }
     case "token": {
       const parsed = chatTokenEventSchema.safeParse(data)
       return parsed.success ? { ...live, content: parsed.data.content } : live
     }
+    case "tool_call": {
+      const parsed = chatToolCallEventSchema.safeParse(data)
+      if (!parsed.success) return live
+      return { ...live, content: "", thinking: addToolCall(live.thinking, parsed.data, live.content) }
+    }
     case "tool_result": {
       const parsed = chatToolResultEventSchema.safeParse(data)
-      return parsed.success ? { ...live, toolExecutions: [...live.toolExecutions, parsed.data.trace] } : live
+      return parsed.success
+        ? { ...live, thinking: completeToolCall(live.thinking, parsed.data.trace) }
+        : live
     }
     case "approval_required": {
       const parsed = chatApprovalRequiredEventSchema.safeParse(data)
@@ -1260,9 +1280,11 @@ export function ChatPage({
           {sending ? (
             <div className="space-y-3">
               {live.artifacts.length > 0 ? <LoadedArtifacts artifacts={live.artifacts} /> : null}
-              {live.toolExecutions.length > 0 ? (
-                <ToolExecutionsSection traces={live.toolExecutions} />
-              ) : null}
+              <ThinkingPanel
+                name={selectedAgent?.name}
+                steps={live.thinking}
+                waitingForApproval={live.approvals.length > 0}
+              />
               {live.approvals.map((approval) => (
                 <ApprovalCard
                   key={approval.id}
@@ -1280,17 +1302,6 @@ export function ChatPage({
                   />
                 </div>
               ) : null}
-              <div
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-                aria-hidden="true"
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {live.approvals.length > 0
-                  ? "Waiting for your approval…"
-                  : selectedAgent
-                    ? `${selectedAgent.name} is thinking…`
-                    : "Thinking…"}
-              </div>
             </div>
           ) : null}
         </div>

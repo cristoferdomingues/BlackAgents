@@ -84,9 +84,25 @@ interface OpenAICompletion {
   choices?: Array<{
     message?: {
       content?: string | null
+      /** DeepSeek / vLLM style. */
+      reasoning_content?: unknown
+      /** OpenRouter / Ollama style. */
+      reasoning?: unknown
       tool_calls?: OpenAIToolCall[]
     }
   }>
+}
+
+const THINK_BLOCK = /<think>([\s\S]*?)(?:<\/think>|$)/gi
+
+/** Pull `<think>…</think>` blocks (local reasoning models) out of the reply. */
+export function splitThinkBlocks(content: string): { content: string; reasoning: string } {
+  const parts: string[] = []
+  const rest = content.replace(THINK_BLOCK, (_, inner: string) => {
+    if (inner.trim()) parts.push(inner.trim())
+    return ""
+  })
+  return { content: parts.length > 0 ? rest.trim() : rest, reasoning: parts.join("\n\n") }
 }
 
 /** Shared OpenAI-compatible call used by both the OpenAI and custom providers. */
@@ -132,7 +148,12 @@ export async function openAICompatibleGenerate(
   }
 
   const choice = json?.choices?.[0]
-  const content = choice?.message?.content ?? ""
+  const split = splitThinkBlocks(choice?.message?.content ?? "")
+  const content = split.content
+  const fieldReasoning = [choice?.message?.reasoning_content, choice?.message?.reasoning].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  )
+  const reasoning = [fieldReasoning?.trim(), split.reasoning].filter(Boolean).join("\n\n")
   const rawToolCalls = choice?.message?.tool_calls
 
   let toolCalls: ToolCall[] | undefined
@@ -156,7 +177,7 @@ export async function openAICompatibleGenerate(
     throw new ProviderError("Provider returned an empty response", 502)
   }
 
-  return { content, model: request.model, toolCalls }
+  return { content, model: request.model, toolCalls, ...(reasoning ? { reasoning } : {}) }
 }
 
 export const openAIProvider: LLMProvider = {

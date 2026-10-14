@@ -470,7 +470,13 @@ function cleanTranscript(raw: string): string {
 }
 
 function decodeXml(value: string): string {
-  let current = value.replace(/<[^>]+>/g, "")
+  let current = value
+  let previous: string
+  do {
+    previous = current
+    current = current.replace(/<[^>]+>/g, "")
+  } while (current !== previous)
+
   for (let pass = 0; pass < 2; pass += 1) {
     current = current
       .replace(/&lt;/g, "<")

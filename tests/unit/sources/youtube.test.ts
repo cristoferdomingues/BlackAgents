@@ -194,7 +194,11 @@ describe("fetchYouTubeSource", () => {
           },
         })
       }
-      if (input.startsWith("https://evil.example")) throw new Error("ssrf")
+      try {
+        if (new URL(input).hostname === "evil.example") throw new Error("ssrf")
+      } catch {
+        // Ignore malformed URLs in this mock branch.
+      }
       return new Response(null, { status: 302, headers: { location: "https://evil.example/caption" } })
     }
     await expect(fetchYouTubeSource(WATCH, { fetch: fetchImpl })).rejects.toMatchObject({ status: 502 })

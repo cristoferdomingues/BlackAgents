@@ -1,3 +1,4 @@
+import { closePersistentMcpServer } from "@/lib/mcp/client"
 import {
   readWorkspaceMcpConfig,
   saveWorkspaceMcpServer,
@@ -91,6 +92,8 @@ export async function ensureBrowserMcpSetup(
     await updateAiSettings({ browser: { headless } })
   }
 
+  // Drop the running browser so the next launch picks up headless vs window.
+  await closePersistentMcpServer(workspaceRoot, BROWSER_MCP_SERVER)
   await saveWorkspaceMcpServer(
     workspaceRoot,
     BROWSER_MCP_SERVER,

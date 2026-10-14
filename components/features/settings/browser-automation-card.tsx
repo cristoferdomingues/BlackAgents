@@ -206,8 +206,8 @@ export function BrowserAutomationCard() {
       }
       toast.success(
         show
-          ? "Browser window will open. Start a new chat if a session is already running."
-          : "Browser will stay hidden. Start a new chat if a session is already running."
+          ? "Browser window stays open so you can log in."
+          : "Browser stays hidden."
       )
       await load()
     } catch (err) {
@@ -346,9 +346,8 @@ export function BrowserAutomationCard() {
                 <div className="space-y-0.5">
                   <Label htmlFor="show-browser-window">Show browser window</Label>
                   <p className="text-xs text-muted-foreground">
-                    On: Chromium opens so you can log in and watch. Off: the browser
-                    stays hidden. A session that is already open keeps its old mode
-                    until you start a new chat.
+                    On: Chromium stays open so you can log in and watch. Off: the
+                    browser stays hidden. The window stays up between steps.
                   </p>
                 </div>
                 <Switch

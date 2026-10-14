@@ -145,6 +145,7 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
 - \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools and \`fs_write\` auto-approve during this step (\`shell_exec\` and protected paths still ask for approval).
 - \`maxTurns\`: \`1..8\` tool turns per step (default \`6\`).
 - \`gate\`: Boolean (default \`false\`). When \`true\` and **Jev** is enabled in **Settings → AI**, Jev evaluates the step output (\`continue\`, \`retry\`, or \`stop\`) at \`>= 0.8\` confidence. If \`retry\`, the step re-runs up to \`limits.maxRetries\` with reviewer feedback.
+- \`login\`: Boolean (default \`false\`). Turn this on when the step must sign in to a website. The builder shows **Username** and **Password** fields. Those values are saved as secrets (\`browser.<workflow>.<step>.username\` and \`.password\`) and are never written into the workflow file. If they are missing when the step runs, the run pauses on **Needs login**, shows the same two fields, and then continues that step. The agent calls \`browser_fill_login\` with the secret ids. If the user already signed in in the browser window, they can choose **I already signed in**.
 - \`model\` / \`provider\`: Optional per-step model override. Supports concrete model IDs or task references (\`task:fast\`, \`task:reasoning\`, \`task:vision\`). Resolution order: **step → workflow → agent → verified default**.
 
 ### 4. Limits & Second Brain (\`selfAssess\`)

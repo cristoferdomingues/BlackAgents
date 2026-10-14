@@ -95,6 +95,82 @@ test.describe("workflows", () => {
     expect(saved).toMatchObject({ name: "review-line", task: "Ship it", steps: [{ id: "step-1", agent: "planner", gate: true }] })
   })
 
+  test("saves a login step without putting the password in the workflow", async ({ page }) => {
+    let savedWorkflow: { steps?: Array<{ login?: boolean }> } | undefined
+    let savedSecrets: { secrets?: Record<string, string> } | undefined
+    await page.route("**/api/browser/secrets", async (route) => {
+      savedSecrets = route.request().postDataJSON() as { secrets?: Record<string, string> }
+      await route.fulfill({ json: { success: true, data: { saved: true, secretStatuses: {}, ids: [] } } })
+    })
+    await page.route("**/api/workflows", async (route) => {
+      savedWorkflow = route.request().postDataJSON() as { steps?: Array<{ login?: boolean }> }
+      await route.fulfill({ status: 201, json: { success: true, data: { workflow } } })
+    })
+    await page.route("**/api/workflows/review-line", (route) =>
+      route.fulfill({ json: { success: true, data: { workflow, active: false } } })
+    )
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByLabel("This step signs in").click()
+    await page.getByLabel("Username").fill("ada")
+    await page.getByLabel("Password").fill("secret-pass")
+    await page.getByRole("button", { name: "Save" }).click()
+
+    await expect(page).toHaveURL(/\/workflows\/review-line$/)
+    expect(savedWorkflow?.steps?.[0]?.login).toBe(true)
+    expect(JSON.stringify(savedWorkflow)).not.toContain("secret-pass")
+    expect(savedSecrets?.secrets).toMatchObject({
+      "browser.review-line.step-1.username": "ada",
+      "browser.review-line.step-1.password": "secret-pass",
+    })
+  })
+
+  test("asks for a username and password when a run needs login", async ({ page }) => {
+    let posted: unknown
+    await page.route("**/api/runs/run-1/events", (route) =>
+      fulfillSse(route, [[
+        "run",
+        run({
+          status: "waiting_login",
+          pendingLogin: {
+            id: "login-1",
+            stepId: "plan",
+            usernameSecret: "browser.review-line.plan.username",
+            passwordSecret: "browser.review-line.plan.password",
+            reason: "This step needs a username and password before it can sign in.",
+          },
+          steps: [
+            {
+              id: "plan",
+              agent: "planner",
+              status: "waiting_login",
+              attempts: 1,
+              toolExecutions: [],
+              filesChanged: [],
+            },
+          ],
+        }),
+      ]])
+    )
+    await page.route("**/api/runs/run-1/login", async (route) => {
+      posted = route.request().postDataJSON()
+      await route.fulfill({ json: { success: true, data: { continued: true } } })
+    })
+
+    await page.goto("/workflows/runs/run-1")
+    await expect(page.getByTestId("login-card")).toBeVisible()
+    await page.getByLabel("Username").fill("ada")
+    await page.getByLabel("Password").fill("secret-pass")
+    await page.getByRole("button", { name: "Save and continue" }).click()
+    expect(posted).toEqual({ username: "ada", password: "secret-pass" })
+  })
+
   test("blocks saving an invalid workflow", async ({ page }) => {
     await page.goto("/workflows/new")
     await page.getByLabel("Name").fill("Bad Name")

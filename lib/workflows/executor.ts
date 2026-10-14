@@ -3,20 +3,25 @@ import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import type { Artifact } from "@/lib/artifacts/types"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
+import { looksLikeAuthFailure } from "@/lib/browser/classify"
 import { parseFileMentions, resolveWorkspaceFiles, type WorkspaceFile } from "@/lib/files"
 import { buildAgentPersonaContext } from "@/lib/llm/context"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import type { ModelLayer } from "@/lib/llm/model-ref"
 import { ProviderError } from "@/lib/llm/types"
 import { readAiSettings } from "@/lib/settings"
+import { getBrowserSecrets } from "@/lib/secrets"
 import { loadAutoAcceptedFlows } from "@/lib/browser"
 import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
 import { runAgentLoop } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover } from "@/lib/runtime/ask-user"
+import { browserFillLoginTool } from "@/lib/runtime/tools/browser-fill-login"
 import { agentToolScope, type ToolScope } from "@/lib/runtime/tools"
-import type { RuntimeTool } from "@/lib/runtime/types"
+import type { RuntimeTool, ToolExecutionTrace } from "@/lib/runtime/types"
 
 import { buildStepMessage, filesChangedBy, handoffsFor } from "./handoff"
+import { alreadyLoggedInNote, loginSecretIds, loginStepNote } from "./login"
+import { requestLogin, type LoginDecision } from "./login-wait"
 import { stepModelLayers, stepResolveOptions, type ResolveLlmOptions, type ResolvedLlm } from "./llm"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
@@ -111,9 +116,15 @@ export async function executeRun(
     run.status = status
     run.finishedAt = new Date().toISOString()
     run.pendingApproval = null
+    run.pendingLogin = null
     Object.assign(run, fields)
     for (const step of run.steps) {
-      if (step.status === "pending" || step.status === "running" || step.status === "waiting_approval") {
+      if (
+        step.status === "pending" ||
+        step.status === "running" ||
+        step.status === "waiting_approval" ||
+        step.status === "waiting_login"
+      ) {
         step.status = step.status === "pending" ? "skipped" : "failed"
         step.finishedAt ??= run.finishedAt
       }
@@ -186,7 +197,30 @@ export async function executeRun(
       policy.allowFileWrites = false
 
       let retryNote: string | undefined
+      let loginNote: string | undefined
+      let includeLoginTool = step.login
+      let loginPauseUsed = false
       let gate: StepGateResult | undefined
+      const loginIds = loginSecretIds(workflow.name, step.id)
+
+      if (step.login && !(await loginSecretsReady(loginIds.username, loginIds.password))) {
+        const decision = await pauseForLogin({
+          run,
+          stepRun,
+          stepId: step.id,
+          usernameSecret: loginIds.username,
+          passwordSecret: loginIds.password,
+          reason: "This step needs a username and password before it can sign in.",
+          signal: runSignal,
+          update,
+        })
+        loginPauseUsed = true
+        if (decision.action === "cancel") {
+          throw new StepFailure(`Step "${step.id}" failed: login was not provided`)
+        }
+        if (decision.action === "already") loginNote = alreadyLoggedInNote()
+      }
+
       for (;;) {
         stepRun.attempts++
         stepRun.status = "running"
@@ -232,11 +266,12 @@ export async function executeRun(
                   handoffs: handoffsFor(step, run.steps.slice(0, index)),
                   files: stepWorkspaceFiles,
                   retryNote,
+                  loginNote,
                 }),
               },
             ],
             systemContext: sections.join("\n\n"),
-            tools,
+            tools: includeLoginTool ? [...tools, browserFillLoginTool] : tools,
             maxTurns: step.maxTurns,
             workspaceRoot: run.workspaceRoot,
             policy,
@@ -245,7 +280,38 @@ export async function executeRun(
           })
           content = result.content
           stepRun.toolExecutions.push(...result.toolExecutions)
+          const loginError = toolLoginError(result.toolExecutions)
+          if (loginError && !loginPauseUsed) {
+            const decision = await pauseForLogin({
+              run,
+              stepRun,
+              stepId: step.id,
+              usernameSecret: loginIds.username,
+              passwordSecret: loginIds.password,
+              reason: "The page asked for a login. Enter the username and password to continue this step.",
+              signal: runSignal,
+              update,
+            })
+            loginPauseUsed = true
+            includeLoginTool = true
+            if (decision.action === "cancel") {
+              throw new StepFailure(`Step "${step.id}" failed: login was not provided`)
+            }
+            loginNote = decision.action === "already" ? alreadyLoggedInNote() : loginStepNote(workflow.name, step.id)
+            retryNote =
+              decision.action === "already"
+                ? "The user signed in in the browser. Continue from there."
+                : "The user saved the username and password. Sign in with browser_fill_login, then continue."
+            continue
+          }
+          if (loginError) {
+            stepRun.status = "failed"
+            stepRun.error = loginError
+            stepRun.finishedAt = new Date().toISOString()
+            throw new StepFailure(`Step "${step.id}" failed: ${loginError}`)
+          }
         } catch (err) {
+          if (err instanceof StepFailure) throw err
           if (cancelSignal.aborted) throw err
           if (err instanceof ProviderError) await markInvalidOnAuthFailure(llm.provider, err, llm.secret)
           const reason = runSignal.aborted
@@ -289,6 +355,51 @@ export async function executeRun(
     if (cancelSignal.aborted) return finish("cancelled", { error: "Cancelled by the user" })
     return finish("failed", { error: errorText(err) })
   }
+}
+
+function toolLoginError(traces: ToolExecutionTrace[]): string | null {
+  for (const trace of traces) {
+    if (!trace.error) continue
+    if (trace.error.includes("LOGIN_REQUIRED") || looksLikeAuthFailure(trace.error)) return trace.error
+  }
+  return null
+}
+
+async function loginSecretsReady(usernameSecret: string, passwordSecret: string): Promise<boolean> {
+  const secrets = await getBrowserSecrets()
+  return Boolean(secrets[usernameSecret]?.trim() && secrets[passwordSecret])
+}
+
+async function pauseForLogin(params: {
+  run: WorkflowRun
+  stepRun: StepRun
+  stepId: string
+  usernameSecret: string
+  passwordSecret: string
+  reason: string
+  signal: AbortSignal
+  update: () => Promise<void>
+}): Promise<LoginDecision> {
+  const handle = requestLogin(
+    {
+      stepId: params.stepId,
+      usernameSecret: params.usernameSecret,
+      passwordSecret: params.passwordSecret,
+      reason: params.reason,
+    },
+    { signal: params.signal }
+  )
+  params.run.status = "waiting_login"
+  params.stepRun.status = "waiting_login"
+  params.run.pendingLogin = handle.request
+  params.run.pendingApproval = null
+  await params.update()
+  const decision = await handle.decision
+  params.run.pendingLogin = null
+  params.run.status = "running"
+  params.stepRun.status = "running"
+  await params.update()
+  return decision
 }
 
 async function decideGate(params: {

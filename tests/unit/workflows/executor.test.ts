@@ -470,4 +470,38 @@ describe("executeRun", () => {
     expect(secondPrompt).toContain(overrideFile.absolutePath)
     expect(secondPrompt).not.toContain("DefaultForm.pdf")
   })
+
+  it("pauses a login step until the username and password are saved", async () => {
+    const provider = scriptedProvider([{ content: "signed in" }, { content: "done" }])
+    const wf = workflow({
+      steps: [
+        { id: "plan", agent: "planner", login: true },
+        { id: "build", agent: "builder" },
+      ],
+    })
+    const saved: WorkflowRun[] = []
+    const pending = executeRun(start(wf), wf, deps(provider, { saved }), new AbortController().signal)
+    await waitFor(() => saved.some((run) => run.status === "waiting_login"))
+    const waiting = saved.find((run) => run.status === "waiting_login")
+    expect(waiting?.pendingLogin).toMatchObject({
+      stepId: "plan",
+      usernameSecret: "browser.line.plan.username",
+      passwordSecret: "browser.line.plan.password",
+    })
+
+    const { setBrowserSecrets } = await import("@/lib/secrets")
+    const { resolveLogin } = await import("@/lib/workflows/login-wait")
+    await setBrowserSecrets({
+      "browser.line.plan.username": "ada",
+      "browser.line.plan.password": "secret-pass",
+    })
+    expect(resolveLogin(waiting?.pendingLogin?.id ?? "", { action: "save" })).toBe(true)
+
+    const run = await pending
+    expect(run.status).toBe("succeeded")
+    const prompt = provider.requests[0]?.messages.at(-1)?.content ?? ""
+    expect(prompt).toContain("browser_fill_login")
+    expect(prompt).toContain("browser.line.plan.username")
+    expect(prompt).not.toContain("secret-pass")
+  })
 })

@@ -11,6 +11,7 @@ import type { WorkspaceFile } from "@/lib/files/schema"
 import type { ProviderId } from "@/lib/llm/types"
 import { parseStoredWorkflowDraft, WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
 import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, DEFAULT_AGENT_TOOLS, type BuiltinToolName } from "@/lib/runtime/tool-names"
+import { loginSecretIds } from "@/lib/workflows/login"
 import {
   MAX_GATE_RETRIES,
   MAX_STEP_FILES,
@@ -64,6 +65,9 @@ interface StepDraft {
   allowWrites: boolean
   maxTurns: number
   gate: boolean
+  login: boolean
+  username: string
+  password: string
   modelChoice: ModelSelectValue
   model: string
 }
@@ -100,6 +104,9 @@ function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
     allowWrites: false,
     maxTurns: 6,
     gate: false,
+    login: false,
+    username: "",
+    password: "",
     modelChoice: "inherit",
     model: "",
   }
@@ -134,6 +141,9 @@ function toDraft(wf: Workflow): Draft {
         allowWrites: s.allowWrites,
         maxTurns: s.maxTurns,
         gate: s.gate,
+        login: s.login,
+        username: "",
+        password: "",
         modelChoice: modelFields.modelChoice,
         model: modelFields.modelAlias || modelFields.modelId,
       }
@@ -157,6 +167,7 @@ function toInput(d: Draft): { body: unknown; error: string | null } {
       allowWrites: s.allowWrites,
       maxTurns: s.maxTurns,
       gate: s.gate,
+      login: s.login,
       ...stepModelFields(s.modelChoice, s.model),
     })
   }
@@ -295,6 +306,19 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     setError(null)
     setSaving(true)
     try {
+      const secrets: Record<string, string> = {}
+      for (const step of draft.steps) {
+        if (!step.login) continue
+        const ids = loginSecretIds(parsed.data.name, step.id.trim())
+        if (step.username.trim()) secrets[ids.username] = step.username.trim()
+        if (step.password) secrets[ids.password] = step.password
+      }
+      if (Object.keys(secrets).length > 0) {
+        await apiFetch("/api/browser/secrets", {
+          method: "PUT",
+          body: JSON.stringify({ secrets }),
+        })
+      }
       if (editing && name) {
         await apiFetch(`/api/workflows/${encodeURIComponent(name)}`, {
           method: "PUT",
@@ -306,6 +330,10 @@ export function WorkflowBuilder({ name }: { name?: string }) {
         toast.success("Workflow created")
         router.push(`/workflows/${parsed.data.name}`)
       }
+      setDraft((current) => ({
+        ...current,
+        steps: current.steps.map((step) => ({ ...step, username: "", password: "" })),
+      }))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the workflow")
     } finally {
@@ -607,6 +635,44 @@ export function WorkflowBuilder({ name }: { name?: string }) {
                 taskChoices={taskModels.choices}
                 onChange={(patch) => setStep(step.key, patch)}
               />
+              <div className="space-y-3 sm:col-span-2">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={`${step.key}-login`}
+                    checked={step.login}
+                    onCheckedChange={(v) => setStep(step.key, { login: v })}
+                  />
+                  <Label htmlFor={`${step.key}-login`}>This step signs in</Label>
+                </div>
+                {step.login ? (
+                  <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`${step.key}-username`}>Username</Label>
+                      <Input
+                        id={`${step.key}-username`}
+                        autoComplete="off"
+                        value={step.username}
+                        placeholder="Saved separately from the workflow"
+                        onChange={(e) => setStep(step.key, { username: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`${step.key}-password`}>Password</Label>
+                      <Input
+                        id={`${step.key}-password`}
+                        type="password"
+                        autoComplete="new-password"
+                        value={step.password}
+                        placeholder="Not stored in the workflow file"
+                        onChange={(e) => setStep(step.key, { password: e.target.value })}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground sm:col-span-2">
+                      Leave these empty to be asked when the step runs. A saved password stays in secrets, not in the workflow.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
               <div className="flex items-center gap-2">
                 <Switch
                   id={`${step.key}-writes`}

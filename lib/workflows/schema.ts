@@ -41,6 +41,11 @@ export const workflowStepSchema = z.object({
   maxTurns: z.number().int().min(1).max(MAX_STEP_TURNS).default(6),
   /** Ask Jev after this step: continue, retry the step, or stop the line. */
   gate: z.boolean().default(false),
+  /**
+   * This step signs in to a website. The username and password are stored as
+   * secrets (`browser.<workflow>.<step>.username` / `.password`), never in this file.
+   */
+  login: z.boolean().default(false),
   /** Overrides the agent's and the workflow's model for this step. */
   model: z.string().trim().max(200).optional(),
   provider: providerIdSchema.optional(),
@@ -107,6 +112,7 @@ export const RUN_STATUSES = [
   "queued",
   "running",
   "waiting_approval",
+  "waiting_login",
   "succeeded",
   "failed",
   "cancelled",
@@ -122,9 +128,19 @@ export type StepStatus =
   | "pending"
   | "running"
   | "waiting_approval"
+  | "waiting_login"
   | "succeeded"
   | "failed"
   | "skipped"
+
+/** Shown while a step waits for a username and password. No secret values. */
+export interface PendingLogin {
+  id: string
+  stepId: string
+  usernameSecret: string
+  passwordSecret: string
+  reason: string
+}
 
 export interface StepGateResult {
   decision: "continue" | "retry" | "stop"
@@ -169,6 +185,7 @@ export interface WorkflowRun {
   report?: string
   steps: StepRun[]
   pendingApproval?: ApprovalRequest | null
+  pendingLogin?: PendingLogin | null
 }
 
 export interface RunSummary {

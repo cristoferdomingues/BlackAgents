@@ -11,6 +11,7 @@ import { apiFetch } from "@/lib/api"
 import { streamGet } from "@/lib/sse-client"
 import { isTerminal, isWorkflowRun, type WorkflowRun } from "@/lib/workflows/schema"
 import { ApprovalCard } from "@/components/features/approvals/approval-card"
+import { LoginCard } from "@/components/features/workflows/login-card"
 import { FeedbackBar } from "@/components/features/chat/feedback-bar"
 import { ToolExecutionsSection } from "@/components/features/chat/message-parts"
 import { Badge } from "@/components/ui/badge"
@@ -112,6 +113,8 @@ export function RunView({ id }: { id: string }) {
       {run.pendingApproval ? (
         <ApprovalCard approval={run.pendingApproval} rememberLabel="Allow this exact call for the rest of this run" />
       ) : null}
+
+      {run.pendingLogin ? <LoginCard runId={run.id} login={run.pendingLogin} /> : null}
 
       {run.error ? (
         <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">

@@ -108,6 +108,7 @@ export class WorkflowRunner {
       run.error = "Interrupted: BlackAgents restarted before the run finished"
       run.finishedAt = new Date().toISOString()
       run.pendingApproval = null
+      run.pendingLogin = null
       await saveRun(run)
       count++
     }

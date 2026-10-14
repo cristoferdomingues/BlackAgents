@@ -147,6 +147,7 @@ Rules for the workflow block:
 - 1 to ${MAX_WORKFLOW_STEPS} steps. Every "agent" must be an agent listed in the workspace artifacts above. If a needed agent is missing, say so and propose it first (draft or bundle).
 - Step "input" is "previous" (last output), "task" (only the run's task), or "all" (every earlier output). Step ids are unique kebab-case.
 - Step "files" is an optional array of file handle names (e.g. ["october-invoice"]) from the Workspace files list above that the step uses (for example, to upload in a browser form via \`browser_file_upload\`).
+- Set \`"login": true\` on a step that must sign in to a website. Do not put a username or password in the workflow. The app stores them as secrets and asks for them when the step runs.
 - A step may set "model" and "provider" only when the user asks for a specific model on that step.
 - "trigger" is { "type": "manual" }, { "type": "interval", "everyMinutes": 5-1440 }, or { "type": "daily", "at": "HH:MM" }.
 - To update a workflow listed above, keep its name and return the full definition.

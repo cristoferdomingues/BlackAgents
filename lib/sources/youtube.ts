@@ -473,7 +473,6 @@ function decodeXml(value: string): string {
   let current = value.replace(/<[^>]+>/g, "")
   for (let pass = 0; pass < 2; pass += 1) {
     current = current
-      .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
@@ -481,6 +480,7 @@ function decodeXml(value: string): string {
       .replace(/&nbsp;/g, " ")
       .replace(/&#(\d+);/g, (_, n: string) => safeCodePoint(Number(n)))
       .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => safeCodePoint(Number.parseInt(n, 16)))
+      .replace(/&amp;/g, "&")
   }
   return current
 }

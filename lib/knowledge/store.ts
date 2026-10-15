@@ -1,7 +1,7 @@
-import matter from "gray-matter"
 import path from "node:path"
 
 import { pathExists, readText, resolveInWorkspace, walkFiles, writeText } from "../fs-service"
+import { renderConceptFile } from "./export"
 import { parseConceptContent, type OkfConcept } from "./parse"
 import type { OkfConceptFrontmatter } from "./schema"
 
@@ -76,13 +76,7 @@ export async function writeConcept(
   workspaceRoot: string,
   input: { id: string; frontmatter: OkfConceptFrontmatter; body: string }
 ): Promise<OkfConcept> {
-  const { extra, ...frontmatter } = input.frontmatter
-  const data: Record<string, unknown> = { ...frontmatter, ...extra }
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) delete data[key]
-  }
-  const body = input.body.trim()
-  const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
+  const content = renderConceptFile(input)
   await writeText(resolveInWorkspace(workspaceRoot, conceptRelPath(input.id)), content)
   const saved = await readConcept(workspaceRoot, input.id)
   if (!saved) throw new KnowledgePathError(`The concept "${input.id}" was not saved`)

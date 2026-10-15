@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { PLATFORM_LAYOUTS } from "@/lib/artifacts/layout"
 import type { Platform } from "@/lib/artifacts/types"
+import { OKF_BUNDLE_DIR, OKF_EXPORT_LABEL, OKF_EXPORT_WHERE } from "@/lib/knowledge/explain"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { Button } from "@/components/ui/button"
@@ -72,7 +73,7 @@ interface FileResult {
 }
 
 interface ExportResult {
-  platform: Platform
+  platform: string
   mode: "dry-run" | "write"
   overwrite: boolean
   summary: {
@@ -88,6 +89,16 @@ interface ExportResult {
 const PLATFORM_OPTIONS = (Object.keys(PLATFORM_LAYOUTS) as Platform[]).map(
   (id) => ({ id, label: PLATFORM_LAYOUTS[id].label })
 )
+const EXPORT_OPTIONS = [...PLATFORM_OPTIONS, { id: "okf", label: OKF_EXPORT_LABEL }]
+
+function targetLabel(id: string): string {
+  return EXPORT_OPTIONS.find((option) => option.id === id)?.label ?? id
+}
+
+function targetRoot(id: string): string {
+  if (id === "okf") return OKF_BUNDLE_DIR
+  return PLATFORM_LAYOUTS[id as Platform].root
+}
 
 const STATUS_STYLE: Record<ExportStatus, string> = {
   create: "border-transparent bg-skill/15 text-skill",
@@ -106,7 +117,7 @@ const STATUS_DESCRIPTION: Record<ExportStatus, string> = {
 
 export function ExportPage() {
   const { workspace } = useWorkspace()
-  const [platform, setPlatform] = React.useState<Platform>("claude")
+  const [platform, setPlatform] = React.useState("claude")
   const [overwrite, setOverwrite] = React.useState(true)
   const [target, setTarget] = React.useState("")
   const [targetCheck, setTargetCheck] = React.useState<{
@@ -178,7 +189,7 @@ export function ExportPage() {
     if (!workspace) return
     setZipping(true)
     try {
-      const data = await apiFetch<{ platform: Platform; files: ExportFile[] }>(
+      const data = await apiFetch<{ platform: string; files: ExportFile[] }>(
         `/api/export?platform=${platform}`
       )
       if (data.files.length === 0) {
@@ -218,7 +229,7 @@ export function ExportPage() {
       })
       setResult(data)
       toast.success(
-        `Exported to ${PLATFORM_LAYOUTS[platform].label}: ${data.summary.written} file(s) written`
+        `Exported to ${targetLabel(platform)}: ${data.summary.written} file(s) written`
       )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Export failed")
@@ -251,12 +262,16 @@ export function ExportPage() {
         <CardHeader>
           <CardTitle className="text-base">Target platform</CardTitle>
           <CardDescription>
-            Files land under{" "}
-            <code className="rounded bg-muted px-1">
-              {PLATFORM_LAYOUTS[platform].root}/
-            </code>{" "}
-            in the destination folder. Rule activation and frontmatter keys are
-            translated per platform.
+            {platform === "okf" ? (
+              OKF_EXPORT_WHERE
+            ) : (
+              <>
+                Files land under{" "}
+                <code className="rounded bg-muted px-1">{targetRoot(platform)}/</code>{" "}
+                in the destination folder. Rule activation and frontmatter keys are
+                translated per platform.
+              </>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -265,13 +280,13 @@ export function ExportPage() {
               <Label>Platform</Label>
               <Select
                 value={platform}
-                onValueChange={(v) => setPlatform(v as Platform)}
+                onValueChange={setPlatform}
               >
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-48">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLATFORM_OPTIONS.map((opt) => (
+                  {EXPORT_OPTIONS.map((opt) => (
                     <SelectItem key={opt.id} value={opt.id}>
                       {opt.label}
                     </SelectItem>
@@ -463,7 +478,9 @@ export function ExportPage() {
             </div>
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No artifacts to export in this workspace.
+              {platform === "okf"
+                ? "No knowledge to export yet. Approve a concept on the Brain page first."
+                : "No artifacts to export in this workspace."}
             </p>
           )}
         </CardContent>
@@ -474,7 +491,7 @@ export function ExportPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="h-4 w-4" />
-              Export to {PLATFORM_LAYOUTS[platform].label}?
+              Export to {targetLabel(platform)}?
             </DialogTitle>
             <DialogDescription>
               This writes {willWrite} file(s) into{" "}

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -17,6 +18,7 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import { BROWSER_MCP_SERVER } from "@/lib/browser/constants"
+import type { ArtifactType } from "@/lib/artifacts/types"
 import type { NormalizedDraft } from "@/lib/llm/draft"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import type { ToolExecutionTrace } from "@/lib/mcp/types"
@@ -219,6 +221,48 @@ export function AgentAvatar({
       <span className="text-xs font-semibold" aria-hidden="true">
         {name.slice(0, 1).toUpperCase()}
       </span>
+    </div>
+  )
+}
+
+export function DraftProblemCard({
+  type,
+  message,
+  onFix,
+  fixDisabled = false,
+}: {
+  type: ArtifactType | null
+  message: string
+  onFix: (request: string) => void
+  fixDisabled?: boolean
+}) {
+  const label = type ? metaForType(type).label.toLowerCase() : "artifact"
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium">The {label} draft could not be opened</p>
+          <p className="text-xs text-muted-foreground">{message}</p>
+        </div>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-3 w-full"
+        disabled={fixDisabled}
+        onClick={() =>
+          onFix(
+            `Your ${label} draft could not be read. ${message} Send the full draft again in one valid \`\`\`artifact JSON block.`
+          )
+        }
+      >
+        <Wand2 className="h-4 w-4" />
+        Ask to fix
+      </Button>
     </div>
   )
 }

@@ -173,7 +173,7 @@ export function TryChatPanel({
             </div>
           ) : (
             <div key={i} className="text-sm">
-              <MarkdownPreview content={turn.content} />
+              <MarkdownPreview content={turn.content} variant="inline" />
             </div>
           )
         )}
@@ -194,7 +194,7 @@ export function TryChatPanel({
                 }}
               />
             ))}
-            {live.content ? <MarkdownPreview content={live.content} /> : null}
+            {live.content ? <MarkdownPreview content={live.content} variant="inline" /> : null}
           </div>
         ) : null}
         <div ref={endRef} />

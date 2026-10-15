@@ -3,6 +3,7 @@ import { z } from "zod"
 import { extractReferences } from "../artifacts/graph"
 import type { Artifact, ArtifactType } from "../artifacts/types"
 import { checkArtifactStandards, hasErrors, type StandardsIssue } from "../standards/checks"
+import { findFencedJson, stripFencedBlocks } from "./fenced-json"
 
 /**
  * The "bundle" draft protocol: one fenced ```bundle block with an agent plus
@@ -95,27 +96,18 @@ export function normalizeBundle(bundle: ArtifactBundle): NormalizedBundle {
   return { summary: bundle.summary ?? "", items }
 }
 
-function fenceRe(flags: string, capture: boolean): RegExp {
-  const inner = capture ? "([\\s\\S]*?)" : "[\\s\\S]*?"
-  return new RegExp("```" + BUNDLE_FENCE + "\\s*\\n" + inner + "\\n```", flags)
-}
-
 /** First valid bundle in a reply, or null (missing block or failed parse). */
 export function extractBundle(text: string): NormalizedBundle | null {
-  const match = text.match(fenceRe("i", true))
-  if (!match) return null
-  try {
-    const parsed = bundleSchema.safeParse(JSON.parse(match[1]) as unknown)
-    if (!parsed.success) return null
-    const normalized = normalizeBundle(parsed.data)
-    return normalized.items.length > 0 ? normalized : null
-  } catch {
-    return null
-  }
+  const block = findFencedJson(text, BUNDLE_FENCE)
+  if (!block || block.value === undefined) return null
+  const parsed = bundleSchema.safeParse(block.value)
+  if (!parsed.success) return null
+  const normalized = normalizeBundle(parsed.data)
+  return normalized.items.length > 0 ? normalized : null
 }
 
 export function stripBundleBlock(text: string): string {
-  return text.replace(fenceRe("gi", false), "").trim()
+  return stripFencedBlocks(text, BUNDLE_FENCE)
 }
 
 export interface BundleItemReport {

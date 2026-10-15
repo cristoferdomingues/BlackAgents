@@ -363,7 +363,8 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
     if (isEdit) return
     const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
     if (!raw) {
-      setPhase("start")
+      // A second effect run (Strict Mode) must not undo a draft already consumed.
+      setPhase((current) => (current === "edit" ? current : "start"))
       return
     }
     sessionStorage.removeItem(DRAFT_STORAGE_KEY)

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 
 import {
   extractDraft,
+  inspectDraft,
   normalizeDraft,
   stripDraftBlock,
   type ArtifactDraft,
@@ -54,6 +55,66 @@ describe("extractDraft", () => {
 
   it("returns null for a non-kebab name", () => {
     expect(extractDraft(fenced({ ...validDraft, name: "Bad Name" }))).toBeNull()
+  })
+})
+
+describe("inspectDraft", () => {
+  it("returns none without a block", () => {
+    expect(inspectDraft("hello")).toEqual({ kind: "none" })
+  })
+
+  it("reads a long command with raw line breaks and nested code fences", () => {
+    const text = [
+      "Here is the command:",
+      "```artifact",
+      "{",
+      '  "type": "command",',
+      '  "name": "integrate-okf",',
+      '  "description": "Import an OKF bundle.",',
+      '  "body": "## Steps',
+      "1. Run:",
+      "```bash",
+      "npm run okf:import",
+      "```",
+      '2. Check the result."',
+      "}",
+      "```",
+    ].join("\n")
+    const result = inspectDraft(text)
+    expect(result.kind).toBe("ok")
+    if (result.kind !== "ok") return
+    expect(result.draft).toMatchObject({ type: "command", name: "integrate-okf" })
+    expect(result.draft.body).toContain("```bash\nnpm run okf:import\n```")
+    expect(stripDraftBlock(text)).toBe("Here is the command:")
+  })
+
+  it("explains a draft that was cut off", () => {
+    expect(inspectDraft('```artifact\n{"type":"command","name":"x"')).toEqual({
+      kind: "invalid",
+      type: null,
+      message: "The draft was cut off before the end.",
+    })
+  })
+
+  it("explains broken JSON", () => {
+    expect(inspectDraft("```artifact\n{ not json }\n```")).toMatchObject({
+      kind: "invalid",
+      message: "The draft is not valid JSON.",
+    })
+  })
+
+  it("names the bad field and keeps the type hint", () => {
+    const result = inspectDraft(fenced({ ...validDraft, type: "command", name: "Bad Name" }))
+    expect(result).toEqual({
+      kind: "invalid",
+      type: "command",
+      message: 'The draft has a problem in "name": name must be kebab-case.',
+    })
+  })
+
+  it("gives no type hint for an unknown type", () => {
+    const result = inspectDraft(fenced({ ...validDraft, type: "hook" }))
+    expect(result).toMatchObject({ kind: "invalid", type: null })
   })
 })
 

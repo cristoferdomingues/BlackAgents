@@ -26,6 +26,13 @@ describe("buildSystemContext", () => {
     expect(context).toContain("Do not stop at a plan")
   })
 
+  it("tells the model commands use the draft block and the folder is created", async () => {
+    const context = await buildSystemContext()
+    expect(context).toContain("commands included")
+    expect(context).toContain(".cursor/commands/")
+    expect(context).toContain('escape line breaks in "body" as \\n')
+  })
+
   it("includes the workflow protocol and lists workspace workflows", async () => {
     expect(await buildSystemContext()).toContain("no workflows yet")
     await seedArtifact(

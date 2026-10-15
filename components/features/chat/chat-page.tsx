@@ -63,8 +63,9 @@ import type { WorkflowListItem } from "@/lib/workflows/service"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 import {
   DRAFT_STORAGE_KEY,
-  extractDraft,
+  inspectDraft,
   stripDraftBlock,
+  type DraftInspection,
   type NormalizedDraft,
 } from "@/lib/llm/draft"
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
@@ -106,6 +107,7 @@ import { agentHeaderSummary } from "@/components/features/models/model-choice"
 import {
   AgentAvatar,
   DraftCard,
+  DraftProblemCard,
   ToolExecutionsSection,
 } from "@/components/features/chat/message-parts"
 import { BundleCard } from "@/components/features/chat/bundle-card"
@@ -1232,6 +1234,7 @@ export function ChatPage({
                 <div className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">
                   <MarkdownPreview
                     content={stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))}
+                    variant="inline"
                   />
                 </div>
               ) : null}
@@ -1466,7 +1469,9 @@ function Message({
   const isUser = turn.role === "user"
   const bundle = isUser ? null : extractBundle(turn.content)
   const workflowDraft = isUser || bundle ? null : extractWorkflowDraft(turn.content)
-  const draft = isUser || bundle || workflowDraft ? null : extractDraft(turn.content)
+  const draftCheck: DraftInspection =
+    isUser || bundle || workflowDraft ? { kind: "none" } : inspectDraft(turn.content)
+  const draft = draftCheck.kind === "ok" ? draftCheck.draft : null
   const prose = isUser
     ? turn.content
     : stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content)))
@@ -1520,7 +1525,7 @@ function Message({
               <ToolExecutionsSection traces={turn.toolExecutions} />
             ) : null}
             <div className="prose prose-sm max-w-none dark:prose-invert">
-              <MarkdownPreview content={prose || "…"} />
+              <MarkdownPreview content={prose || "…"} variant="inline" />
             </div>
             {turn.stoppedAtLimit ? (
               <p className="text-xs text-muted-foreground">
@@ -1531,6 +1536,14 @@ function Message({
         )}
 
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
+        {draftCheck.kind === "invalid" ? (
+          <DraftProblemCard
+            type={draftCheck.type}
+            message={draftCheck.message}
+            onFix={onFixIssues}
+            fixDisabled={fixDisabled}
+          />
+        ) : null}
         {workflowDraft ? (
           <WorkflowDraftCard
             workflow={workflowDraft}

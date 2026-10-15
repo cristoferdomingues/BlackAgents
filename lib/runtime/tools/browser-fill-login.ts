@@ -8,6 +8,7 @@ import { isBrowserSecretId } from "@/lib/browser/secrets"
 import { getBrowserSecrets } from "@/lib/secrets"
 
 import type { RuntimeTool } from "../types"
+import { toolArgsError } from "./args"
 
 const argsSchema = z.object({
   usernameSecretId: z.string().trim().min(1),
@@ -49,7 +50,7 @@ export const browserFillLoginTool: RuntimeTool = {
     if (unavailable) return { error: unavailable }
 
     const parsed = argsSchema.safeParse(rawArgs)
-    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid arguments" }
+    if (!parsed.success) return { error: toolArgsError(parsed.error) }
     const { usernameSecretId, passwordSecretId } = parsed.data
     if (!isBrowserSecretId(usernameSecretId) || !isBrowserSecretId(passwordSecretId)) {
       return { error: "Secret ids must look like browser.<name>." }

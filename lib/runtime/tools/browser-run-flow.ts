@@ -5,6 +5,7 @@ import { browserUnavailableReason } from "@/lib/browser/platform"
 import { replayBrowserFlow } from "@/lib/browser/replay"
 
 import type { RuntimeTool } from "../types"
+import { toolArgsError } from "./args"
 
 const argsSchema = z.object({
   name: z
@@ -42,7 +43,7 @@ export const browserRunFlowTool: RuntimeTool = {
 
     const parsed = argsSchema.safeParse(rawArgs)
     if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Invalid arguments" }
+      return { error: toolArgsError(parsed.error) }
     }
 
     const flow = await readBrowserFlow(ctx.workspaceRoot, parsed.data.name)

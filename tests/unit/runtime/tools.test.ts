@@ -174,6 +174,16 @@ describe("find, search and edit tools", () => {
     expect((await fsSearchTool.execute({ query: "a(" }, ctx())).error).toBeUndefined()
   })
 
+  it("accepts `pattern` for the search text and names a missing field", async () => {
+    const aliased = await fsSearchTool.execute({ pattern: "export", glob: "src/**/*.ts" }, ctx())
+    expect(aliased.error).toBeUndefined()
+    expect((aliased.result as { matches: Array<{ path: string }> }).matches.map((m) => m.path)).toEqual(["src/a.ts"])
+    const both = await fsSearchTool.execute({ query: "world", pattern: "export" }, ctx())
+    expect((both.result as { matches: Array<{ path: string }> }).matches.map((m) => m.path)).toEqual(["src/lib/b.ts"])
+    expect((await fsSearchTool.execute({ glob: "**/*.ts" }, ctx())).error).toMatch(/^`query`: /)
+    expect((await fsReadTool.execute({}, ctx())).error).toMatch(/^`path`: /)
+  })
+
   it("edits exact text once, or everywhere with replaceAll", async () => {
     const file = path.join(env.workspace, "src/a.ts")
     expect((await fsEditTool.execute({ path: "src/a.ts", oldText: "= 1", newText: "= 10" }, ctx())).result).toEqual({

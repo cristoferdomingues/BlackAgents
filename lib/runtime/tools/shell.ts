@@ -5,6 +5,7 @@ import { resolveInWorkspace } from "@/lib/fs-service"
 
 import { commandEnv } from "../shell-env"
 import type { RuntimeTool } from "../types"
+import { toolArgsError } from "./args"
 
 export const SHELL_OUTPUT_CAP = 20_000
 export const SHELL_DEFAULT_TIMEOUT_MS = 120_000
@@ -157,7 +158,7 @@ export const shellRunTool: RuntimeTool = {
   async execute(args, ctx) {
     const parsed = shellArgs.safeParse(args)
     if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? "Invalid arguments" }
+      return { error: toolArgsError(parsed.error) }
     }
     const { command, args: list, timeoutMs } = parsed.data
     const shell = isCommandLine(command, list)

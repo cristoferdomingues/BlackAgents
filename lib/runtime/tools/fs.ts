@@ -11,6 +11,7 @@ import {
 } from "@/lib/fs-service"
 
 import type { RuntimeTool, ToolOutcome, ToolRisk } from "../types"
+import { toolArgsError } from "./args"
 
 export const MAX_READ_BYTES = 100_000
 export const MAX_WRITE_BYTES = 500_000
@@ -56,13 +57,22 @@ const findArgs = z.object({
   pattern: globSchema.default("**/*"),
   path: z.string().trim().default("."),
 })
-const searchArgs = z.object({
+/** Models often send `pattern` (the fs_find name) for the search text. */
+function withQueryAlias(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const args = value as Record<string, unknown>
+  if (args.query !== undefined || typeof args.pattern !== "string") return args
+  const { pattern, ...rest } = args
+  return { ...rest, query: pattern }
+}
+
+const searchArgs = z.preprocess(withQueryAlias, z.object({
   query: z.string().min(1).max(500),
   path: z.string().trim().default("."),
   glob: globSchema.default("**/*"),
   regex: z.boolean().default(false),
   caseSensitive: z.boolean().default(false),
-})
+}))
 const editArgs = z.object({
   path: z.string().trim().min(1),
   oldText: z.string().min(1, "oldText is required"),
@@ -71,7 +81,7 @@ const editArgs = z.object({
 })
 
 function invalid(error: z.ZodError): ToolOutcome {
-  return { error: error.issues[0]?.message ?? "Invalid arguments" }
+  return { error: toolArgsError(error) }
 }
 
 export const fsListTool: RuntimeTool = {

@@ -9,6 +9,8 @@ import { ARTIFACT_DRAFT_FENCE } from "./draft"
 import { WORKFLOW_DRAFT_FENCE } from "./workflow-draft"
 import { MAX_WORKFLOW_STEPS } from "../workflows/schema"
 import { listWorkflows } from "../workflows/store"
+import { listConcepts } from "../knowledge/store"
+import type { OkfConcept } from "../knowledge/parse"
 import type { Artifact } from "../artifacts/types"
 
 /** How to use the built-in workspace tools; shared by the assistant and agent personas. */
@@ -33,12 +35,15 @@ export async function buildSystemContext(): Promise<string> {
   let registry = "No workspace is selected yet."
   let workflowRegistry = "No workspace is selected yet."
   let filesRegistry = "No workspace is selected yet."
+  let knowledgeRegistry = "No workspace is selected yet."
   if (config.currentPath) {
-    const [artifacts, workflows, files] = await Promise.all([
+    const [artifacts, workflows, files, concepts] = await Promise.all([
       scanWorkspace(config.currentPath),
       listWorkflows(config.currentPath).catch(() => []),
       listWorkspaceFiles(config.currentPath).catch(() => []),
+      listConcepts(config.currentPath).catch(() => []),
     ])
+    knowledgeRegistry = formatKnowledgeRegistry(concepts)
     workflowRegistry =
       workflows.length === 0
         ? "The active workspace has no workflows yet."
@@ -84,6 +89,12 @@ ${standards.content}
 ## Artifacts in the active workspace
 
 ${registry}
+
+## Knowledge in the active workspace
+
+Durable facts such as metrics and definitions. Each line is the id, title, and description. Concept text is not included. When you need one concept, read it with fs_read at .black-agents/knowledge/<id>.md. Do not read the whole knowledge folder.
+
+${knowledgeRegistry}
 
 ## Built-in BlackAgents guidance artifacts
 
@@ -168,6 +179,18 @@ Rules for the workflow block:
 - The user starts a workflow by typing "/workflow-name input" or "start @workflow-name"; the app handles that, not you.
 
 Emit at most one draft, bundle, or workflow block per reply, never more than one.`
+}
+
+/** One line per concept. Never the body. */
+export function formatKnowledgeRegistry(concepts: OkfConcept[]): string {
+  if (concepts.length === 0) return "The active workspace has no knowledge concepts yet."
+  return concepts
+    .map((concept) => {
+      const title = concept.frontmatter.title?.trim() || concept.id
+      const description = concept.frontmatter.description?.trim() || "(no description)"
+      return `- ${concept.id} — ${title} — ${description}`
+    })
+    .join("\n")
 }
 
 /**

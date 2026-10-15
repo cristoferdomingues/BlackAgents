@@ -54,10 +54,12 @@ export interface ArtifactReference {
   kind: "command-agent" | "agent-rule" | "agent-skill" | "rule-rule" | "rule-skill"
 }
 
+export type GraphNodeType = ArtifactType | "concept"
+
 export interface GraphNode {
   id: string
   name: string
-  type: ArtifactType
+  type: GraphNodeType
   /** Number of connected edges, used to size the node. */
   degree: number
 }
@@ -65,7 +67,7 @@ export interface GraphNode {
 export interface GraphLink {
   source: string
   target: string
-  kind: ArtifactReference["kind"]
+  kind: ArtifactReference["kind"] | "concept-concept" | "concept-artifact" | "artifact-concept"
 }
 
 export interface GraphData {

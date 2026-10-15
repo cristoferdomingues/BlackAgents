@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST, metaForType } from "@/lib/artifacts/constants"
-import type { ArtifactType, GraphNode } from "@/lib/artifacts/types"
+import type { ArtifactType, GraphNode, GraphNodeType } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { useGraph } from "@/hooks/use-graph"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
@@ -19,7 +19,7 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 
 type ForceNode = GraphNode & { x?: number; y?: number }
 
-function readTypeColors(): Record<ArtifactType, string> {
+function readTypeColors(): Record<GraphNodeType, string> {
   const styles = getComputedStyle(document.documentElement)
   const read = (v: string) => `hsl(${styles.getPropertyValue(v).trim()})`
   return {
@@ -27,6 +27,7 @@ function readTypeColors(): Record<ArtifactType, string> {
     command: read("--type-command"),
     rule: read("--type-rule"),
     skill: read("--type-skill"),
+    concept: read("--primary"),
   }
 }
 
@@ -48,18 +49,20 @@ export function GraphView() {
   const fgRef = React.useRef<any>(null)
   const [size, setSize] = React.useState({ width: 0, height: 0 })
   const [hovered, setHovered] = React.useState<string | null>(null)
-  const [enabled, setEnabled] = React.useState<Record<ArtifactType, boolean>>({
+  const [enabled, setEnabled] = React.useState<Record<GraphNodeType, boolean>>({
     agent: true,
     command: true,
     rule: true,
     skill: true,
+    concept: true,
   })
 
-  const [colors, setColors] = React.useState<Record<ArtifactType, string>>({
+  const [colors, setColors] = React.useState<Record<GraphNodeType, string>>({
     agent: "#a78bfa",
     command: "#38bdf8",
     rule: "#fbbf24",
     skill: "#34d399",
+    concept: "#94a3b8",
   })
   const [uiColors, setUiColors] = React.useState({
     link: "rgba(150,150,150,0.25)",
@@ -122,7 +125,7 @@ export function GraphView() {
       acc[n.type] += 1
       return acc
     },
-    { agent: 0, command: 0, rule: 0, skill: 0 } as Record<ArtifactType, number>
+    { agent: 0, command: 0, rule: 0, skill: 0, concept: 0 } as Record<GraphNodeType, number>
   )
 
   return (
@@ -146,30 +149,33 @@ export function GraphView() {
           Types
         </p>
         <div className="space-y-1.5">
-          {ARTIFACT_TYPE_LIST.map((meta) => (
+          {[...ARTIFACT_TYPE_LIST.map((meta) => meta.type), "concept" as const].map((type) => {
+            const label = type === "concept" ? "Knowledge" : ARTIFACT_TYPE_LIST.find((meta) => meta.type === type)?.labelPlural
+            return (
             <button
-              key={meta.type}
+              key={type}
               onClick={() =>
-                setEnabled((e) => ({ ...e, [meta.type]: !e[meta.type] }))
+                setEnabled((e) => ({ ...e, [type]: !e[type] }))
               }
               className={cn(
                 "flex w-full items-center gap-2 rounded px-1.5 py-1 transition-opacity",
-                !enabled[meta.type] && "opacity-40"
+                !enabled[type] && "opacity-40"
               )}
             >
               <span
                 className="h-3 w-3 rounded-full"
-                style={{ backgroundColor: colors[meta.type] }}
+                style={{ backgroundColor: colors[type] }}
               />
-              <span className="flex-1 text-left">{meta.labelPlural}</span>
+              <span className="flex-1 text-left">{label}</span>
               <span className="text-xs text-muted-foreground">
-                {counts[meta.type]}
+                {counts[type]}
               </span>
             </button>
-          ))}
+            )
+          })}
         </div>
         <p className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
-          {filtered.links.length} connections · click a node to open
+          {filtered.links.length} connections · click an artifact to open
         </p>
       </div>
 
@@ -195,6 +201,7 @@ export function GraphView() {
           linkDirectionalParticles={0}
           onNodeHover={(n: any) => setHovered(n ? n.id : null)}
           onNodeClick={(n: any) => {
+            if (n.type === "concept") return
             const meta = metaForType(n.type as ArtifactType)
             router.push(`/${meta.route}/${n.name}`)
           }}
@@ -204,7 +211,7 @@ export function GraphView() {
             const isHovered = hovered === node.id
             ctx.beginPath()
             ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
-            ctx.fillStyle = colors[node.type as ArtifactType]
+            ctx.fillStyle = colors[node.type as GraphNodeType]
             ctx.globalAlpha = hovered && !isHovered ? 0.55 : 1
             ctx.fill()
             if (isHovered) {

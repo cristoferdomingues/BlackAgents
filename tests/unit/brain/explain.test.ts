@@ -45,6 +45,9 @@ describe("approveEffect", () => {
     expect(approveEffect({ kind: "new_concept", target: { type: "concept", name: "crypto/fees" } })).toContain(
       ".black-agents/knowledge/"
     )
+    expect(approveEffect({ kind: "update_concept", target: { type: "concept", name: "crypto/fees" } })).toContain(
+      "updates crypto/fees"
+    )
   })
 
   it("falls back when the target is missing", () => {
@@ -53,6 +56,12 @@ describe("approveEffect", () => {
 })
 
 describe("proposalOrigin", () => {
+  it("says a promoted note came from memory", () => {
+    expect(proposalOrigin({ source: source({ kind: "memory" }), decision: { by: "feedback" } })).toBe(
+      "From a memory note you chose to save as knowledge."
+    )
+  })
+
   it("says an imported concept came from a bundle", () => {
     expect(proposalOrigin({ source: source({ kind: "import" }), decision: { by: "feedback" } })).toBe(
       "From an OKF bundle you previewed."

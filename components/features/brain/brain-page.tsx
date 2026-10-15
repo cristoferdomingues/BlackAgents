@@ -216,6 +216,7 @@ export function BrainPage(): React.ReactElement {
                   scope={scopeLabel(undefined)}
                   file=".black-agents/brain/workspace.md"
                   notes={state.data.workspaceNotes}
+                  onPromoted={load}
                 />
                 {state.data.agents.map((a) => (
                   <NotesCard
@@ -224,6 +225,7 @@ export function BrainPage(): React.ReactElement {
                     scope={scopeLabel(a.name)}
                     file={`.black-agents/brain/agents/${a.name}.md`}
                     notes={a.notes}
+                    onPromoted={load}
                   />
                 ))}
               </>
@@ -431,16 +433,95 @@ function MemoryUsage({ texts }: { texts: string[] }): React.ReactElement {
   )
 }
 
+function noteSlug(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/g, "")
+  return slug || "note"
+}
+
+function PromoteNote({
+  text,
+  fieldKey,
+  onPromoted,
+}: {
+  text: string
+  fieldKey: string
+  onPromoted: () => void
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const [id, setId] = React.useState(noteSlug(text))
+  const [type, setType] = React.useState("Reference")
+  const [busy, setBusy] = React.useState(false)
+
+  async function queue(): Promise<void> {
+    setBusy(true)
+    try {
+      const data = await apiFetch<{ title: string }>("/api/brain/promote", {
+        method: "POST",
+        body: JSON.stringify({ id, type, content: text, title: text.slice(0, 80) }),
+      })
+      toast.success(`“${data.title}” is in the Inbox. Approve it there to save it.`)
+      setOpen(false)
+      onPromoted()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add the concept")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => setOpen(true)}>
+        Save as knowledge
+      </Button>
+    )
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border p-2">
+      <p className="text-xs text-muted-foreground">
+        This adds an Inbox item. The note stays in Memory until you approve the concept.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor={`promote-${fieldKey}`}>Concept id</Label>
+          <Input id={`promote-${fieldKey}`} value={id} onChange={(e) => setId(e.target.value)} spellCheck={false} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`promote-type-${fieldKey}`}>Type</Label>
+          <Input id={`promote-type-${fieldKey}`} value={type} onChange={(e) => setType(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => void queue()} disabled={busy || !id.trim() || !type.trim()}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Add to inbox
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function NotesCard({
   title,
   scope,
   file,
   notes,
+  onPromoted,
 }: {
   title: string
   scope: string
   file: string
   notes: BrainNote[]
+  onPromoted: () => void
 }): React.ReactElement | null {
   if (notes.length === 0) return null
   return (
@@ -462,9 +543,12 @@ function NotesCard({
       <CardContent>
         <ul className="space-y-1.5 text-sm">
           {notes.map((n, i) => (
-            <li key={`${n.date}-${i}`} className="flex gap-2">
-              <span className="shrink-0 text-xs text-muted-foreground">{n.date}</span>
-              <span className="break-words">{n.text}</span>
+            <li key={`${n.date}-${i}`} className="space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-xs text-muted-foreground">{n.date}</span>
+                <span className="min-w-0 flex-1 break-words">{n.text}</span>
+                <PromoteNote text={n.text} fieldKey={`${title}-${i}`} onPromoted={onPromoted} />
+              </div>
             </li>
           ))}
         </ul>
@@ -514,7 +598,7 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
               {proposal.target.type}:{proposal.target.name}
             </Badge>
           ) : null}
-          {proposal.kind === "new_concept" ? (
+          {proposal.kind === "new_concept" || proposal.kind === "update_concept" ? (
             <Badge variant="outline">Knowledge</Badge>
           ) : (
             <Badge variant="outline">{scopeLabel(proposal.agent)}</Badge>
@@ -536,7 +620,7 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor={`${proposal.id}-content`}>
-            {proposal.kind === "new_concept" ? "Concept text" : isArtifact ? "New body" : "Note"}
+            {proposal.kind === "new_concept" || proposal.kind === "update_concept" ? "Concept text" : isArtifact ? "New body" : "Note"}
           </Label>
           <Textarea
             id={`${proposal.id}-content`}

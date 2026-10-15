@@ -51,6 +51,24 @@ describe("buildSystemContext", () => {
     expect(context).toContain("/workflow-name input")
   })
 
+  it("lists knowledge ids without concept bodies", async () => {
+    const { writeConcept } = await import("@/lib/knowledge/store")
+    await writeConcept(env.workspace, {
+      id: "metrics/revenue",
+      frontmatter: {
+        type: "Metric",
+        title: "Revenue",
+        description: "Recognized revenue.",
+        extra: {},
+      },
+      body: "SECRET-BODY-MARKER that must stay out of context.\n",
+    })
+    const context = await buildSystemContext()
+    expect(context).toContain("- metrics/revenue — Revenue — Recognized revenue.")
+    expect(context).toContain("fs_read at .black-agents/knowledge/<id>.md")
+    expect(context).not.toContain("SECRET-BODY-MARKER")
+  })
+
   it("notes when the workspace has no artifacts", async () => {
     expect(await buildSystemContext()).toContain("no artifacts yet")
   })

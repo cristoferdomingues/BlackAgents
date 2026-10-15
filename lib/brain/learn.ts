@@ -13,7 +13,9 @@ import {
   LEARNING_MIN_IMPORTANCE,
 } from "@/lib/decision/classify-learning"
 import { loadDecisionClient, type ResolvedDecisionClient } from "@/lib/decision/client"
-import { KnowledgePathError, readConcept, writeConcept } from "@/lib/knowledge/store"
+import { checkConceptStandards } from "@/lib/knowledge/checks"
+import { KnowledgePathError, listConcepts, readConcept, writeConcept } from "@/lib/knowledge/store"
+import type { OkfConceptFrontmatter } from "@/lib/knowledge/schema"
 import { isProviderId } from "@/lib/llm/registry"
 import { checkArtifactStandards, hasErrors, RULE_MAX_LINES } from "@/lib/standards/checks"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
@@ -75,6 +77,7 @@ const KIND_TARGET: Record<ProposalKind, { type: "skill" | "rule"; exists: boolea
   update_rule: { type: "rule", exists: true },
   new_rule: { type: "rule", exists: false },
   new_concept: null,
+  update_concept: null,
 }
 
 export function extractProposalDraft(text: string): ProposalDraft | null {
@@ -275,7 +278,14 @@ function ruleExtra(existing: Artifact | null): { alwaysApply?: boolean; globs?: 
   }
 }
 
-/** Human approval writes `verified` and the concept file. A model never does this. */
+function stamp(now: Date): string {
+  return now.toISOString().replace(/\.\d{3}Z$/, "Z")
+}
+
+/**
+ * Human approval writes `verified` and the concept file.
+ * `generated` is only what the proposal already carried. Approval never adds it.
+ */
 async function applyConcept(
   root: string,
   proposal: BrainProposal,
@@ -284,20 +294,41 @@ async function applyConcept(
   now: Date
 ): Promise<void> {
   const target = proposal.target
-  const frontmatter = proposal.concept
-  if (!target || target.type !== "concept" || !frontmatter) {
+  const incoming = proposal.concept
+  if (!target || target.type !== "concept" || !incoming) {
     throw new ProposalError("The proposal has no concept", 400)
   }
-  if (await readConcept(root, target.name)) {
+  const existing = await readConcept(root, target.name)
+  if (proposal.kind === "new_concept" && existing) {
     throw new ProposalError(`The concept "${target.name}" already exists`, 409)
   }
-  const next = {
-    ...frontmatter,
-    description: description ?? frontmatter.description,
+  if (proposal.kind === "update_concept" && !existing) {
+    throw new ProposalError(`The concept "${target.name}" no longer exists`, 409)
+  }
+  const base = existing?.frontmatter
+  const next: OkfConceptFrontmatter = {
+    ...(base ?? { type: incoming.type, extra: {} }),
+    ...incoming,
+    description: description ?? incoming.description ?? base?.description,
+    extra: { ...(base?.extra ?? {}), ...incoming.extra },
+    generated: incoming.generated ?? base?.generated,
     verified: [
-      ...(frontmatter.verified ?? []),
-      { by: "human:local", at: now.toISOString().replace(/\.\d{3}Z$/, "Z") },
+      ...(base?.verified ?? []),
+      ...(incoming.verified ?? []),
+      { by: "human:local", at: stamp(now) },
     ],
+  }
+  if (!next.generated) delete next.generated
+  const knownIds = (await listConcepts(root)).map((concept) => concept.id)
+  const issues = checkConceptStandards({
+    id: target.name,
+    type: next.type,
+    staleAfter: next.stale_after,
+    body,
+    knownIds,
+  })
+  if (hasErrors(issues)) {
+    throw new ProposalError(issues.find((issue) => issue.severity === "error")?.message ?? "The concept is not valid", 400)
   }
   try {
     await writeConcept(root, { id: target.name, frontmatter: next, body })
@@ -307,6 +338,62 @@ async function applyConcept(
   }
   proposal.concept = next
   proposal.description = next.description
+}
+
+/** Queue a memory note as knowledge. The proposal gets `generated` only; approval adds `verified`. */
+export async function proposeConceptFromMemory(
+  root: string,
+  input: { id: string; type: string; title?: string; content: string; description?: string },
+  now = new Date()
+): Promise<BrainProposal> {
+  const content = input.content.trim()
+  if (!content) throw new ProposalError("The note is empty", 400)
+  const existing = await readConcept(root, input.id).catch((err: unknown) => {
+    if (err instanceof KnowledgePathError) return null
+    throw err
+  })
+  const knownIds = (await listConcepts(root)).map((concept) => concept.id)
+  const issues = checkConceptStandards({
+    id: input.id,
+    type: input.type,
+    body: content,
+    knownIds,
+  })
+  if (hasErrors(issues)) {
+    throw new ProposalError(issues.find((issue) => issue.severity === "error")?.message ?? "The concept is not valid", 400)
+  }
+  const title = input.title?.trim() || input.id.split("/").at(-1) || input.id
+  const frontmatter: OkfConceptFrontmatter = {
+    ...(existing?.frontmatter ?? { type: input.type.trim(), extra: {} }),
+    type: input.type.trim(),
+    title,
+    description: input.description?.trim() || existing?.frontmatter.description,
+    extra: existing?.frontmatter.extra ?? {},
+    generated: existing?.frontmatter.generated ?? { by: "process:memory-promotion", at: stamp(now) },
+  }
+  delete frontmatter.verified
+  const proposal: BrainProposal = {
+    id: randomUUID(),
+    kind: existing ? "update_concept" : "new_concept",
+    target: { type: "concept", name: input.id },
+    concept: frontmatter,
+    title,
+    rationale: "A memory note promoted to durable knowledge.",
+    content,
+    description: frontmatter.description,
+    source: { kind: "memory", signal: "feedback" },
+    decision: { by: "feedback" },
+    status: "pending",
+    createdAt: now.toISOString(),
+  }
+  await saveProposal(root, proposal)
+  await appendLog(root, {
+    at: now.toISOString(),
+    event: "proposed",
+    proposalId: proposal.id,
+    kind: proposal.kind,
+  })
+  return proposal
 }
 
 /** Approve (apply) or reject a pending proposal. */
@@ -327,7 +414,7 @@ export async function decideProposal(
     const description = input.edits?.description ?? proposal.description
     if (proposal.kind === "memory_note") {
       await appendNote(root, proposal.agent, content, now)
-    } else if (proposal.kind === "new_concept") {
+    } else if (proposal.kind === "new_concept" || proposal.kind === "update_concept") {
       await applyConcept(root, proposal, content, description, now)
     } else {
       const target = proposal.target

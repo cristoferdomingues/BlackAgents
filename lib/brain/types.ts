@@ -30,6 +30,7 @@ export const PROPOSAL_KINDS = [
   "update_rule",
   "new_rule",
   "new_concept",
+  "update_concept",
 ] as const
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 
@@ -72,7 +73,7 @@ export interface BrainProposal {
   content: string
   description?: string
   source: {
-    kind: FeedbackSignal["source"] | "import"
+    kind: FeedbackSignal["source"] | "import" | "memory"
     signal: FeedbackSignal["kind"]
     runId?: string
     rating?: "up" | "down"

@@ -110,4 +110,24 @@ describe("buildGraph", () => {
     expect(byId["agent:tester"].degree).toBe(1)
     expect(byId["rule:orphan"].degree).toBe(0)
   })
+
+  it("adds concept links beside artifact mentions", () => {
+    const arts = [artifact("agent", "tester", "See [revenue](/metrics/revenue.md).")]
+    const graph = buildGraph(arts, [
+      {
+        id: "metrics/revenue",
+        title: "Revenue",
+        body: "Computed by [the query](./query.md). Use the **tester** agent.",
+      },
+      { id: "metrics/query", title: "Query", body: "SQL." },
+    ])
+    expect(graph.links).toEqual(
+      expect.arrayContaining([
+        { source: "concept:metrics/revenue", target: "concept:metrics/query", kind: "concept-concept" },
+        { source: "concept:metrics/revenue", target: "agent:tester", kind: "concept-artifact" },
+        { source: "agent:tester", target: "concept:metrics/revenue", kind: "artifact-concept" },
+      ])
+    )
+    expect(graph.nodes.find((node) => node.id === "concept:metrics/revenue")?.name).toBe("Revenue")
+  })
 })

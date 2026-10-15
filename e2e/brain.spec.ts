@@ -186,4 +186,31 @@ test.describe("brain", () => {
     await expect(page.getByText("From an OKF bundle you previewed.")).toBeVisible()
     await expect(page.getByText("Approve saves metrics/revenue into .black-agents/knowledge/")).toBeVisible()
   })
+
+  test("sends a memory note to the inbox as knowledge", async ({ page }) => {
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            proposals: [],
+            workspaceNotes: [{ date: "2026-10-01", text: "Repo uses pnpm" }],
+            agents: [],
+          },
+        },
+      })
+    )
+    await page.route("**/api/brain/promote", (route) =>
+      route.fulfill({
+        json: { success: true, data: { proposalId: "p2", title: "Repo uses pnpm", kind: "new_concept" } },
+      })
+    )
+    await page.goto("/brain")
+    await page.getByRole("tab", { name: "Memory" }).click()
+    await page.getByRole("button", { name: "Save as knowledge" }).click()
+    await page.getByLabel("Concept id").fill("tools/pnpm")
+    await page.getByRole("button", { name: "Add to inbox" }).click()
+    await expect(page.getByText("is in the Inbox")).toBeVisible()
+    await expect(page.getByText("The note stays in Memory until you approve")).toBeHidden()
+  })
 })

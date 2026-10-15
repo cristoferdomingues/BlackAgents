@@ -67,3 +67,5 @@ export function checkArtifactStandards(artifact: CheckableArtifact): StandardsIs
 export function hasErrors(issues: StandardsIssue[]): boolean {
   return issues.some((i) => i.severity === "error")
 }
+
+export { checkConceptStandards, linkedConceptIds } from "../knowledge/checks"

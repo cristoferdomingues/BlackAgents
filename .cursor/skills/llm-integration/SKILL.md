@@ -1,6 +1,11 @@
 ---
 name: llm-integration
-description: Reference for BlackAgents' LLM layer — the provider contract, the registry, server-side credentials, the fenced-JSON draft/validation protocols, and the single-turn agentic loop the assistant endpoints run. Read when adding a provider, building an assistant-backed API route, or changing how model output is parsed.
+description: >-
+  Reference for BlackAgents' LLM layer — the provider contract, the registry,
+  server-side credentials, the fenced-JSON draft/validation protocols, and the
+  single-turn agentic loop the assistant endpoints run. Read when adding a
+  provider, building an assistant-backed API route, or changing how model output
+  is parsed.
 ---
 
 # BlackAgents LLM Integration

@@ -1,7 +1,5 @@
 ---
 description: Credential and provider I/O security for BlackAgents' LLM layer.
-alwaysApply: false
-globs: lib/llm/**, lib/secrets.ts, app/api/chat/**, app/api/artifacts/draft-body/**, app/api/artifacts/validate/**
 ---
 
 - API keys live only in `~/.black-agents/secrets.json` (mode `0600`) and in server memory; never send a key to the client, log it, or embed it in an error message.

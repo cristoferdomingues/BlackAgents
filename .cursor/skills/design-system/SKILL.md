@@ -1,6 +1,9 @@
 ---
 name: design-system
-description: Reference for the BlackAgents design system — shadcn/ui inventory, Tailwind tokens, layout templates, UX state patterns, theming, and accessibility. Read when building or reviewing UI components and layouts.
+description: >-
+  Reference for the BlackAgents design system — shadcn/ui inventory, Tailwind
+  tokens, layout templates, UX state patterns, theming, and accessibility. Read
+  when building or reviewing UI components and layouts.
 ---
 
 # BlackAgents Design System

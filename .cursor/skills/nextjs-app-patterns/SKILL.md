@@ -1,6 +1,10 @@
 ---
 name: nextjs-app-patterns
-description: Reference for building BlackAgents features — the layered architecture, App Router page/route conventions, the API envelope + zod recipe, the lib/artifacts domain, and the workspace-confined filesystem path. Read when adding or changing app behavior, API routes, or domain logic.
+description: >-
+  Reference for building BlackAgents features — the layered architecture, App
+  Router page/route conventions, the API envelope + zod recipe, the
+  lib/artifacts domain, and the workspace-confined filesystem path. Read when
+  adding or changing app behavior, API routes, or domain logic.
 ---
 
 # BlackAgents App Patterns

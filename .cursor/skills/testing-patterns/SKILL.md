@@ -1,6 +1,10 @@
 ---
 name: testing-patterns
-description: Reference for testing BlackAgents — bootstrapping Vitest + Playwright, unit-testing the lib/ domain, integration-testing API routes, mocking the filesystem and LLM provider, and E2E flows. Read when writing or reviewing tests.
+description: >-
+  Reference for testing BlackAgents — bootstrapping Vitest + Playwright,
+  unit-testing the lib/ domain, integration-testing API routes, mocking the
+  filesystem and LLM provider, and E2E flows. Read when writing or reviewing
+  tests.
 ---
 
 # BlackAgents Testing Patterns

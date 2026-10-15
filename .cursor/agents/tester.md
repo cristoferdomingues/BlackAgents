@@ -1,6 +1,10 @@
 ---
 name: tester
-description: Ensures test coverage for BlackAgents — unit (Vitest) for the lib/ domain, integration for API routes, and E2E (Playwright) for user flows. Bootstraps the test tooling since none exists yet. Use when writing tests, reviewing coverage, or completing a feature that touches code.
+description: >-
+  Ensures test coverage for BlackAgents — unit (Vitest) for the lib/ domain,
+  integration for API routes, and E2E (Playwright) for user flows. Bootstraps
+  the test tooling since none exists yet. Use when writing tests, reviewing
+  coverage, or completing a feature that touches code.
 parallel: true
 ---
 

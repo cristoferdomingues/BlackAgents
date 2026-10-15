@@ -1,7 +1,5 @@
 ---
 description: UI consistency guardrails for BlackAgents components.
-alwaysApply: false
-globs: app/**/*.tsx,components/**/*.tsx
 ---
 
 - Reuse `components/ui/` (shadcn/ui) primitives; don't rebuild what already exists.

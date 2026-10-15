@@ -1,7 +1,5 @@
 ---
 description: Standard response envelope for BlackAgents API routes.
-alwaysApply: false
-globs: app/api/**
 ---
 
 - Every API route returns the `ApiEnvelope`: `{ success: true, data }` or `{ success: false, error }`.

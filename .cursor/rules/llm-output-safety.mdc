@@ -1,7 +1,7 @@
 ---
-description: Treat LLM output as untrusted — parse via protocols, approval-gate every side effect, keep the loop bounded.
-alwaysApply: false
-globs: lib/llm/**, lib/runtime/**, lib/workflows/**, lib/brain/**, app/api/chat/**, app/api/artifacts/draft-body/**, app/api/artifacts/validate/**
+description: >-
+  Treat LLM output as untrusted — parse via protocols, approval-gate every side
+  effect, keep the loop bounded.
 ---
 
 - Model output is untrusted input. Never persist, execute, or act on it until it has passed a `zod` protocol schema (`extractDraft`, `extractValidation`, `extractBundle`, `extractProposalDraft`) or a tool's own argument schema.

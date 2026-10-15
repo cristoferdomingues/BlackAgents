@@ -128,6 +128,25 @@ describe("createMcpConnection", () => {
     expect(cmd === "npx" || path.isAbsolute(cmd)).toBe(true)
   })
 
+  it("resolves ${secret:…} env values before starting a stdio server", async () => {
+    await setMcpSecrets({
+      "mcp.github.env.GITHUB_TOKEN": "ghp_from_secrets",
+    })
+
+    await createMcpConnection({
+      ...emptyConfig,
+      command: "node",
+      args: ["server.js"],
+      env: {
+        GITHUB_TOKEN: "${secret:mcp.github.env.GITHUB_TOKEN}",
+      },
+    })
+
+    expect(stdioCalls).toHaveLength(1)
+    expect(stdioCalls[0]?.env?.GITHUB_TOKEN).toBe("ghp_from_secrets")
+    expect(JSON.stringify(stdioCalls[0]?.env)).not.toContain("${secret:")
+  })
+
   it("resolves ${secret:…} headers before opening the HTTP client", async () => {
     await setMcpSecrets({
       "mcp.github.header.Authorization": "Bearer ghp_from_secrets",

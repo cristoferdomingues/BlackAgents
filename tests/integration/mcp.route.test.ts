@@ -147,6 +147,48 @@ describe("POST /api/mcp", () => {
     )
   })
 
+  it("stores a stdio env value as a secret and writes a placeholder to mcp.json", async () => {
+    const res = await POST(
+      jsonRequest("http://t/api/mcp", "POST", {
+        name: "github",
+        config: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+          env: { GITHUB_TOKEN: "ghp_stdio_token_4242" },
+          transport: "stdio",
+          disabled: true,
+        },
+        secretEnv: ["GITHUB_TOKEN"],
+      })
+    )
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.server.config.env.GITHUB_TOKEN).toBe(
+      "${secret:mcp.github.env.GITHUB_TOKEN}"
+    )
+    expect(json.data.server.secretStatuses).toEqual({
+      "mcp.github.env.GITHUB_TOKEN": { configured: true, last4: "4242" },
+    })
+
+    const mcpContent = await readFile(
+      path.join(env.workspace, ".black-agents", "mcp.json"),
+      "utf8"
+    )
+    expect(mcpContent).toContain("${secret:mcp.github.env.GITHUB_TOKEN}")
+    expect(mcpContent).not.toContain("ghp_stdio_token_4242")
+
+    const secretsRaw = await readFile(
+      path.join(env.configDir, "secrets.json"),
+      "utf8"
+    )
+    const secrets = JSON.parse(secretsRaw) as {
+      mcp?: Record<string, string>
+    }
+    expect(secrets.mcp?.["mcp.github.env.GITHUB_TOKEN"]).toBe(
+      "ghp_stdio_token_4242"
+    )
+  })
+
   it("rejects an HTTP server with no URL", async () => {
     const res = await POST(
       jsonRequest("http://t/api/mcp", "POST", {

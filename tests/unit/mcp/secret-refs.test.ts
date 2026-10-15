@@ -70,6 +70,29 @@ describe("promoteMcpSecrets", () => {
     )
   })
 
+  it("moves env values into upserts and leaves placeholders", () => {
+    const result = promoteMcpSecrets({
+      serverName: "github",
+      config: {
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        headers: {},
+        env: { GITHUB_TOKEN: "ghp_stdio_secret" },
+        disabled: false,
+      },
+      secretEnv: ["GITHUB_TOKEN"],
+      existingSecrets: {},
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.upserts).toEqual({
+      "mcp.github.env.GITHUB_TOKEN": "ghp_stdio_secret",
+    })
+    expect(result.config.env.GITHUB_TOKEN).toBe(
+      "${secret:mcp.github.env.GITHUB_TOKEN}"
+    )
+  })
+
   it("keeps an existing secret when the value is already a ref", () => {
     const result = promoteMcpSecrets({
       serverName: "github",
@@ -118,6 +141,27 @@ describe("resolveMcpServerSecrets", () => {
     ])
     expect(mcpServerSecretStatuses(config, secrets)).toEqual({
       "mcp.github.header.Authorization": { configured: true, last4: "1234" },
+    })
+  })
+
+  it("resolves stdio env secrets and reports redacted status", () => {
+    const config = {
+      command: "npx",
+      args: [] as string[],
+      headers: {} as Record<string, string>,
+      env: {
+        GITHUB_TOKEN: "${secret:mcp.github.env.GITHUB_TOKEN}",
+      },
+      disabled: false,
+    }
+    const secrets = {
+      "mcp.github.env.GITHUB_TOKEN": "ghp_abcd9999",
+    }
+    expect(resolveMcpServerSecrets(config, secrets).env.GITHUB_TOKEN).toBe(
+      "ghp_abcd9999"
+    )
+    expect(mcpServerSecretStatuses(config, secrets)).toEqual({
+      "mcp.github.env.GITHUB_TOKEN": { configured: true, last4: "9999" },
     })
   })
 })

@@ -28,6 +28,7 @@ import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import { WORKSPACE_TEMPLATES } from "@/lib/workspace/templates"
+import { collectMcpEnv, type McpEnvRow } from "@/lib/mcp/env"
 import { collectMcpHeaders, type McpHeaderRow } from "@/lib/mcp/headers"
 import type { McpTrust } from "@/lib/mcp/policy"
 import { mcpSecretId } from "@/lib/mcp/secret-refs"
@@ -79,12 +80,17 @@ function headerNameList(config: McpServerConfig): string[] {
   return Object.keys(config.headers ?? {})
 }
 
+function envNameList(config: McpServerConfig): string[] {
+  return Object.keys(config.env ?? {})
+}
+
 function secretHint(
   serverName: string,
-  headerName: string,
+  kind: "header" | "env",
+  key: string,
   secretStatuses: Record<string, { configured: boolean; last4?: string }> | undefined
 ): string | null {
-  const status = secretStatuses?.[mcpSecretId(serverName, "header", headerName)]
+  const status = secretStatuses?.[mcpSecretId(serverName, kind, key)]
   if (!status?.configured) return null
   return status.last4 ? `••••${status.last4}` : "stored"
 }
@@ -131,6 +137,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
   const [mcpHeaders, setMcpHeaders] = React.useState<McpHeaderRow[]>([
     { name: "", value: "" },
   ])
+  const [mcpEnv, setMcpEnv] = React.useState<McpEnvRow[]>([{ name: "", value: "" }])
   const [savingMcp, setSavingMcp] = React.useState(false)
   const [deletingMcp, setDeletingMcp] = React.useState<string | null>(null)
 
@@ -261,10 +268,17 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       return
     }
 
-    const collected =
+    const collectedHeaders =
       mcpType === "stdio" ? { ok: true as const, headers: {} } : collectMcpHeaders(mcpHeaders)
-    if (!collected.ok) {
-      toast.error(collected.error)
+    if (!collectedHeaders.ok) {
+      toast.error(collectedHeaders.error)
+      return
+    }
+
+    const collectedEnv =
+      mcpType === "stdio" ? collectMcpEnv(mcpEnv) : { ok: true as const, env: {} }
+    if (!collectedEnv.ok) {
+      toast.error(collectedEnv.error)
       return
     }
 
@@ -275,19 +289,22 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         .map((a) => a.trim())
         .filter(Boolean)
 
-      const headerNames = Object.keys(collected.headers)
+      const headerNames = Object.keys(collectedHeaders.headers)
+      const envNames = Object.keys(collectedEnv.env)
       const payload = {
         name,
         config: {
           command: mcpType === "stdio" ? mcpCommand.trim() : undefined,
           args: mcpType === "stdio" ? args : undefined,
+          env: mcpType === "stdio" ? collectedEnv.env : undefined,
           url: mcpType === "stdio" ? undefined : mcpUrl.trim(),
-          headers: mcpType === "stdio" ? undefined : collected.headers,
+          headers: mcpType === "stdio" ? undefined : collectedHeaders.headers,
           transport: mcpType,
         },
         ...(mcpType !== "stdio" && headerNames.length > 0
           ? { secretHeaders: headerNames }
           : {}),
+        ...(mcpType === "stdio" && envNames.length > 0 ? { secretEnv: envNames } : {}),
       }
 
       await apiFetch("/api/mcp", {
@@ -301,6 +318,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
       setMcpArgs("")
       setMcpUrl("")
       setMcpHeaders([{ name: "", value: "" }])
+      setMcpEnv([{ name: "", value: "" }])
       await loadMcp()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to configure MCP server")
@@ -695,8 +713,19 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                                 Headers:{" "}
                                 {headerNameList(s.config)
                                   .map((h) => {
-                                    const hint = secretHint(s.name, h, s.secretStatuses)
+                                    const hint = secretHint(s.name, "header", h, s.secretStatuses)
                                     return hint ? `${h} (${hint})` : h
+                                  })
+                                  .join(", ")}
+                              </p>
+                            ) : null}
+                            {envNameList(s.config).length > 0 ? (
+                              <p className="font-sans">
+                                Secrets:{" "}
+                                {envNameList(s.config)
+                                  .map((key) => {
+                                    const hint = secretHint(s.name, "env", key, s.secretStatuses)
+                                    return hint ? `${key} (${hint})` : key
                                   })
                                   .join(", ")}
                               </p>
@@ -796,26 +825,103 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                   </div>
 
                   {mcpType === "stdio" ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="mcp-command">Command</Label>
-                        <Input
-                          id="mcp-command"
-                          placeholder="e.g. npx, node, python3"
-                          value={mcpCommand}
-                          onChange={(e) => setMcpCommand(e.target.value)}
-                          spellCheck={false}
-                        />
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="mcp-command">Command</Label>
+                          <Input
+                            id="mcp-command"
+                            placeholder="e.g. npx, node, python3"
+                            value={mcpCommand}
+                            onChange={(e) => setMcpCommand(e.target.value)}
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="mcp-args">Arguments (space-separated)</Label>
+                          <Input
+                            id="mcp-args"
+                            placeholder="e.g. -y crypto-mcp-server --port 8080"
+                            value={mcpArgs}
+                            onChange={(e) => setMcpArgs(e.target.value)}
+                            spellCheck={false}
+                          />
+                        </div>
                       </div>
+
                       <div className="space-y-2">
-                        <Label htmlFor="mcp-args">Arguments (space-separated)</Label>
-                        <Input
-                          id="mcp-args"
-                          placeholder="e.g. -y crypto-mcp-server --port 8080"
-                          value={mcpArgs}
-                          onChange={(e) => setMcpArgs(e.target.value)}
-                          spellCheck={false}
-                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>Secrets</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setMcpEnv((rows) => [...rows, { name: "", value: "" }])
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add secret
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Environment variables for the command, such as an API key.
+                          Values are saved as secrets; only a{" "}
+                          <code className="rounded bg-muted px-1">{`\${secret:…}`}</code> placeholder
+                          is written to{" "}
+                          <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
+                        </p>
+                        {mcpEnv.map((row, index) => (
+                          <div key={index} className="flex gap-2">
+                            <Input
+                              className="min-w-0 flex-1"
+                              aria-label={`Secret ${index + 1} name`}
+                              placeholder="GITHUB_TOKEN"
+                              value={row.name}
+                              onChange={(e) =>
+                                setMcpEnv((rows) =>
+                                  rows.map((item, i) =>
+                                    i === index ? { ...item, name: e.target.value } : item
+                                  )
+                                )
+                              }
+                              spellCheck={false}
+                              autoComplete="off"
+                            />
+                            <Input
+                              className="min-w-0 flex-1"
+                              type="password"
+                              aria-label={`Secret ${index + 1} value`}
+                              placeholder="ghp_… or other token"
+                              value={row.value}
+                              onChange={(e) =>
+                                setMcpEnv((rows) =>
+                                  rows.map((item, i) =>
+                                    i === index ? { ...item, value: e.target.value } : item
+                                  )
+                                )
+                              }
+                              spellCheck={false}
+                              autoComplete="new-password"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0"
+                              aria-label={`Remove secret ${index + 1}`}
+                              onClick={() =>
+                                setMcpEnv((rows) =>
+                                  rows.length === 1
+                                    ? [{ name: "", value: "" }]
+                                    : rows.filter((_, i) => i !== index)
+                                )
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ) : (

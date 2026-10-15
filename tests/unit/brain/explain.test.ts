@@ -42,6 +42,9 @@ describe("approveEffect", () => {
     expect(approveEffect({ kind: "new_skill", target: { type: "skill", name: "api" } })).toContain("creates the skill api")
     expect(approveEffect({ kind: "update_rule", target: { type: "rule", name: "style" } })).toContain("rewrites the rule style")
     expect(approveEffect({ kind: "new_rule", target: { type: "rule", name: "style" } })).toContain("creates the rule style")
+    expect(approveEffect({ kind: "new_concept", target: { type: "concept", name: "crypto/fees" } })).toContain(
+      ".black-agents/knowledge/"
+    )
   })
 
   it("falls back when the target is missing", () => {
@@ -50,6 +53,12 @@ describe("approveEffect", () => {
 })
 
 describe("proposalOrigin", () => {
+  it("says an imported concept came from a bundle", () => {
+    expect(proposalOrigin({ source: source({ kind: "import" }), decision: { by: "feedback" } })).toBe(
+      "From an OKF bundle you previewed."
+    )
+  })
+
   it("describes feedback from the Assistant", () => {
     expect(proposalOrigin({ source: source({ rating: "down" }), decision: { by: "feedback" } })).toBe(
       "From your thumbs down in the Assistant."

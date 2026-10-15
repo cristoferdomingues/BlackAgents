@@ -13,6 +13,7 @@ import {
   LEARNING_MIN_IMPORTANCE,
 } from "@/lib/decision/classify-learning"
 import { loadDecisionClient, type ResolvedDecisionClient } from "@/lib/decision/client"
+import { KnowledgePathError, readConcept, writeConcept } from "@/lib/knowledge/store"
 import { isProviderId } from "@/lib/llm/registry"
 import { checkArtifactStandards, hasErrors, RULE_MAX_LINES } from "@/lib/standards/checks"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
@@ -73,6 +74,7 @@ const KIND_TARGET: Record<ProposalKind, { type: "skill" | "rule"; exists: boolea
   new_skill: { type: "skill", exists: false },
   update_rule: { type: "rule", exists: true },
   new_rule: { type: "rule", exists: false },
+  new_concept: null,
 }
 
 export function extractProposalDraft(text: string): ProposalDraft | null {
@@ -273,6 +275,40 @@ function ruleExtra(existing: Artifact | null): { alwaysApply?: boolean; globs?: 
   }
 }
 
+/** Human approval writes `verified` and the concept file. A model never does this. */
+async function applyConcept(
+  root: string,
+  proposal: BrainProposal,
+  body: string,
+  description: string | undefined,
+  now: Date
+): Promise<void> {
+  const target = proposal.target
+  const frontmatter = proposal.concept
+  if (!target || target.type !== "concept" || !frontmatter) {
+    throw new ProposalError("The proposal has no concept", 400)
+  }
+  if (await readConcept(root, target.name)) {
+    throw new ProposalError(`The concept "${target.name}" already exists`, 409)
+  }
+  const next = {
+    ...frontmatter,
+    description: description ?? frontmatter.description,
+    verified: [
+      ...(frontmatter.verified ?? []),
+      { by: "human:local", at: now.toISOString().replace(/\.\d{3}Z$/, "Z") },
+    ],
+  }
+  try {
+    await writeConcept(root, { id: target.name, frontmatter: next, body })
+  } catch (err) {
+    if (err instanceof KnowledgePathError) throw new ProposalError(err.message, 400)
+    throw err
+  }
+  proposal.concept = next
+  proposal.description = next.description
+}
+
 /** Approve (apply) or reject a pending proposal. */
 export async function decideProposal(
   root: string,
@@ -291,10 +327,12 @@ export async function decideProposal(
     const description = input.edits?.description ?? proposal.description
     if (proposal.kind === "memory_note") {
       await appendNote(root, proposal.agent, content, now)
+    } else if (proposal.kind === "new_concept") {
+      await applyConcept(root, proposal, content, description, now)
     } else {
       const target = proposal.target
       const spec = KIND_TARGET[proposal.kind]
-      if (!target || !spec) throw new ProposalError("The proposal has no target", 400)
+      if (!target || !spec || target.type === "concept") throw new ProposalError("The proposal has no target", 400)
       const existing = await findArtifact(root, target.type, target.name)
       if (spec.exists && !existing) throw new ProposalError(`The ${target.type} "${target.name}" no longer exists`, 409)
       if (!spec.exists && existing) throw new ProposalError(`The ${target.type} "${target.name}" already exists`, 409)

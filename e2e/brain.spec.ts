@@ -121,4 +121,69 @@ test.describe("brain", () => {
     await expect(page.getByRole("progressbar", { name: "Memory space used" })).toBeVisible()
     await expect(page.getByText("15 / 3,000 characters")).toBeVisible()
   })
+
+  test("previews an OKF folder and sends a concept to the inbox", async ({ page }) => {
+    let proposals: unknown[] = []
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({
+        json: { success: true, data: { proposals, workspaceNotes: [], agents: [] } },
+      })
+    )
+    await page.route("**/api/knowledge/import", async (route) => {
+      const body = route.request().postDataJSON() as { action: string; id?: string }
+      if (body.action === "queue") {
+        proposals = [
+          {
+            ...proposal,
+            id: "c1",
+            kind: "new_concept",
+            agent: undefined,
+            title: "Revenue",
+            target: { type: "concept", name: "metrics/revenue" },
+            source: { kind: "import", signal: "feedback" },
+            content: "Revenue.",
+          },
+        ]
+        await route.fulfill({ json: { success: true, data: { proposalId: "c1", title: "Revenue" } } })
+        return
+      }
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            path: "/tmp/bundle",
+            version: "0.2",
+            levels: [
+              {
+                dir: "",
+                sections: [
+                  {
+                    heading: "Metrics",
+                    entries: [
+                      { title: "Revenue", description: "Recognized revenue.", kind: "concept", target: "metrics/revenue" },
+                    ],
+                  },
+                ],
+              },
+            ],
+            orphans: [],
+            missing: [],
+          },
+        },
+      })
+    })
+
+    await page.goto("/brain")
+    await page.getByRole("tab", { name: "Knowledge" }).click()
+    await expect(page.getByText("A preview only reads the folder.")).toBeVisible()
+    await page.getByLabel("Bundle folder").fill("/tmp/bundle")
+    await page.getByRole("button", { name: "Preview" }).click()
+    await expect(page.getByText("Nothing has been saved.")).toBeVisible()
+    await expect(page.getByText("metrics/revenue")).toBeVisible()
+    await page.getByRole("button", { name: "Add to inbox" }).click()
+    await expect(page.getByText("is in the Inbox")).toBeVisible()
+    await page.getByRole("tab", { name: /Inbox/ }).click()
+    await expect(page.getByText("From an OKF bundle you previewed.")).toBeVisible()
+    await expect(page.getByText("Approve saves metrics/revenue into .black-agents/knowledge/")).toBeVisible()
+  })
 })

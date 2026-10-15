@@ -9,6 +9,7 @@ import {
   HelpCircle,
   History,
   Inbox,
+  Library,
   Info,
   Loader2,
   MessageSquare,
@@ -40,6 +41,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { KnowledgeTab } from "@/components/features/brain/knowledge-tab"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const INTRO_DISMISSED_KEY = "black-agents:brain-intro-dismissed"
@@ -137,9 +139,10 @@ export function BrainPage(): React.ReactElement {
         </p>
       ) : (
         <Tabs defaultValue="inbox" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
             <TabTrigger value="inbox" icon={Inbox} label="Inbox" count={pending.length} highlight />
             <TabTrigger value="memory" icon={NotebookPen} label="Memory" count={noteCount} />
+            <TabTrigger value="knowledge" icon={Library} label="Knowledge" count={0} />
             <TabTrigger value="history" icon={History} label="History" count={decided.length} />
           </TabsList>
 
@@ -227,6 +230,10 @@ export function BrainPage(): React.ReactElement {
             )}
           </TabsContent>
 
+          <TabsContent value="knowledge" className="space-y-3 pt-3">
+            <KnowledgeTab onQueued={load} />
+          </TabsContent>
+
           <TabsContent value="history" className="space-y-3 pt-3">
             <TabIntro>
               Every suggestion you approved or rejected, newest first. Approved changes are also logged in{" "}
@@ -304,8 +311,8 @@ function HowItWorks({ onClose }: { onClose: () => void }): React.ReactElement {
         })}
       </ol>
       <p className="text-xs text-muted-foreground">
-        Memory is for preferences and lessons (“use pnpm”, “answer briefly”). Facts that must stay correct for a
-        long time belong in a skill or rule.
+        Memory is for preferences and lessons (“use pnpm”, “answer briefly”). Durable facts from an OKF bundle
+        belong in the Knowledge tab, and they are saved only after you approve them.
       </p>
     </section>
   )
@@ -314,6 +321,7 @@ function HowItWorks({ onClose }: { onClose: () => void }): React.ReactElement {
 const TAB_HELP: Record<string, string> = {
   inbox: "Suggested changes waiting for your decision",
   memory: "Notes your agents remember in every chat",
+  knowledge: "Durable facts from an OKF bundle. Nothing is saved until you approve it",
   history: "Suggestions you already approved or rejected",
 }
 
@@ -506,7 +514,11 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
               {proposal.target.type}:{proposal.target.name}
             </Badge>
           ) : null}
-          <Badge variant="outline">{scopeLabel(proposal.agent)}</Badge>
+          {proposal.kind === "new_concept" ? (
+            <Badge variant="outline">Knowledge</Badge>
+          ) : (
+            <Badge variant="outline">{scopeLabel(proposal.agent)}</Badge>
+          )}
           <span className="text-xs text-muted-foreground">{proposalOrigin(proposal)}</span>
         </div>
         <CardTitle className="text-base">{proposal.title}</CardTitle>
@@ -523,7 +535,9 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
           </div>
         ) : null}
         <div className="space-y-1.5">
-          <Label htmlFor={`${proposal.id}-content`}>{isArtifact ? "New body" : "Note"}</Label>
+          <Label htmlFor={`${proposal.id}-content`}>
+            {proposal.kind === "new_concept" ? "Concept text" : isArtifact ? "New body" : "Note"}
+          </Label>
           <Textarea
             id={`${proposal.id}-content`}
             rows={isArtifact ? 10 : 2}

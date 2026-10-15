@@ -6,7 +6,7 @@ import { nameSchema } from "@/lib/artifacts/schemas"
 import { listDir, pathExists, readText, resolveInWorkspace, writeText } from "@/lib/fs-service"
 import { ensureLocalStateIgnored } from "@/lib/workflows/store"
 
-import { LEARNING_ACTIONS, type BrainNote, type BrainProposal } from "./types"
+import { PROPOSAL_KINDS, type BrainNote, type BrainProposal } from "./types"
 
 /**
  * Brain files inside the workspace:
@@ -24,7 +24,7 @@ const NOTE_LINE_RE = /^- \[(\d{4}-\d{2}-\d{2})\] (.+)$/
 const proposalFileSchema = z
   .object({
     id: z.string(),
-    kind: z.enum(LEARNING_ACTIONS).exclude(["nothing"]),
+    kind: z.enum(PROPOSAL_KINDS),
     title: z.string(),
     content: z.string(),
     status: z.enum(["pending", "approved", "rejected"]),

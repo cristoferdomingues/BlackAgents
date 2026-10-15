@@ -8,6 +8,7 @@ export const KIND_LABEL: Record<ProposalKind, string> = {
   new_skill: "New skill",
   update_rule: "Update rule",
   new_rule: "New rule",
+  new_concept: "New concept",
 }
 
 export const KIND_HELP: Record<ProposalKind, string> = {
@@ -16,6 +17,7 @@ export const KIND_HELP: Record<ProposalKind, string> = {
   new_skill: "Creates a new skill: reference knowledge the assistant loads when a task matches.",
   update_rule: "Replaces the text of an existing rule with an improved version.",
   new_rule: "Creates a new rule: a short guardrail the assistant follows.",
+  new_concept: "A durable fact from an OKF bundle. It is saved as knowledge, not as a memory note.",
 }
 
 /** One sentence: what happens on Approve. */
@@ -33,11 +35,14 @@ export function approveEffect(proposal: Pick<BrainProposal, "kind" | "agent" | "
       return `Approve rewrites the rule ${target} with the text below.`
     case "new_rule":
       return `Approve creates the rule ${target} in this workspace.`
+    case "new_concept":
+      return `Approve saves ${target} into .black-agents/knowledge/ and marks it reviewed by you.`
   }
 }
 
 /** Where a proposal came from, in plain words. */
 export function proposalOrigin(proposal: Pick<BrainProposal, "source" | "decision">): string {
+  if (proposal.source.kind === "import") return "From an OKF bundle you previewed."
   const from =
     proposal.source.signal === "self"
       ? "a workflow self-check"

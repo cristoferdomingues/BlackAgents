@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { nameSchema } from "../artifacts/schemas"
+import type { OkfConceptFrontmatter } from "../knowledge/schema"
 
 /**
  * Second Brain domain types (isomorphic). Each agent has its own brain file
@@ -20,7 +21,17 @@ export const LEARNING_ACTIONS = [
   "new_rule",
 ] as const
 export type LearningAction = (typeof LEARNING_ACTIONS)[number]
-export type ProposalKind = Exclude<LearningAction, "nothing">
+
+/** Inbox kinds. `new_concept` is an OKF import, not something Jev drafts. */
+export const PROPOSAL_KINDS = [
+  "memory_note",
+  "update_skill",
+  "new_skill",
+  "update_rule",
+  "new_rule",
+  "new_concept",
+] as const
+export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 
 export function isLearningAction(value: unknown): value is LearningAction {
   return typeof value === "string" && (LEARNING_ACTIONS as readonly string[]).includes(value)
@@ -42,7 +53,7 @@ export const feedbackSignalSchema = z.object({
 export type FeedbackSignal = z.infer<typeof feedbackSignalSchema>
 
 export interface ProposalTarget {
-  type: "skill" | "rule"
+  type: "skill" | "rule" | "concept"
   name: string
 }
 
@@ -51,15 +62,17 @@ export interface BrainProposal {
   kind: ProposalKind
   /** Owner brain; absent = shared workspace notes. */
   agent?: string
-  /** Artifact to create or update (skill/rule kinds). */
+  /** Artifact to create or update, or the concept id for `new_concept`. */
   target?: ProposalTarget
+  /** OKF frontmatter kept until a `new_concept` proposal is approved. */
+  concept?: OkfConceptFrontmatter
   title: string
   rationale: string
   /** Note text, or the full new markdown body for skill/rule kinds. */
   content: string
   description?: string
   source: {
-    kind: FeedbackSignal["source"]
+    kind: FeedbackSignal["source"] | "import"
     signal: FeedbackSignal["kind"]
     runId?: string
     rating?: "up" | "down"

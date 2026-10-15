@@ -1,5 +1,7 @@
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 
+import { CRYPTO_KNOWLEDGE } from "./crypto-knowledge"
+
 export interface TemplateArtifact {
   relativePath: string
   content: string
@@ -152,9 +154,10 @@ You are the portfolio-rebalancer agent. You analyze crypto portfolio allocations
 
 1. Read the \`risk-management\` rule for allocation limits and slippage boundaries.
 2. Consult the \`defi-lending-protocols\` skill for staking or yield opportunities on held assets.
-3. Calculate current percentage weightings per asset and deviation from target percentages.
-4. Prioritize rebalancing via new capital allocation (DCA) to minimize taxable swap events.
-5. Output clear, step-by-step rebalancing recommendations with rationale.
+3. Read \`.black-agents/knowledge/index.md\`, then open only the one concept the task needs with fs_read (for example \`.black-agents/knowledge/crypto/bitcoin.md\` for BTC). Do not load the whole knowledge folder.
+4. Calculate current percentage weightings per asset and deviation from target percentages.
+5. Prioritize rebalancing via new capital allocation (DCA) to minimize taxable swap events.
+6. Output clear, step-by-step rebalancing recommendations with rationale.
 
 ## Output
 
@@ -238,6 +241,7 @@ Sequence a comprehensive weekly crypto asset audit and rebalancing review.
           2
         ),
       },
+      ...CRYPTO_KNOWLEDGE,
     ],
   },
   software: {

@@ -2,7 +2,8 @@ import { z } from "zod"
 
 import { findBuiltinArtifact, withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import { findArtifact, scanWorkspace } from "@/lib/artifacts/parser"
-import { nameSchema } from "@/lib/artifacts/schemas"
+import { artifactInputSchema, nameSchema } from "@/lib/artifacts/schemas"
+import { draftToArtifact } from "@/lib/artifacts/serializer"
 import type { Artifact } from "@/lib/artifacts/types"
 import { loadBrainContext } from "@/lib/brain/context"
 import {
@@ -36,7 +37,11 @@ import type { Approver } from "@/lib/runtime/ask-user"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, buildToolset } from "@/lib/runtime/tools"
 import type { AgentLoopEvent, RuntimeTool } from "@/lib/runtime/types"
 
-import { selectTurnArtifacts, type TurnArtifactSelection } from "./turn-artifacts"
+import {
+  composeDraftPrompt,
+  selectTurnArtifacts,
+  type TurnArtifactSelection,
+} from "./turn-artifacts"
 
 export const chatRequestSchema = z.object({
   provider: z.string().trim().min(1),
@@ -52,6 +57,8 @@ export const chatRequestSchema = z.object({
     .min(1, "At least one message is required"),
   temperature: z.number().finite().min(0).max(2).optional(),
   agent: nameSchema.optional(),
+  /** An unsaved artifact from the editor: an agent becomes the persona; others join the context. */
+  draft: artifactInputSchema.optional(),
   /** Auto-approve every write-risk call for this message (exec still asks). */
   allowWrites: z.boolean().optional(),
   /** Auto-approve builtin file writes for this message (protected paths still ask). */
@@ -101,8 +108,11 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
 
   const config = await readConfig()
   const root = config.currentPath ?? null
+  const draft = request.draft ? draftToArtifact(request.draft) : undefined
   let persona: Artifact | undefined
-  if (request.agent) {
+  if (draft?.type === "agent") {
+    persona = draft
+  } else if (request.agent) {
     const agent =
       (root ? await findArtifact(root, "agent", request.agent) : null) ??
       findBuiltinArtifact("agent", request.agent)
@@ -172,11 +182,15 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
     loadDecisionClient(),
     settingsPromise,
   ])
-  const all = withBuiltinArtifacts(workspaceArtifacts)
+  // The draft replaces its saved version, so the old text is never loaded beside it.
+  const all = withBuiltinArtifacts(workspaceArtifacts).filter(
+    (a) => !draft || a.type !== draft.type || a.name !== draft.name
+  )
   const message = lastUserMessage(request.messages)
   const selection = await selectTurnArtifacts({ message, all, persona, resolved })
 
   const sections = [persona ? buildAgentPersonaContext(persona) : await buildSystemContext()]
+  if (draft && draft.type !== "agent") sections.push(composeDraftPrompt(draft))
   if (selection.prompt) sections.push(selection.prompt)
   if (root) {
     const fileMentions = new Set<string>()

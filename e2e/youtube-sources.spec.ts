@@ -39,6 +39,7 @@ test.describe("YouTube sources", () => {
     })
 
     await page.goto("/skills/new")
+    await page.getByRole("button", { name: "Start blank" }).click()
     await page.getByLabel("Name").fill("code-review")
     await expect(page.getByRole("button", { name: "Draft with assistant" })).toBeDisabled()
     await page.getByLabel("YouTube videos").fill(VIDEO.url)
@@ -62,6 +63,7 @@ test.describe("YouTube sources", () => {
       })
     )
     await page.goto("/skills/new")
+    await page.getByRole("button", { name: "Start blank" }).click()
     await page.getByLabel("YouTube videos").fill("https://youtu.be/dQw4w9WgXcQ")
     await page.getByRole("button", { name: "Add video" }).click()
     await expect(page.getByText("This video has no captions. Paste the transcript instead.")).toBeVisible()

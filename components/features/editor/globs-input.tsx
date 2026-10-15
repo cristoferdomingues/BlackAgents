@@ -25,6 +25,7 @@ export function GlobsInput({
     <div className="space-y-2">
       <Input
         value={draft}
+        aria-label="File patterns"
         placeholder="e.g. **/src/**/*.ts — press Enter to add"
         spellCheck={false}
         onChange={(e) => setDraft(e.target.value)}

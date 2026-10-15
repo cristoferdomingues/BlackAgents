@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
-import { streamPost, type SseEvent } from "@/lib/sse-client"
+import { streamPost } from "@/lib/sse-client"
 import { cn } from "@/lib/utils"
 import { metaForType } from "@/lib/artifacts/constants"
 import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
@@ -70,26 +70,13 @@ import {
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
 import { inspectModelRef, type ModelRef } from "@/lib/llm/model-ref"
 import {
-  chatApprovalRequiredEventSchema,
-  chatApprovalResolvedEventSchema,
-  chatContextEventSchema,
   type ChatContextModel,
   chatDoneEventSchema,
   chatErrorEventSchema,
-  chatThinkingEventSchema,
-  chatTokenEventSchema,
-  chatToolCallEventSchema,
-  chatToolResultEventSchema,
 } from "@/lib/assistant/chat-events"
-import {
-  addReasoning,
-  addToolCall,
-  completeToolCall,
-  type ThinkingStep,
-} from "@/lib/assistant/thinking"
+import { applyChatEvent, EMPTY_LIVE, type LiveTurn } from "@/lib/assistant/live-turn"
 import type { TurnArtifact } from "@/lib/assistant/turn-artifacts"
 import type { AiSettings } from "@/lib/settings"
-import type { ApprovalRequest } from "@/lib/runtime/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Button } from "@/components/ui/button"
@@ -158,60 +145,6 @@ function toRequestMessage(turn: Turn): {
 
 function turnAttachments(turn: Turn): AttachmentMeta[] {
   return turn.files?.map(attachmentMeta) ?? turn.attachments ?? []
-}
-
-/** The assistant reply while it is still streaming. */
-interface LiveTurn {
-  content: string
-  thinking: ThinkingStep[]
-  approvals: ApprovalRequest[]
-  artifacts: TurnArtifact[]
-  model?: ChatContextModel
-}
-
-const EMPTY_LIVE: LiveTurn = { content: "", thinking: [], approvals: [], artifacts: [] }
-
-function applyEvent(live: LiveTurn, { event, data }: SseEvent): LiveTurn {
-  switch (event) {
-    case "context": {
-      const parsed = chatContextEventSchema.safeParse(data)
-      if (!parsed.success) return live
-      return {
-        ...live,
-        artifacts: parsed.data.artifacts,
-        ...(parsed.data.model ? { model: parsed.data.model } : {}),
-      }
-    }
-    case "thinking": {
-      const parsed = chatThinkingEventSchema.safeParse(data)
-      return parsed.success ? { ...live, thinking: addReasoning(live.thinking, parsed.data.content) } : live
-    }
-    case "token": {
-      const parsed = chatTokenEventSchema.safeParse(data)
-      return parsed.success ? { ...live, content: parsed.data.content } : live
-    }
-    case "tool_call": {
-      const parsed = chatToolCallEventSchema.safeParse(data)
-      if (!parsed.success) return live
-      return { ...live, content: "", thinking: addToolCall(live.thinking, parsed.data, live.content) }
-    }
-    case "tool_result": {
-      const parsed = chatToolResultEventSchema.safeParse(data)
-      return parsed.success
-        ? { ...live, thinking: completeToolCall(live.thinking, parsed.data.trace) }
-        : live
-    }
-    case "approval_required": {
-      const parsed = chatApprovalRequiredEventSchema.safeParse(data)
-      return parsed.success ? { ...live, approvals: [...live.approvals, parsed.data.approval] } : live
-    }
-    case "approval_resolved": {
-      const parsed = chatApprovalResolvedEventSchema.safeParse(data)
-      return parsed.success ? { ...live, approvals: live.approvals.filter((a) => a.id !== parsed.data.id) } : live
-    }
-    default:
-      return live
-  }
 }
 
 const SUGGESTIONS = [
@@ -718,7 +651,7 @@ export function ChatPage({
             outcome.error = parsed.success ? parsed.data.message : "The assistant failed"
             return
           }
-          current = applyEvent(current, event)
+          current = applyChatEvent(current, event)
           if (current.model) setResolvedModel({ agentKey, model: current.model })
           setLive(current)
         }

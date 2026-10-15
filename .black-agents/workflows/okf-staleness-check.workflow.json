@@ -1,0 +1,39 @@
+{
+  "name": "okf-staleness-check",
+  "description": "Daily audit of the BlackAgents OKF knowledge layer — staleness, broken links and missing provenance — filing re-verification proposals into the Brain inbox.",
+  "task": "Audit the workspace knowledge layer: scan <workspace>/.black-agents/knowledge/ for OKF v0.2 concepts, flag overdue stale_after, unverified provenance and broken concept links, file re-verification proposals into the Brain inbox, and report the findings.",
+  "trigger": {
+    "type": "daily",
+    "at": "07:00"
+  },
+  "steps": [
+    {
+      "id": "knowledge-audit",
+      "agent": "knowledge-steward",
+      "instructions": "Scan every concept under .black-agents/knowledge/ (excluding index.md and log.md). Check stale_after dates, generated/verified provenance, links to non-existent concepts, and OKF v0.2 frontmatter validity. Write one re-verify proposal per overdue concept into the Brain inbox using the Brain store's existing JSON shape; if the inbox is unreachable, emit proposals as a report instead. Never edit concept files or mark anything verified. Fail the step (non-zero) if any concept has malformed frontmatter.",
+      "input": "task",
+      "files": [],
+      "allowWrites": false,
+      "maxTurns": 30,
+      "gate": true,
+      "login": false
+    },
+    {
+      "id": "audit-report",
+      "agent": "knowledge-steward",
+      "instructions": "Consolidate the audit output into a single markdown report: concepts scanned, overdue, unverified, broken links, malformed files, and the proposals filed (or emitted). Keep it to a table plus a 3-line summary.",
+      "input": "previous",
+      "files": [],
+      "allowWrites": false,
+      "maxTurns": 30,
+      "gate": false,
+      "login": false
+    }
+  ],
+  "limits": {
+    "stepTimeoutMinutes": 30,
+    "runTimeoutMinutes": 180,
+    "maxRetries": 1
+  },
+  "selfAssess": false
+}

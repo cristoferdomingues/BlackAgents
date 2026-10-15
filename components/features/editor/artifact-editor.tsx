@@ -8,9 +8,11 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import {
   ArrowLeft,
+  ChevronDown,
   Eye,
   Loader2,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Save,
   ShieldCheck,
@@ -24,12 +26,15 @@ import { apiFetch, ApiError } from "@/lib/api"
 import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { applyMentions } from "@/lib/artifacts/mentions"
+import { ABILITY_LEVELS, abilityChoiceOf } from "@/lib/artifacts/abilities"
 import {
-  builtinToolNameSchema,
-  DEFAULT_AGENT_TOOLS,
-  isBuiltinToolName,
-} from "@/lib/runtime/tool-names"
-import { AgentToolsField } from "@/components/features/editor/agent-tools-field"
+  editorChecks,
+  ruleActivationOf,
+  suggestName,
+  toKebabWhileTyping,
+} from "@/lib/artifacts/editor-helpers"
+import type { StarterTemplate } from "@/lib/artifacts/starter-templates"
+import { builtinToolNameSchema, DEFAULT_AGENT_TOOLS, isBuiltinToolName } from "@/lib/runtime/tool-names"
 import { ModelChoiceFields, useSavedTaskModels } from "@/components/features/models/model-choice-fields"
 import {
   MODEL_SELECT_VALUES,
@@ -44,17 +49,19 @@ import type { ValidationResult } from "@/lib/llm/validation"
 import type { Artifact, ArtifactType, Platform } from "@/lib/artifacts/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
-import {
-  MarkdownEditor,
-  type MentionItem,
-} from "@/components/features/editor/markdown-editor"
+import { MarkdownEditor, type MentionItem } from "@/components/features/editor/markdown-editor"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
-import { GlobsInput } from "@/components/features/editor/globs-input"
-import { StandardsHints } from "@/components/features/editor/standards-hints"
+import { AbilitiesField } from "@/components/features/editor/abilities-field"
+import { RuleActivationField } from "@/components/features/editor/rule-activation-field"
+import { EditorSection } from "@/components/features/editor/editor-section"
+import { EditorSidePanel } from "@/components/features/editor/editor-side-panel"
+import { StartPicker } from "@/components/features/editor/start-picker"
+import { TryChatPanel, type TryDraft } from "@/components/features/editor/try-chat-panel"
+import { DeleteArtifactDialog, ValidationDialog } from "@/components/features/editor/editor-dialogs"
+import { useAssistantProvider } from "@/components/features/editor/use-assistant-provider"
 import { SkillTriggerButton } from "@/components/features/skills/skill-trigger"
 import { YouTubeSourcesField } from "@/components/features/editor/youtube-sources"
 import type { YouTubeDraftSource } from "@/lib/sources/youtube"
-import type { ProvidersState } from "@/components/features/providers/provider-readiness"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -62,24 +69,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 const createFormSchema = (isEdit: boolean, type: ArtifactType) =>
   z
     .object({
-      name: isEdit
-        ? z
-            .string()
-            .trim()
-            .min(1, "Name is required")
-            .max(80, "Name is too long")
-        : nameSchema,
+      name: isEdit ? z.string().trim().min(1, "Name is required").max(80, "Name is too long") : nameSchema,
       description: z.string().trim().min(1, "Description is required"),
       parallel: z.boolean().default(false),
       alwaysApply: z.boolean().default(false),
@@ -103,9 +103,6 @@ const createFormSchema = (isEdit: boolean, type: ArtifactType) =>
 
 type FormValues = z.infer<ReturnType<typeof createFormSchema>>
 
-const LAST_PROVIDER_KEY = "black-agents:last-provider"
-const lastModelKey = (provider: string) => `black-agents:last-model:${provider}`
-
 interface DraftBodyResponse {
   body: string
   description: string
@@ -113,164 +110,150 @@ interface DraftBodyResponse {
   links: Array<{ to: ArtifactType; toName: string; kind: string }>
 }
 
-function severityClass(severity: "error" | "warning" | "info"): string {
-  switch (severity) {
-    case "error":
-      return "text-destructive"
-    case "warning":
-      return "text-amber-500"
-    default:
-      return "text-muted-foreground"
+const DESCRIPTION_HINT: Record<ArtifactType, string> = {
+  agent: "One sentence: what this agent does. The assistant uses it to pick the agent.",
+  rule: "One sentence: what this rule protects.",
+  skill: "Say when to use it, e.g. “Use when writing migrations …”. This is how the skill is found.",
+  command: "One sentence: what this command gets done.",
+}
+
+const BODY_COPY: Record<ArtifactType, { title: string; description: string; placeholder: string }> = {
+  agent: {
+    title: "Instructions",
+    description: "Who the agent is and how it works. Type @ to link a rule or skill.",
+    placeholder: "Write the agent's instructions in Markdown… Type @ to link another artifact.",
+  },
+  rule: {
+    title: "The rule",
+    description: "Short do / don't lines. Keep it under 40 lines.",
+    placeholder: "- Do X.\n- Don't Y.",
+  },
+  skill: {
+    title: "Knowledge",
+    description: "The reference material, examples and steps. Type @ to link other artifacts.",
+    placeholder: "Write the skill in Markdown… Type @ to link another artifact.",
+  },
+  command: {
+    title: "Steps",
+    description: "Which agents run, in what order. Type @ to link an agent.",
+    placeholder: "Write the command steps in Markdown… Type @ to link an agent.",
+  },
+}
+
+function emptyValues(type: ArtifactType, isEdit: boolean): FormValues {
+  return {
+    name: "",
+    description: "",
+    parallel: false,
+    alwaysApply: false,
+    globs: [],
+    tools: [...DEFAULT_AGENT_TOOLS],
+    mcpServers: [],
+    modelChoice: "inherit",
+    modelId: "",
+    modelAlias: "",
+    body: isEdit ? "" : STANDARDS_SPEC[type].bodyTemplate("agent-name"),
   }
 }
 
-export function ArtifactEditor({
-  type,
-  name,
-}: {
-  type: ArtifactType
-  name?: string
-}) {
+/** A name not used yet by another artifact of this type ("reviewer", "reviewer-2", …). */
+function freeName(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${base}-${i}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return base
+}
+
+type Phase = "checking" | "start" | "edit"
+
+export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: string }): React.ReactElement {
   const meta = metaForType(type)
   const Icon = meta.icon
   const router = useRouter()
   const { workspace, loading: wsLoading, refresh, artifacts } = useWorkspace()
   const isEdit = Boolean(name)
+  const assistant = useAssistantProvider()
 
-  // Artifacts the user can @-mention in the body — everything in the workspace
-  // except the one being edited (so it can't reference itself).
+  // Everything the user can @-mention, except the artifact being edited.
   const mentions = React.useMemo<MentionItem[]>(
     () =>
       artifacts
         .filter((a) => !(a.type === type && a.name === name))
-        .map((a) => ({
-          type: a.type,
-          name: a.name,
-          description: a.description,
-        })),
+        .map((a) => ({ type: a.type, name: a.name, description: a.description })),
     [artifacts, type, name]
   )
+  const takenNames = React.useMemo(
+    () => new Set(artifacts.filter((a) => a.type === type).map((a) => a.name)),
+    [artifacts, type]
+  )
 
+  const [phase, setPhase] = React.useState<Phase>(isEdit ? "edit" : "checking")
   const [loading, setLoading] = React.useState(isEdit)
   const [notFound, setNotFound] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [tab, setTab] = React.useState<"edit" | "preview">("edit")
+  const [generating, setGenerating] = React.useState(false)
+  const [validating, setValidating] = React.useState(false)
+  const [validation, setValidation] = React.useState<ValidationResult | null>(null)
+  const [validateOpen, setValidateOpen] = React.useState(false)
+  const [youtubeSources, setYoutubeSources] = React.useState<YouTubeDraftSource[]>([])
+  const [tryOpen, setTryOpen] = React.useState(false)
   const platformRef = React.useRef<Platform>("cursor")
 
   const schema = React.useMemo(() => createFormSchema(isEdit, type), [isEdit, type])
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      name: "",
-      description: "",
-      parallel: false,
-      alwaysApply: false,
-      globs: [],
-      tools: [...DEFAULT_AGENT_TOOLS],
-      mcpServers: [],
-      modelChoice: "inherit",
-      modelId: "",
-      modelAlias: "",
-      body: isEdit ? "" : STANDARDS_SPEC[type].bodyTemplate("agent-name"),
-    },
+    defaultValues: emptyValues(type, isEdit),
   })
 
   // React Hook Form intentionally exposes subscription-based watch values.
   // eslint-disable-next-line react-hooks/incompatible-library
-  const body = form.watch("body")
-  const nameValue = form.watch("name")
-  const descriptionValue = form.watch("description")
-  const modelChoice = form.watch("modelChoice")
-  const modelId = form.watch("modelId")
-  const taskModels = useSavedTaskModels(type === "agent" && isTaskSelectValue(modelChoice))
+  const values = form.watch()
+  const taskModels = useSavedTaskModels(type === "agent" && isTaskSelectValue(values.modelChoice))
+  const dirty = form.formState.isDirty
 
-  const [providers, setProviders] = React.useState<ProvidersState | null>(null)
-  const [providersLoaded, setProvidersLoaded] = React.useState(false)
-  const [generating, setGenerating] = React.useState(false)
-  const [validating, setValidating] = React.useState(false)
-  const [validation, setValidation] = React.useState<ValidationResult | null>(
-    null
-  )
-  const [validateOpen, setValidateOpen] = React.useState(false)
-  const [youtubeSources, setYoutubeSources] = React.useState<YouTubeDraftSource[]>([])
-
-  // Load the provider catalog + redacted status to decide whether the assistant
-  // actions (draft in create, validate in both) are available.
-  React.useEffect(() => {
-    let active = true
-    apiFetch<ProvidersState>("/api/providers")
-      .then((data) => active && setProviders(data))
-      .catch(() => {
-        // Providers are optional; the assistant actions just stay disabled.
-      })
-      .finally(() => active && setProvidersLoaded(true))
-    return () => {
-      active = false
-    }
-  }, [])
-
-  const usableProviderIds = React.useMemo(() => {
-    if (!providers) return [] as string[]
-    return providers.status
-      .filter((s) => s.verificationStatus === "valid")
-      .map((s) => s.id)
-  }, [providers])
-
-  const hasProvider = usableProviderIds.length > 0
-  const isNameValid = isEdit
-    ? Boolean(nameValue?.trim())
-    : nameSchema.safeParse(nameValue).success
-  const hasDescription = (descriptionValue?.trim().length ?? 0) > 0
+  const isNameValid = isEdit ? Boolean(values.name?.trim()) : nameSchema.safeParse(values.name).success
+  const hasDescription = (values.description?.trim().length ?? 0) > 0
   const canDraftFromVideos = type === "skill" && !isEdit && youtubeSources.length > 0
-  const detailsValid = hasProvider && isNameValid && hasDescription
-  const canDraft = hasProvider && isNameValid && (hasDescription || canDraftFromVideos)
-  const draftTitle = canDraftFromVideos
-    ? "Draft the body from the YouTube videos"
-    : "Draft the body from the name and description"
-  const canValidate = detailsValid && (body?.trim().length ?? 0) > 0
+  const canDraft = assistant.hasProvider && isNameValid && (hasDescription || canDraftFromVideos)
+  const canValidate =
+    assistant.hasProvider && isNameValid && hasDescription && (values.body?.trim().length ?? 0) > 0
+  const canTry =
+    assistant.hasProvider && nameSchema.safeParse(values.name).success && hasDescription
 
-  function resolveProviderModel(): { provider: string; model: string } | null {
-    if (!providers || usableProviderIds.length === 0) return null
-    const last =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(LAST_PROVIDER_KEY)
-        : null
-    // Prefer durable secrets defaults — Electron uses a fresh loopback origin
-    // each launch, so localStorage alone does not survive restarts.
-    const provider =
-      (providers.defaults.provider &&
-      usableProviderIds.includes(providers.defaults.provider)
-        ? providers.defaults.provider
-        : null) ??
-      (last && usableProviderIds.includes(last) ? last : null) ??
-      usableProviderIds[0]
-    const descriptor = providers.providers.find((p) => p.id === provider)
-    const lastModel =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(lastModelKey(provider))
-        : null
-    const defaultModel =
-      providers.defaults.provider === provider
-        ? providers.defaults.model
-        : undefined
-    const model = defaultModel || lastModel || descriptor?.models[0] || ""
-    return { provider, model }
+  function resolveWithModel(): ReturnType<typeof assistant.resolve> {
+    const resolved = assistant.resolve()
+    if (!resolved) return null
+    if (!resolved.model) {
+      toast.error(`Pick a model for ${resolved.label} in the Assistant first, then try again`)
+      return null
+    }
+    return resolved
   }
 
-  async function onDraft() {
-    const resolved = resolveProviderModel()
-    if (!resolved) return
-    if (!resolved.model) {
-      const label =
-        providers?.providers.find((p) => p.id === resolved.provider)?.label ??
-        resolved.provider
-      toast.error(
-        `Pick a model for ${label} in the Assistant first, then try again`
-      )
-      return
+  function buildPayload(v: FormValues): TryDraft {
+    return {
+      type,
+      platform: platformRef.current,
+      name: v.name,
+      description: v.description,
+      body: applyMentions(v.body),
+      extra: {
+        parallel: v.parallel,
+        alwaysApply: v.alwaysApply,
+        globs: v.globs,
+        ...(type === "agent" ? { tools: v.tools, mcpServers: v.mcpServers, ...agentModelExtra(v) } : {}),
+      },
     }
+  }
+
+  async function draftBody(input: { name: string; description: string }): Promise<boolean> {
+    const resolved = resolveWithModel()
+    if (!resolved) return false
     setGenerating(true)
     try {
       const sources = type === "skill" && !isEdit ? youtubeSources : []
@@ -278,8 +261,8 @@ export function ArtifactEditor({
         method: "POST",
         body: JSON.stringify({
           type,
-          name: form.getValues("name"),
-          description: form.getValues("description"),
+          name: input.name,
+          description: input.description,
           provider: resolved.provider,
           model: resolved.model,
           ...(sources.length > 0 ? { sources } : {}),
@@ -289,42 +272,64 @@ export function ArtifactEditor({
       if (res.description && !form.getValues("description").trim()) {
         form.setValue("description", res.description, { shouldDirty: true })
       }
-      if (type === "agent") form.setValue("parallel", res.extra.parallel)
+      if (type === "agent") form.setValue("parallel", res.extra.parallel, { shouldDirty: true })
       if (type === "rule") {
-        form.setValue("alwaysApply", res.extra.alwaysApply)
-        if (res.extra.globs.length > 0) form.setValue("globs", res.extra.globs)
+        form.setValue("alwaysApply", res.extra.alwaysApply, { shouldDirty: true })
+        if (res.extra.globs.length > 0) form.setValue("globs", res.extra.globs, { shouldDirty: true })
       }
       if (res.links.length > 0) {
-        const linked = res.links.map((l) => `${l.to}/${l.toName}`).join(", ")
-        toast.success(`Body drafted — linked: ${linked}`)
+        toast.success(`Drafted — linked: ${res.links.map((l) => `${l.to}/${l.toName}`).join(", ")}`)
       } else {
-        toast.success(
-          sources.length > 0
-            ? "Body drafted from the videos — review and edit"
-            : "Body drafted by the assistant — review and edit"
-        )
+        toast.success(sources.length > 0 ? "Drafted from the videos — review and edit" : "Drafted — review and edit")
       }
+      return true
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Could not draft the body"
-      )
+      toast.error(err instanceof ApiError ? err.message : "Could not draft the body")
+      return false
     } finally {
       setGenerating(false)
     }
   }
 
-  async function onValidate() {
-    const resolved = resolveProviderModel()
-    if (!resolved) return
-    if (!resolved.model) {
-      const label =
-        providers?.providers.find((p) => p.id === resolved.provider)?.label ??
-        resolved.provider
-      toast.error(
-        `Pick a model for ${label} in the Assistant first, then try again`
-      )
-      return
+  function onDraft(): void {
+    void draftBody({ name: form.getValues("name"), description: form.getValues("description") })
+  }
+
+  async function onDescribe(text: string): Promise<void> {
+    const description = text.trim().replace(/\s+/g, " ")
+    const suggested = freeName(suggestName(description) || `new-${type}`, takenNames)
+    form.reset({ ...emptyValues(type, false), name: suggested, description })
+    form.setValue("name", suggested, { shouldDirty: true })
+    await draftBody({ name: suggested, description })
+    setPhase("edit")
+  }
+
+  function onTemplate(template: StarterTemplate): void {
+    const next: FormValues = {
+      ...emptyValues(type, false),
+      name: freeName(template.name, takenNames),
+      description: template.description,
+      body: template.body,
+      tools: template.tools ? [...template.tools] : [...DEFAULT_AGENT_TOOLS],
+      parallel: Boolean(template.parallel),
+      alwaysApply: Boolean(template.alwaysApply),
+      globs: template.globs ? [...template.globs] : [],
     }
+    form.reset(emptyValues(type, false))
+    for (const [key, value] of Object.entries(next) as Array<[keyof FormValues, FormValues[keyof FormValues]]>) {
+      form.setValue(key, value, { shouldDirty: true })
+    }
+    setPhase("edit")
+  }
+
+  function onBlank(): void {
+    form.reset(emptyValues(type, false))
+    setPhase("edit")
+  }
+
+  async function onValidate(): Promise<void> {
+    const resolved = resolveWithModel()
+    if (!resolved) return
     setValidating(true)
     try {
       const res = await apiFetch<ValidationResult>("/api/artifacts/validate", {
@@ -346,41 +351,42 @@ export function ArtifactEditor({
       setValidation(res)
       setValidateOpen(true)
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Could not validate the artifact"
-      )
+      toast.error(err instanceof ApiError ? err.message : "Could not validate the artifact")
     } finally {
       setValidating(false)
     }
   }
 
-  // Chat → editor handoff: when the assistant proposes an artifact, the chat
-  // stashes it in sessionStorage and routes to /<type>/new. Consume it once.
+  // Chat → editor handoff: the chat stashes a proposed artifact in sessionStorage
+  // and routes to /<type>/new. Consume it once and skip the start step.
   React.useEffect(() => {
     if (isEdit) return
     const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
-    if (!raw) return
+    if (!raw) {
+      setPhase("start")
+      return
+    }
     sessionStorage.removeItem(DRAFT_STORAGE_KEY)
     try {
       const parsed = draftSchema.safeParse(JSON.parse(raw))
-      if (!parsed.success || parsed.data.type !== type) return
+      if (!parsed.success || parsed.data.type !== type) {
+        setPhase("start")
+        return
+      }
       const draft = normalizeDraft(parsed.data)
       form.reset({
+        ...emptyValues(type, false),
         name: draft.name,
         description: draft.description,
         parallel: draft.parallel,
         alwaysApply: draft.alwaysApply,
         globs: draft.globs,
-        tools: [...DEFAULT_AGENT_TOOLS],
-        mcpServers: [],
-        modelChoice: "inherit",
-        modelId: "",
-        modelAlias: "",
         body: draft.body,
       })
+      setPhase("edit")
       toast.success("Draft loaded from the assistant — review and save")
     } catch {
-      // ignore malformed drafts
+      setPhase("start")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, type])
@@ -395,15 +401,13 @@ export function ArtifactEditor({
         platformRef.current = artifact.platform
         const fm = artifact.frontmatter
         const modelFields = modelFormFromFrontmatter(fm.model, fm.provider)
-        const loaded = {
+        const loaded: FormValues = {
           name: artifact.name,
           description: artifact.description || artifact.name,
           parallel: Boolean(fm.parallel),
           alwaysApply: Boolean(fm.alwaysApply),
           globs: Array.isArray(fm.globs) ? (fm.globs as string[]) : [],
-          tools: Array.isArray(fm.tools)
-            ? fm.tools.filter(isBuiltinToolName)
-            : [...DEFAULT_AGENT_TOOLS],
+          tools: Array.isArray(fm.tools) ? fm.tools.filter(isBuiltinToolName) : [...DEFAULT_AGENT_TOOLS],
           mcpServers: Array.isArray(fm.mcpServers)
             ? fm.mcpServers.filter((s): s is string => typeof s === "string")
             : [],
@@ -416,11 +420,7 @@ export function ArtifactEditor({
         if (raw) {
           try {
             const parsed = draftSchema.safeParse(JSON.parse(raw))
-            if (
-              parsed.success &&
-              parsed.data.type === type &&
-              parsed.data.name === artifact.name
-            ) {
+            if (parsed.success && parsed.data.type === type && parsed.data.name === artifact.name) {
               sessionStorage.removeItem(DRAFT_STORAGE_KEY)
               const draft = normalizeDraft(parsed.data)
               loaded.description = draft.description
@@ -444,29 +444,26 @@ export function ArtifactEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, name, type, workspace])
 
-  const onInvalid = React.useCallback(
-    (errors: Record<string, { message?: string }>) => {
-      const first = Object.values(errors).find((e) => Boolean(e?.message))
-      toast.error(first?.message ?? "Please check the form fields before saving")
-    },
-    []
-  )
+  const onInvalid = React.useCallback((errors: Record<string, { message?: string }>) => {
+    const first = Object.values(errors).find((e) => Boolean(e?.message))
+    toast.error(first?.message ?? "Please check the form fields before saving")
+  }, [])
 
   const onSubmit = React.useCallback(
-    async (values: FormValues) => {
+    async (submitted: FormValues) => {
       setSaving(true)
       const payload = {
         type,
         platform: platformRef.current,
-        name: values.name,
-        description: values.description,
-        body: applyMentions(values.body),
+        name: submitted.name,
+        description: submitted.description,
+        body: applyMentions(submitted.body),
         extra: {
-          parallel: values.parallel,
-          alwaysApply: values.alwaysApply,
-          globs: values.globs,
+          parallel: submitted.parallel,
+          alwaysApply: submitted.alwaysApply,
+          globs: submitted.globs,
           ...(type === "agent"
-            ? { tools: values.tools, mcpServers: values.mcpServers, ...agentModelExtra(values) }
+            ? { tools: submitted.tools, mcpServers: submitted.mcpServers, ...agentModelExtra(submitted) }
             : {}),
         },
       }
@@ -477,21 +474,16 @@ export function ArtifactEditor({
             body: JSON.stringify(payload),
           })
         } else {
-          await apiFetch("/api/artifacts", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          })
+          await apiFetch("/api/artifacts", { method: "POST", body: JSON.stringify(payload) })
         }
         await refresh()
-        form.reset(values)
-        toast.success(`${meta.label} "${values.name}" saved`)
-        if (values.name !== name) {
-          router.push(`/${meta.route}/${encodeURIComponent(values.name)}`)
+        form.reset(submitted)
+        toast.success(`${meta.label} "${submitted.name}" saved`)
+        if (submitted.name !== name) {
+          router.push(`/${meta.route}/${encodeURIComponent(submitted.name)}`)
         }
       } catch (err) {
-        toast.error(
-          err instanceof ApiError ? err.message : `Could not save ${meta.label}`
-        )
+        toast.error(err instanceof ApiError ? err.message : `Could not save ${meta.label}`)
       } finally {
         setSaving(false)
       }
@@ -504,7 +496,8 @@ export function ArtifactEditor({
   }, [form, onSubmit, onInvalid])
 
   React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (phase !== "edit") return
+    const handleKeyDown = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault()
         triggerSubmit()
@@ -512,13 +505,22 @@ export function ArtifactEditor({
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [triggerSubmit])
+  }, [phase, triggerSubmit])
+
+  React.useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent): void => {
+      e.preventDefault()
+    }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [dirty])
 
   if (!workspace && !wsLoading) {
     return <NoWorkspace message={`Select a workspace to edit ${meta.labelPlural.toLowerCase()}.`} />
   }
 
-  if (loading) {
+  if (loading || phase === "checking") {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -540,12 +542,24 @@ export function ArtifactEditor({
     )
   }
 
-  async function onDelete() {
+  if (phase === "start") {
+    return (
+      <StartPicker
+        type={type}
+        hasProvider={assistant.hasProvider}
+        providerLoaded={assistant.loaded}
+        drafting={generating}
+        onDescribe={(text) => void onDescribe(text)}
+        onTemplate={onTemplate}
+        onBlank={onBlank}
+      />
+    )
+  }
+
+  async function onDelete(): Promise<void> {
     setDeleting(true)
     try {
-      await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, {
-        method: "DELETE",
-      })
+      await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, { method: "DELETE" })
       await refresh()
       toast.success(`${meta.label} "${name}" deleted`)
       router.push(`/${meta.route}`)
@@ -556,9 +570,50 @@ export function ArtifactEditor({
     }
   }
 
+  const checks = editorChecks({
+    type,
+    name: values.name ?? "",
+    description: values.description ?? "",
+    body: values.body ?? "",
+  })
+  const facts = factsFor(type, values)
+  const draft = buildPayload(values)
+  const tryHint = !assistant.hasProvider
+    ? "Verify an AI provider to try it."
+    : !canTry
+      ? "Add a kebab-case name and a description to try it."
+      : "Chat with your unsaved changes."
+  const bodyCopy = BODY_COPY[type]
+  let step = 0
+  const nextStep = (): number => ++step
+
+  const draftButton = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={onDraft}
+      disabled={!canDraft || generating}
+      title={
+        !assistant.hasProvider
+          ? "Verify an AI provider to enable assistant drafting"
+          : !canDraft
+            ? canDraftFromVideos
+              ? "Enter a valid name first"
+              : "Enter a valid name and description first"
+            : canDraftFromVideos
+              ? "Draft the body from the YouTube videos"
+              : "Draft the body from the name and description"
+      }
+    >
+      {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+      Draft with assistant
+    </Button>
+  )
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-3">
+      <header className="flex items-center justify-between gap-4 border-b px-6 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button asChild variant="ghost" size="icon" type="button">
             <Link href={`/${meta.route}`} aria-label="Back">
@@ -567,406 +622,335 @@ export function ArtifactEditor({
           </Button>
           <Icon className={cn("h-5 w-5 shrink-0", meta.colorClass)} />
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold">
-              {isEdit ? name : `New ${meta.label}`}
-            </h1>
-            {isEdit ? (
-              <p className="truncate text-xs text-muted-foreground">
-                {meta.route} · {meta.label}
-              </p>
-            ) : null}
+            <h1 className="truncate text-lg font-semibold">{isEdit ? name : `New ${meta.label}`}</h1>
+            <p className="truncate text-xs text-muted-foreground">
+              {isEdit ? `${meta.label} · ${meta.route}` : "Not saved yet"}
+            </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {isEdit && type === "agent" ? (
-            hasProvider ? (
-              <Button asChild type="button" variant="outline" size="sm">
-                <Link href={`/chat?agent=${encodeURIComponent(name ?? "")}`}>
-                  <MessageCircle className="h-4 w-4" />
-                  Chat with this agent
-                </Link>
-              </Button>
-            ) : providersLoaded ? (
-              <Button asChild type="button" variant="outline" size="sm">
-                <Link
-                  href="/providers"
-                  title="Verify an AI provider to chat with this agent"
-                >
-                  Verify provider to chat
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Checking chat
-              </Button>
-            )
+        <div className="flex items-center gap-2">
+          {dirty ? (
+            <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex" role="status">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Unsaved changes
+            </span>
           ) : null}
-          {isEdit ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onDraft}
-              disabled={!canDraft || generating}
-              title={
-                !hasProvider
-                  ? "Verify an AI provider to enable assistant drafting"
-                  : !canDraft
-                    ? canDraftFromVideos
-                      ? "Enter a valid name first"
-                      : "Enter a valid name and description first"
-                    : draftTitle
-              }
-            >
-              {generating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Draft with assistant
-            </Button>
-          )}
-          {type === "skill" ? (
-            <SkillTriggerButton
-              name={form.watch("name")}
-              description={form.watch("description")}
-            />
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onValidate}
-            disabled={!canValidate || validating}
-            title={
-              !hasProvider
-                ? "Verify an AI provider to enable assistant validation"
-                : !canValidate
-                  ? "A valid name, description and body are required to validate"
-                  : "Review this artifact against the authoring standards"
-            }
-          >
-            {validating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-4 w-4" />
-            )}
-            Validate with assistant
-          </Button>
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" aria-label="More actions">
+                {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                <span className="hidden sm:inline">More</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem disabled={!canValidate || validating} onSelect={() => void onValidate()}>
+                <ShieldCheck className="h-4 w-4" />
+                Validate with assistant
+              </DropdownMenuItem>
+              {isEdit && type === "agent" ? (
+                assistant.hasProvider ? (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/chat?agent=${encodeURIComponent(name ?? "")}`}>
+                      <MessageCircle className="h-4 w-4" />
+                      Chat with this agent
+                    </Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/providers">
+                      <MessageCircle className="h-4 w-4" />
+                      Verify provider to chat
+                    </Link>
+                  </DropdownMenuItem>
+                )
+              ) : null}
+              {isEdit ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button type="submit" size="sm" disabled={saving} title="Save (⌘S)">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save
           </Button>
         </div>
-      </div>
+      </header>
 
-      <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                placeholder="kebab-case-name"
-                spellCheck={false}
-                {...form.register("name")}
-              />
-              {form.formState.errors.name ? (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.name.message}
-                </p>
-              ) : null}
-            </div>
-
-            {type === "agent" ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                <div>
-                  <Label htmlFor="parallel">Parallel</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Runs concurrently with sibling agents
-                  </p>
-                </div>
-                <Controller
-                  control={form.control}
-                  name="parallel"
-                  render={({ field }) => (
-                    <Switch
-                      id="parallel"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  )}
-                />
-              </div>
-            ) : null}
-
-            {type === "agent" ? (
-              <AgentToolsField
-                tools={form.watch("tools")}
-                mcpServers={form.watch("mcpServers")}
-                onToolsChange={(tools) => form.setValue("tools", tools, { shouldDirty: true })}
-                onMcpServersChange={(servers) =>
-                  form.setValue("mcpServers", servers, { shouldDirty: true })
-                }
-              />
-            ) : null}
-
-            {type === "agent" ? (
-              <div className="space-y-2 sm:col-span-2">
-                <div>
-                  <p className="text-sm font-medium">Model</p>
-                  <p className="text-xs text-muted-foreground">
-                    Chats with this agent and workflow steps that use it run on this model.
-                  </p>
-                </div>
-                <ModelChoiceFields
-                  idPrefix="agent-model"
-                  selectLabel="Model provider"
-                  modelLabel="Agent model"
-                  value={modelChoice}
-                  model={modelId}
-                  taskChoices={taskModels.choices}
-                  onValueChange={(next: ModelSelectValue) => {
-                    form.setValue("modelChoice", next, { shouldDirty: true })
-                    form.setValue("modelAlias", "", { shouldDirty: true })
-                    if (next === "inherit" || isTaskSelectValue(next)) {
-                      form.setValue("modelId", "", { shouldDirty: true })
-                    }
-                  }}
-                  onModelChange={(next) => form.setValue("modelId", next, { shouldDirty: true })}
-                />
-                {form.formState.errors.modelId ? (
-                  <p className="text-xs text-destructive">{form.formState.errors.modelId.message}</p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {type === "rule" ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                <div>
-                  <Label htmlFor="alwaysApply">Always apply</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Inject on every request
-                  </p>
-                </div>
-                <Controller
-                  control={form.control}
-                  name="alwaysApply"
-                  render={({ field }) => (
-                    <Switch
-                      id="alwaysApply"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  )}
-                />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              rows={2}
-              placeholder="One-line summary (also used as the assistant's discovery trigger)."
-              {...form.register("description")}
-            />
-            {form.formState.errors.description ? (
-              <p className="text-xs text-destructive">
-                {form.formState.errors.description.message}
-              </p>
-            ) : null}
-          </div>
-
-          {type === "skill" && !isEdit ? (
-            <YouTubeSourcesField onReadyChange={setYoutubeSources} />
-          ) : null}
-
-          {type === "rule" ? (
-            <div className="space-y-2">
-              <Label>Globs</Label>
-              <p className="text-xs text-muted-foreground">
-                Activate this rule when matching files are edited (leave empty
-                for always/on-request).
-              </p>
-              <Controller
-                control={form.control}
-                name="globs"
-                render={({ field }) => (
-                  <GlobsInput value={field.value} onChange={field.onChange} />
-                )}
-              />
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Body</Label>
-              <Tabs
-                value={tab}
-                onValueChange={(v) => setTab(v as "edit" | "preview")}
-              >
-                <TabsList className="h-8">
-                  <TabsTrigger value="edit" className="text-xs">
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </TabsTrigger>
-                  <TabsTrigger value="preview" className="text-xs">
-                    <Eye className="h-3.5 w-3.5" />
-                    Preview
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-            <Controller
-              control={form.control}
-              name="body"
-              render={({ field }) =>
-                tab === "edit" ? (
-                  <MarkdownEditor
-                    value={field.value}
-                    onChange={field.onChange}
-                    onSave={triggerSubmit}
-                    placeholder="Write the artifact body in Markdown… Type @ to link another artifact."
-                    mentions={mentions}
+      <div className="relative flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 p-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-10">
+            <EditorSection
+              id="section-identity"
+              step={nextStep()}
+              title="Identity"
+              description={`The name and a short description of this ${meta.label.toLowerCase()}.`}
+            >
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="kebab-case-name"
+                    spellCheck={false}
+                    autoComplete="off"
+                    {...form.register("name", {
+                      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                        if (isEdit) return
+                        const next = toKebabWhileTyping(e.target.value)
+                        if (next !== e.target.value) form.setValue("name", next, { shouldDirty: true })
+                      },
+                    })}
                   />
-                ) : (
-                  <MarkdownPreview content={applyMentions(field.value)} />
-                )
-              }
-            />
-          </div>
-        </div>
-
-        <div className="lg:border-l lg:pl-6">
-          <StandardsHints
-            type={type}
-            body={body}
-            onInsertTemplate={
-              isEdit
-                ? undefined
-                : () =>
-                    form.setValue(
-                      "body",
-                      STANDARDS_SPEC[type].bodyTemplate(
-                        form.getValues("name") || "agent-name"
-                      )
-                    )
-            }
-          />
-        </div>
-      </div>
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {meta.label.toLowerCase()}?</DialogTitle>
-            <DialogDescription>
-              This permanently removes <code>{name}</code> from disk. This action
-              cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDeleteOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onDelete}
-              disabled={deleting}
-            >
-              {deleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={validateOpen} onOpenChange={setValidateOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Assistant review</DialogTitle>
-            <DialogDescription>
-              {validation?.summary
-                ? validation.summary
-                : "The assistant reviewed this artifact against the authoring standards. Findings are suggestions — nothing was changed."}
-            </DialogDescription>
-          </DialogHeader>
-          {validation && validation.findings.length > 0 ? (
-            <ul className="space-y-3">
-              {validation.findings.map((f, i) => (
-                <li key={i} className="rounded-md border p-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "text-[11px] font-semibold uppercase tracking-wide",
-                        severityClass(f.severity)
-                      )}
-                    >
-                      {f.severity}
-                    </span>
-                    {f.section ? (
-                      <span className="text-xs text-muted-foreground">
-                        · {f.section}
-                      </span>
+                  {form.formState.errors.name ? (
+                    <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Lowercase words with hyphens. It is also the file name.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="description">Description</Label>
+                    {type === "skill" ? (
+                      <SkillTriggerButton name={values.name ?? ""} description={values.description ?? ""} />
                     ) : null}
                   </div>
-                  <p className="mt-1 text-sm">{f.message}</p>
-                  {f.suggestion ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Suggestion: {f.suggestion}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No issues found — the artifact looks consistent with the
-              standards.
-            </p>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setValidateOpen(false)}
+                  <Textarea
+                    id="description"
+                    rows={2}
+                    placeholder={DESCRIPTION_HINT[type]}
+                    {...form.register("description")}
+                  />
+                  {form.formState.errors.description ? (
+                    <p className="text-xs text-destructive">{form.formState.errors.description.message}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{DESCRIPTION_HINT[type]}</p>
+                  )}
+                </div>
+              </div>
+            </EditorSection>
+
+            {type === "rule" ? (
+              <EditorSection
+                id="section-activation"
+                step={nextStep()}
+                title="When does it apply?"
+                description="Choose when the assistant adds this rule."
+              >
+                <RuleActivationField
+                  alwaysApply={values.alwaysApply}
+                  globs={values.globs}
+                  onChange={(next) => {
+                    form.setValue("alwaysApply", next.alwaysApply, { shouldDirty: true })
+                    form.setValue("globs", next.globs, { shouldDirty: true })
+                  }}
+                />
+              </EditorSection>
+            ) : null}
+
+            {type === "skill" && !isEdit ? (
+              <EditorSection
+                id="section-sources"
+                step={nextStep()}
+                title="Sources"
+                description="Optional: YouTube videos the assistant learns from when it drafts."
+              >
+                <YouTubeSourcesField onReadyChange={setYoutubeSources} />
+              </EditorSection>
+            ) : null}
+
+            <EditorSection
+              id="section-body"
+              step={nextStep()}
+              title={bodyCopy.title}
+              description={bodyCopy.description}
+              actions={
+                <>
+                  {!isEdit ? draftButton : null}
+                  <Tabs value={tab} onValueChange={(v) => setTab(v as "edit" | "preview")}>
+                    <TabsList className="h-8">
+                      <TabsTrigger value="edit" className="text-xs">
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </TabsTrigger>
+                      <TabsTrigger value="preview" className="text-xs">
+                        <Eye className="h-3.5 w-3.5" />
+                        Preview
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </>
+              }
             >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <Controller
+                control={form.control}
+                name="body"
+                render={({ field }) =>
+                  tab === "edit" ? (
+                    <MarkdownEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      onSave={triggerSubmit}
+                      placeholder={bodyCopy.placeholder}
+                      mentions={mentions}
+                    />
+                  ) : (
+                    <MarkdownPreview content={applyMentions(field.value)} />
+                  )
+                }
+              />
+            </EditorSection>
+
+            {type === "agent" ? (
+              <EditorSection
+                id="section-abilities"
+                step={nextStep()}
+                title="Abilities"
+                description="What this agent may do in chats and workflows. Risky actions always ask you first."
+              >
+                <AbilitiesField
+                  tools={values.tools}
+                  mcpServers={values.mcpServers}
+                  onToolsChange={(tools) => form.setValue("tools", tools, { shouldDirty: true })}
+                  onMcpServersChange={(servers) => form.setValue("mcpServers", servers, { shouldDirty: true })}
+                />
+              </EditorSection>
+            ) : null}
+
+            {type === "agent" ? (
+              <EditorSection
+                id="section-model"
+                step={nextStep()}
+                title="Model"
+                description="Chats with this agent and workflow steps that use it run on this model."
+              >
+                <div className="space-y-2">
+                  <ModelChoiceFields
+                    idPrefix="agent-model"
+                    selectLabel="Model provider"
+                    modelLabel="Agent model"
+                    value={values.modelChoice}
+                    model={values.modelId}
+                    taskChoices={taskModels.choices}
+                    onValueChange={(next: ModelSelectValue) => {
+                      form.setValue("modelChoice", next, { shouldDirty: true })
+                      form.setValue("modelAlias", "", { shouldDirty: true })
+                      if (next === "inherit" || isTaskSelectValue(next)) {
+                        form.setValue("modelId", "", { shouldDirty: true })
+                      }
+                    }}
+                    onModelChange={(next) => form.setValue("modelId", next, { shouldDirty: true })}
+                  />
+                  {form.formState.errors.modelId ? (
+                    <p className="text-xs text-destructive">{form.formState.errors.modelId.message}</p>
+                  ) : null}
+                </div>
+              </EditorSection>
+            ) : null}
+
+            {type === "agent" ? (
+              <details className="group rounded-lg border">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
+                  Advanced
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
+                  <div>
+                    <Label htmlFor="parallel">Parallel</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Can run at the same time as other agents in a workflow step.
+                    </p>
+                  </div>
+                  <Controller
+                    control={form.control}
+                    name="parallel"
+                    render={({ field }) => (
+                      <Switch id="parallel" checked={field.value} onCheckedChange={field.onChange} />
+                    )}
+                  />
+                </div>
+              </details>
+            ) : null}
+          </div>
+
+          <aside
+            aria-label="Summary"
+            className={cn(
+              "lg:sticky lg:top-6 lg:self-start",
+              !tryOpen && "lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto"
+            )}
+          >
+            {tryOpen ? (
+              <div className="lg:h-[calc(100vh-10rem)]">
+                <TryChatPanel
+                  type={type}
+                  name={values.name ?? ""}
+                  getDraft={() => buildPayload(form.getValues())}
+                  resolveProvider={assistant.resolve}
+                  onClose={() => setTryOpen(false)}
+                />
+              </div>
+            ) : (
+              <EditorSidePanel
+                type={type}
+                name={values.name ?? ""}
+                description={values.description ?? ""}
+                facts={facts}
+                checks={checks}
+                draft={draft}
+                originalName={isEdit ? name : undefined}
+                canTry={canTry}
+                tryHint={tryHint}
+                onTry={() => setTryOpen(true)}
+                onInsertTemplate={() =>
+                  form.setValue("body", STANDARDS_SPEC[type].bodyTemplate(form.getValues("name") || "agent-name"), {
+                    shouldDirty: true,
+                  })
+                }
+              />
+            )}
+          </aside>
+        </div>
+      </div>
+
+      <DeleteArtifactDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label={meta.label}
+        name={name ?? ""}
+        deleting={deleting}
+        onDelete={() => void onDelete()}
+      />
+      <ValidationDialog open={validateOpen} onOpenChange={setValidateOpen} validation={validation} />
     </form>
   )
+}
+
+function factsFor(type: ArtifactType, v: FormValues): string[] {
+  if (type === "agent") {
+    const choice = abilityChoiceOf(v.tools)
+    const facts = [choice === "custom" ? "Custom tools" : ABILITY_LEVELS[choice].label]
+    facts.push(v.modelChoice === "inherit" ? "Default model" : v.modelId.trim() || v.modelAlias.trim() || "Task model")
+    if (v.mcpServers.length > 0) facts.push(`${v.mcpServers.length} MCP server${v.mcpServers.length === 1 ? "" : "s"}`)
+    if (v.parallel) facts.push("Parallel")
+    return facts
+  }
+  if (type === "rule") {
+    const activation = ruleActivationOf(v.alwaysApply, v.globs)
+    if (activation === "always") return ["Always applies"]
+    if (activation === "files") return [`${v.globs.length} file pattern${v.globs.length === 1 ? "" : "s"}`]
+    return ["On request"]
+  }
+  return []
 }

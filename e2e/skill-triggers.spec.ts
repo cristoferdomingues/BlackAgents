@@ -51,6 +51,7 @@ test.describe("skill triggers", () => {
       })
     )
     await page.goto("/skills/new")
+    await page.getByRole("button", { name: "Start blank" }).click()
     await page.getByLabel("Name").fill("code-review")
     await page.getByLabel("Description").fill("Helps with anything.")
     await page.getByRole("button", { name: "Check trigger" }).click()

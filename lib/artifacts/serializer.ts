@@ -2,7 +2,7 @@ import matter from "gray-matter"
 
 import { artifactDeletePath, artifactRelPath } from "./layout"
 import { normalizeExtra, type ArtifactInput } from "./schemas"
-import type { ArtifactType } from "./types"
+import type { Artifact, ArtifactType } from "./types"
 
 /** Compose the ordered frontmatter object for an artifact type. */
 function frontmatterFor(
@@ -61,6 +61,19 @@ export function serializeArtifact(
     relPath: artifactRelPath(input.platform, input.type, input.name),
     deletePath: artifactDeletePath(input.platform, input.type, input.name),
     content,
+  }
+}
+
+/** An unsaved editor draft as an in-memory artifact (same frontmatter as on save). */
+export function draftToArtifact(input: ArtifactInput): Artifact {
+  return {
+    name: input.name,
+    type: input.type,
+    platform: input.platform,
+    description: input.description,
+    frontmatter: frontmatterFor(input),
+    body: input.body.trim(),
+    relativePath: artifactRelPath(input.platform, input.type, input.name),
   }
 }
 

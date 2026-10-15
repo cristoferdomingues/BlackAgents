@@ -22,7 +22,7 @@ export interface CheckableArtifact {
   body: string
 }
 
-function hasSection(body: string, section: string): boolean {
+export function hasSection(body: string, section: string): boolean {
   const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   return new RegExp(`^#{1,6}\\s+${escaped}\\b`, "im").test(body)
 }

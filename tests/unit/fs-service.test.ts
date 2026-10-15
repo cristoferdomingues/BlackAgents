@@ -106,18 +106,18 @@ describe("scaffoldWorkspace", () => {
     const created = await scaffoldWorkspace(target, "crypto")
     expect(created).toBe(path.resolve(target))
 
-    expect(await pathExists(path.join(target, ".cursor", "agents", "portfolio-rebalancer.md"))).toBe(true)
-    expect(await pathExists(path.join(target, ".cursor", "rules", "risk-management.mdc"))).toBe(true)
-    expect(await pathExists(path.join(target, ".cursor", "skills", "defi-lending-protocols", "SKILL.md"))).toBe(true)
-    expect(await pathExists(path.join(target, ".cursor", "commands", "weekly-portfolio-review.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "agents", "portfolio-rebalancer.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "rules", "risk-management.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "skills", "defi-lending-protocols", "SKILL.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "commands", "weekly-portfolio-review.md"))).toBe(true)
   })
 
   it("creates standard directories and seeds software starter artifacts", async () => {
     const target = path.join(env.workspace, "new-software-ws")
     await scaffoldWorkspace(target, "software")
 
-    expect(await pathExists(path.join(target, ".cursor", "agents", "feature-developer.md"))).toBe(true)
-    expect(await pathExists(path.join(target, ".cursor", "rules", "typescript-strict.mdc"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "agents", "feature-developer.md"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "rules", "typescript-strict.md"))).toBe(true)
   })
 
   it("creates blank workspace with readme", async () => {
@@ -125,6 +125,7 @@ describe("scaffoldWorkspace", () => {
     await scaffoldWorkspace(target, "blank")
 
     expect(await pathExists(path.join(target, "README.md"))).toBe(true)
-    expect(await pathExists(path.join(target, ".cursor", "agents"))).toBe(true)
+    expect(await pathExists(path.join(target, ".black-agents", "artifacts", "agents"))).toBe(true)
+    expect(await pathExists(path.join(target, ".cursor"))).toBe(false)
   })
 })

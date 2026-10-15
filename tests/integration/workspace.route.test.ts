@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
-import { mkdir } from "node:fs/promises"
+import { mkdir, readFile } from "node:fs/promises"
 import path from "node:path"
 
 import { GET, POST, PUT, DELETE } from "@/app/api/workspace/route"
+import { driftReport } from "@/lib/artifacts/drift"
 import { makeTempEnv, jsonRequest, type TempEnv } from "../helpers/workspace"
 
 let env: TempEnv
@@ -48,6 +49,27 @@ describe("POST /api/workspace", () => {
     expect(json.data.workspaces.map((w: { path: string }) => w.path)).toContain(
       path.resolve(freshPath)
     )
+  })
+
+  it("seeds template artifacts in BlackAgents first, then exports them to Cursor", async () => {
+    const freshPath = path.join(env.workspace, "..", "software-fresh-ws")
+    const res = await POST(
+      jsonRequest("http://t", "POST", { path: freshPath, create: true, template: "software" })
+    )
+    expect(res.status).toBe(201)
+    const source = await readFile(
+      path.join(freshPath, ".black-agents/artifacts/agents/feature-developer.md"),
+      "utf8"
+    )
+    expect(source).toContain("name: feature-developer")
+    const exported = await readFile(path.join(freshPath, ".cursor/agents/feature-developer.md"), "utf8")
+    expect(exported).toContain("name: feature-developer")
+    expect(
+      await readFile(path.join(freshPath, ".cursor/rules/typescript-strict.mdc"), "utf8")
+    ).toContain("description:")
+    const report = await driftReport(freshPath)
+    expect(report.ideOnly).toEqual([])
+    expect(report.platforms[0].summary.drifted).toBe(0)
   })
 
   it("returns 404 for a non-existent path when create is not specified", async () => {

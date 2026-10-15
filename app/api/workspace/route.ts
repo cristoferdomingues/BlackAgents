@@ -13,6 +13,7 @@ import {
   normalizeWorkspaceInput,
   scaffoldWorkspace,
 } from "@/lib/fs-service"
+import { exportAll } from "@/lib/artifacts/store"
 import { workspaceInputSchema, type WorkspaceInput } from "@/lib/artifacts/schemas"
 import type { Workspace } from "@/lib/artifacts/types"
 
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
 
     if (input.create) {
       const abs = await scaffoldWorkspace(input.path, input.template)
+      await exportAll(abs)
       return ok(toState(await setActiveWorkspace(abs)), 201)
     }
 

@@ -128,8 +128,9 @@ export async function walkFiles(absDir: string): Promise<string[]> {
 }
 
 /**
- * Initialize a brand-new workspace directory on disk, creating the standard
- * .cursor layout and seeding starter artifacts from a chosen template.
+ * Initialize a brand-new workspace directory on disk, creating the
+ * `.black-agents/artifacts/` source layout and seeding starter artifacts from a
+ * chosen template. Exporting them to IDE folders is the caller's job.
  */
 export async function scaffoldWorkspace(
   inputPath: string,
@@ -139,10 +140,9 @@ export async function scaffoldWorkspace(
 
   const standardDirs = [
     absPath,
-    path.join(absPath, ".cursor", "agents"),
-    path.join(absPath, ".cursor", "rules"),
-    path.join(absPath, ".cursor", "skills"),
-    path.join(absPath, ".cursor", "commands"),
+    ...["agents", "rules", "skills", "commands"].map((dir) =>
+      path.join(absPath, ".black-agents", "artifacts", dir)
+    ),
   ]
 
   for (const dir of standardDirs) {

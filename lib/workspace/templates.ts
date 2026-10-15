@@ -41,7 +41,7 @@ record or coach a flow, then bind a daily workflow.
 `,
       },
       {
-        relativePath: ".cursor/agents/time-registrar.md",
+        relativePath: ".black-agents/artifacts/agents/time-registrar.md",
         content: `---
 name: time-registrar
 description: Replays a saved browser flow to register time on a company site (desktop only).
@@ -66,7 +66,7 @@ Never invent credentials. Prefer the saved flow over ad-hoc clicking unless the 
 `,
       },
       {
-        relativePath: ".cursor/skills/time-registration/SKILL.md",
+        relativePath: ".black-agents/artifacts/skills/time-registration/SKILL.md",
         content: `---
 name: time-registration
 description: How to teach and replay a company timesheet browser flow in BlackAgents.
@@ -134,7 +134,7 @@ If SSO/cookies expired, open Settings → Browser, start a headed session, log i
     badge: "DeFi & Web3",
     artifacts: [
       {
-        relativePath: ".cursor/agents/portfolio-rebalancer.md",
+        relativePath: ".black-agents/artifacts/agents/portfolio-rebalancer.md",
         content: `---
 name: portfolio-rebalancer
 description: Advises on crypto portfolio rebalancing, risk-adjusted allocations, and DCA strategies.
@@ -169,7 +169,7 @@ You are the portfolio-rebalancer agent. You analyze crypto portfolio allocations
 `,
       },
       {
-        relativePath: ".cursor/rules/risk-management.mdc",
+        relativePath: ".black-agents/artifacts/rules/risk-management.md",
         content: `---
 description: Non-negotiable risk rules for crypto asset management, sizing, and security.
 alwaysApply: true
@@ -185,7 +185,7 @@ See also: \`defi-lending-protocols\` skill.
 `,
       },
       {
-        relativePath: ".cursor/skills/defi-lending-protocols/SKILL.md",
+        relativePath: ".black-agents/artifacts/skills/defi-lending-protocols/SKILL.md",
         content: `---
 name: defi-lending-protocols
 description: Reference guide for decentralized lending markets, yield mechanics, and liquidation safety.
@@ -206,7 +206,7 @@ Reference guide for major decentralized finance lending markets (Aave, Morpho, C
 `,
       },
       {
-        relativePath: ".cursor/commands/weekly-portfolio-review.md",
+        relativePath: ".black-agents/artifacts/commands/weekly-portfolio-review.md",
         content: `---
 name: weekly-portfolio-review
 description: Sequence a comprehensive weekly crypto asset audit and rebalancing review.
@@ -248,7 +248,7 @@ Sequence a comprehensive weekly crypto asset audit and rebalancing review.
     badge: "Engineering",
     artifacts: [
       {
-        relativePath: ".cursor/agents/feature-developer.md",
+        relativePath: ".black-agents/artifacts/agents/feature-developer.md",
         content: `---
 name: feature-developer
 description: Implements end-to-end features conforming to project architecture, typing, and tests.
@@ -278,7 +278,7 @@ You are a senior full-stack engineer implementing features and fixes.
 `,
       },
       {
-        relativePath: ".cursor/rules/typescript-strict.mdc",
+        relativePath: ".black-agents/artifacts/rules/typescript-strict.md",
         content: `---
 description: TypeScript strictness conventions.
 alwaysApply: true
@@ -291,7 +291,7 @@ alwaysApply: true
 `,
       },
       {
-        relativePath: ".cursor/skills/testing-patterns/SKILL.md",
+        relativePath: ".black-agents/artifacts/skills/testing-patterns/SKILL.md",
         content: `---
 name: testing-patterns
 description: Testing conventions, fixtures, and assertion patterns for unit and integration suites.

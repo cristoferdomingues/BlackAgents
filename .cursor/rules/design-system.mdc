@@ -12,5 +12,8 @@ globs: app/**/*.tsx,components/**/*.tsx
 - Add `"use client"` only to components that need interactivity, state, or effects; keep the rest as server components.
 - Fetch through `apiFetch` (`lib/api.ts`) and read workspace state from `WorkspaceProvider` — no raw `fetch` in feature components.
 - Give interactive elements accessible names and keep forms on `react-hook-form` + `zod`.
+- Make screens self-explaining in plain words: one-line intro per tab/section, tooltips for terms, empty states that say how they get filled (with a link), and a sentence saying what each important action will do.
+- Prefer a few named choices (levels, radio cards) over many raw switches or free-text lists; preview real output with the same server code that saves it.
+- Keep UI copy and help in an isomorphic `lib/<domain>/explain.ts` with unit tests.
 
 See also: design-system skill.

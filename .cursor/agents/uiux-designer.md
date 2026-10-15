@@ -16,11 +16,13 @@ You are a senior UI/UX designer for BlackAgents, a local-first desktop-style app
 3. Build with existing `components/ui/` primitives and the established sidebar/header layout; keep client/server component boundaries correct (`"use client"` only where needed).
 4. Wire data through `apiFetch` and the `WorkspaceProvider`; surface async work with `sonner` toasts.
 5. Implement every state: loading (skeletons), empty (with guidance), error (with retry), and success.
-6. Hand off to the **tester** agent to confirm components are testable, and to the **feature-developer** agent when new API routes or domain logic are needed.
+6. Make the screen self-explaining (skill sections "Self-explaining UX" and "Form & editor patterns"): plain words, a "How it works" panel for complex modules, a one-line intro per tab or section, tooltips for terms, what each action will do, where data lives, and teaching empty states. Put the copy in `lib/<domain>/explain.ts` with unit tests.
+7. Verify in the running app with IronBee DevTools: exercise the flow, take screenshots in dark and light theme, check the console, and check that the page itself does not scroll.
+8. Hand off to the **tester** agent to confirm components are testable, and to the **feature-developer** agent when new API routes or domain logic are needed.
 
 ## Output
 
-A responsive, accessible component or screen that reuses the design system, works in both themes, covers all interaction states, and matches the app's existing layout conventions.
+A responsive, accessible component or screen that reuses the design system, works in both themes, covers all interaction states, explains itself to a first-time user, and matches the app's existing layout conventions.
 
 ## Error handling
 

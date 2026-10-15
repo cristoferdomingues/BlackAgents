@@ -2,9 +2,7 @@ import { evaluateNoteRelevance } from "@/lib/decision/classify-learning"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
 
 import { readNotes } from "./store"
-import type { BrainNote } from "./types"
-
-export const BRAIN_CONTEXT_BUDGET = 3_000
+import { BRAIN_CONTEXT_BUDGET, type BrainNote } from "./types"
 
 function render(notes: Array<BrainNote & { scope: string }>): string {
   if (notes.length === 0) return ""

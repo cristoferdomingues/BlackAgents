@@ -8,6 +8,9 @@ import { nameSchema } from "../artifacts/schemas"
  * the workspace brain. Every change goes through the review inbox.
  */
 
+/** Characters of memory notes one chat or run gets. */
+export const BRAIN_CONTEXT_BUDGET = 3_000
+
 export const LEARNING_ACTIONS = [
   "nothing",
   "memory_note",

@@ -111,7 +111,7 @@ Rules for the draft block:
 - Put a short natural-language explanation before the block. Emit at most one draft block per reply.
 - To update an artifact already in the workspace, keep its type and name and return the full new body. Read its file with fs_read first. Saving that draft updates the existing artifact.
 - To create an artifact, choose a name that is not already listed above.
-- All four types use this same block, commands included. Saving creates the type's folder (for example .cursor/commands/) when it is missing, so a missing folder is never a reason to refuse.
+- All four types use this same block, commands included. Saving writes the artifact to .black-agents/artifacts/ and exports it to the workspace's IDE folders (for example .cursor/commands/), creating any missing folder, so a missing folder is never a reason to refuse.
 - The block must be valid JSON: escape line breaks in "body" as \\n and quotes as \\".
 
 ## Bundle protocol

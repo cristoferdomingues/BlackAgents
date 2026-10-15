@@ -1,6 +1,7 @@
-import { serializeArtifact } from "@/lib/artifacts/serializer"
+import { findArtifact } from "@/lib/artifacts/parser"
 import type { ArtifactInput } from "@/lib/artifacts/schemas"
-import { writeText, resolveInWorkspace, pathExists } from "@/lib/fs-service"
+import { sourceRelPath } from "@/lib/artifacts/source"
+import { createArtifact, updateArtifact } from "@/lib/artifacts/store"
 import { saveWorkflow } from "@/lib/workflows/store"
 import { workflowSchema, type Workflow } from "@/lib/workflows/schema"
 
@@ -52,6 +53,15 @@ Replay **${flow.name}** with \`browser_run_flow\` when the user asks to run this
  * Write a Cursor skill + agent that bind to a saved browser flow.
  * Does not overwrite existing files unless `overwrite` is true.
  */
+/** Create the artifact, or replace it only when `overwrite` is set. */
+async function saveIfAllowed(root: string, input: ArtifactInput, overwrite: boolean): Promise<boolean> {
+  const existing = await findArtifact(root, input.type, input.name)
+  if (existing && !overwrite) return false
+  if (existing) await updateArtifact(root, input.name, input)
+  else await createArtifact(root, input)
+  return true
+}
+
 export async function bindFlowArtifacts(
   workspaceRoot: string,
   flow: BrowserFlow,
@@ -70,13 +80,8 @@ export async function bindFlowArtifacts(
     body: skillBody(flow),
     extra: {},
   }
-  const skillRel = `.cursor/skills/${skillName}/SKILL.md`
-  const skillAbs = resolveInWorkspace(workspaceRoot, skillRel)
-  if (overwrite || !(await pathExists(skillAbs))) {
-    const { content } = serializeArtifact(skillInput)
-    await writeText(skillAbs, content)
-    created.push(skillRel)
-  }
+  const skillRel = sourceRelPath("skill", skillName)
+  if (await saveIfAllowed(workspaceRoot, skillInput, overwrite)) created.push(skillRel)
 
   const agentInput: ArtifactInput = {
     type: "agent",
@@ -89,13 +94,8 @@ export async function bindFlowArtifacts(
       mcpServers: [BROWSER_MCP_SERVER],
     },
   }
-  const agentRel = `.cursor/agents/${agentName}.md`
-  const agentAbs = resolveInWorkspace(workspaceRoot, agentRel)
-  if (overwrite || !(await pathExists(agentAbs))) {
-    const { content } = serializeArtifact(agentInput)
-    await writeText(agentAbs, content)
-    created.push(agentRel)
-  }
+  const agentRel = sourceRelPath("agent", agentName)
+  if (await saveIfAllowed(workspaceRoot, agentInput, overwrite)) created.push(agentRel)
 
   return { agentPath: agentRel, skillPath: skillRel, created }
 }

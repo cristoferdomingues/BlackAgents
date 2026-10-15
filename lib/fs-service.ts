@@ -76,6 +76,12 @@ export async function writeText(absPath: string, content: string): Promise<void>
   await fs.writeFile(absPath, content, "utf8")
 }
 
+/** Copy a file byte for byte (supporting files may be binary). */
+export async function copyFile(fromAbs: string, toAbs: string): Promise<void> {
+  await fs.mkdir(path.dirname(toAbs), { recursive: true })
+  await fs.copyFile(fromAbs, toAbs)
+}
+
 export async function removePath(absPath: string): Promise<void> {
   await fs.rm(absPath, { recursive: true, force: true })
 }

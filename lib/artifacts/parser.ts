@@ -8,7 +8,14 @@ import {
   resolveInWorkspace,
   walkFiles,
 } from "../fs-service"
-import { ACTIVE_PLATFORMS, PLATFORM_LAYOUTS, typeLayout } from "./layout"
+import {
+  ACTIVE_PLATFORMS,
+  DEFAULT_PLATFORM,
+  PLATFORM_LAYOUTS,
+  typeLayout,
+  type TypeLayout,
+} from "./layout"
+import { SOURCE_LAYOUT } from "./source"
 import type {
   Artifact,
   ArtifactFrontmatter,
@@ -103,7 +110,15 @@ async function scanType(
   platform: Platform,
   type: ArtifactType
 ): Promise<Artifact[]> {
-  const layout = typeLayout(platform, type)
+  return scanLayout(root, platform, type, typeLayout(platform, type))
+}
+
+async function scanLayout(
+  root: string,
+  platform: Platform,
+  type: ArtifactType,
+  layout: TypeLayout
+): Promise<Artifact[]> {
   const dirAbs = resolveInWorkspace(root, layout.dir)
   if (!(await pathExists(dirAbs))) return []
 
@@ -139,18 +154,35 @@ async function scanType(
   return out
 }
 
-/** Scan every active platform present in the workspace, deduped by type+name. */
+/** Artifacts in `.black-agents/artifacts/`, the source of truth. */
+export async function scanSource(root: string): Promise<Artifact[]> {
+  const out: Artifact[] = []
+  for (const type of TYPES) {
+    const found = await scanLayout(root, DEFAULT_PLATFORM, type, SOURCE_LAYOUT[type])
+    out.push(...found.map((artifact) => ({ ...artifact, managed: true })))
+  }
+  return out
+}
+
+/** The copies of artifacts in one IDE folder. */
+export async function scanPlatform(root: string, platform: Platform): Promise<Artifact[]> {
+  const rootDir = resolveInWorkspace(root, PLATFORM_LAYOUTS[platform].root)
+  if (!(await pathExists(rootDir))) return []
+  const out: Artifact[] = []
+  for (const type of TYPES) out.push(...(await scanType(root, platform, type)))
+  return out
+}
+
+/**
+ * Every artifact in the workspace, deduped by type+name. The source folder
+ * wins; then IDE folders in ACTIVE_PLATFORMS order (Cursor first).
+ */
 export async function scanWorkspace(root: string): Promise<Artifact[]> {
-  const collected: Artifact[] = []
+  const collected: Artifact[] = await scanSource(root)
   for (const platform of ACTIVE_PLATFORMS) {
-    const rootDir = resolveInWorkspace(root, PLATFORM_LAYOUTS[platform].root)
-    if (!(await pathExists(rootDir))) continue
-    for (const type of TYPES) {
-      collected.push(...(await scanType(root, platform, type)))
-    }
+    collected.push(...(await scanPlatform(root, platform)))
   }
 
-  // Prefer the first platform (Cursor) when the same artifact exists twice.
   const seen = new Map<string, Artifact>()
   for (const artifact of collected) {
     const key = `${artifact.type}:${artifact.name}`

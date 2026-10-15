@@ -57,8 +57,11 @@ export async function POST(req: Request) {
 `lib/artifacts/`:
 - `types.ts` — `Artifact`, `ArtifactType`, `Platform`, `ArtifactFrontmatter` (tool-agnostic).
 - `layout.ts` — `PLATFORM_LAYOUTS` + `artifactRelPath()` / `artifactDeletePath()`; the only place that knows a platform's folders/extensions. `ACTIVE_PLATFORMS = ["cursor", "claude"]`, default `cursor`.
-- `parser.ts` — `scanWorkspace(root)` and `parseArtifact` (via `gray-matter`); skills are a `<name>/SKILL.md` dir walked recursively.
-- `serializer.ts` — `serializeArtifact(input)` writes frontmatter + body; **rules omit `name`** (identified by filename).
+- `source.ts` — `.black-agents/artifacts/` is the **source of truth** (`agents/`, `commands/`, `rules/*.md`, `skills/<name>/SKILL.md`). IDE folders are export targets.
+- `parser.ts` — `scanWorkspace(root)` reads the source first, then IDE folders (`managed: false` = only in an IDE folder); skills are a `<name>/SKILL.md` dir walked recursively.
+- `serializer.ts` — `serializeArtifact(input)` builds the source file (frontmatter + body); **rules omit `name`** (identified by filename).
+- `store.ts` (server) — **every write goes through here**: `createArtifact` / `updateArtifact` / `deleteArtifact` save the source and export to the workspace's targets (`.black-agents/export.json`); `importArtifacts` moves IDE-only artifacts in. Never write `.cursor/` etc. directly.
+- `drift.ts` — compares the source with each IDE folder (hand edits show as "edited").
 - `schemas.ts` — `nameSchema` (kebab-case), `artifactInputSchema`, `normalizeExtra` (per-type frontmatter).
 - `graph.ts` — extracts cross-references from the authoring conventions.
 

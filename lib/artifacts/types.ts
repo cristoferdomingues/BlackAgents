@@ -37,6 +37,11 @@ export interface Artifact {
   supportingFiles?: string[]
   /** True when this artifact is embedded in BlackAgents rather than stored in the workspace. */
   builtin?: boolean
+  /**
+   * True when the artifact lives in `.black-agents/artifacts/` (the source).
+   * False or missing: it was only found in an IDE folder (`platform`).
+   */
+  managed?: boolean
 }
 
 /** A directed cross-reference detected between two artifacts. */

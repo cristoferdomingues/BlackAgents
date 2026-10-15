@@ -1,8 +1,8 @@
 import matter from "gray-matter"
 
-import { artifactDeletePath, artifactRelPath } from "./layout"
+import { sourceDeletePath, sourceRelPath } from "./source"
 import { normalizeExtra, type ArtifactInput } from "./schemas"
-import type { Artifact, ArtifactType } from "./types"
+import type { Artifact } from "./types"
 
 /** Compose the ordered frontmatter object for an artifact type. */
 function frontmatterFor(
@@ -42,7 +42,7 @@ function frontmatterFor(
 }
 
 export interface SerializedArtifact {
-  /** Path (relative to workspace root) of the primary file to write. */
+  /** Path (relative to workspace root) of the primary file in the source folder. */
   relPath: string
   /** Path to remove on delete (the skill directory for nested types). */
   deletePath: string
@@ -58,8 +58,8 @@ export function serializeArtifact(
   const body = input.body.trim()
   const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
   return {
-    relPath: artifactRelPath(input.platform, input.type, input.name),
-    deletePath: artifactDeletePath(input.platform, input.type, input.name),
+    relPath: sourceRelPath(input.type, input.name),
+    deletePath: sourceDeletePath(input.type, input.name),
     content,
   }
 }
@@ -73,18 +73,7 @@ export function draftToArtifact(input: ArtifactInput): Artifact {
     description: input.description,
     frontmatter: frontmatterFor(input),
     body: input.body.trim(),
-    relativePath: artifactRelPath(input.platform, input.type, input.name),
-  }
-}
-
-/** Paths for an existing artifact identified by type + name on a platform. */
-export function artifactPaths(
-  platform: ArtifactInput["platform"],
-  type: ArtifactType,
-  name: string
-) {
-  return {
-    relPath: artifactRelPath(platform, type, name),
-    deletePath: artifactDeletePath(platform, type, name),
+    relativePath: sourceRelPath(input.type, input.name),
+    managed: true,
   }
 }

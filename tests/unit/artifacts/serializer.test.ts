@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest"
 import matter from "gray-matter"
 
 import {
-  artifactPaths,
   serializeArtifact,
 } from "@/lib/artifacts/serializer"
 import type { ArtifactInput } from "@/lib/artifacts/schemas"
@@ -25,7 +24,7 @@ describe("serializeArtifact", () => {
     const parsed = matter(content)
     expect(parsed.data).toEqual({ name: "demo", description: "A demo." })
     expect(parsed.content).toContain("## Input")
-    expect(relPath).toBe(".cursor/agents/demo.md")
+    expect(relPath).toBe(".black-agents/artifacts/agents/demo.md")
   })
 
   it("includes parallel: true for agents when set", () => {
@@ -43,7 +42,7 @@ describe("serializeArtifact", () => {
       description: "A demo.",
       alwaysApply: true,
     })
-    expect(relPath).toBe(".cursor/rules/no-secrets.mdc")
+    expect(relPath).toBe(".black-agents/artifacts/rules/no-secrets.md")
   })
 
   it("writes rule globs when provided", () => {
@@ -58,8 +57,8 @@ describe("serializeArtifact", () => {
       input({ type: "skill", name: "code-review" })
     )
     expect(matter(content).data).toMatchObject({ name: "code-review" })
-    expect(relPath).toBe(".cursor/skills/code-review/SKILL.md")
-    expect(deletePath).toBe(".cursor/skills/code-review")
+    expect(relPath).toBe(".black-agents/artifacts/skills/code-review/SKILL.md")
+    expect(deletePath).toBe(".black-agents/artifacts/skills/code-review")
   })
 
   it("round-trips through gray-matter (serialize then parse)", () => {
@@ -129,15 +128,6 @@ describe("serializeArtifact", () => {
       customAuthor: "Alice",
       customVersion: "1.2.0",
       tags: ["crypto", "defi"],
-    })
-  })
-})
-
-describe("artifactPaths", () => {
-  it("returns rel and delete paths for a skill", () => {
-    expect(artifactPaths("cursor", "skill", "x")).toEqual({
-      relPath: ".cursor/skills/x/SKILL.md",
-      deletePath: ".cursor/skills/x",
     })
   })
 })

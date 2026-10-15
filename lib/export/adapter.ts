@@ -110,11 +110,34 @@ export function frontmatterFor(
   }
 }
 
+/** Keys the mapping above owns or that only BlackAgents understands. */
+const MANAGED_KEYS = new Set([
+  "name",
+  "description",
+  "model",
+  "provider",
+  "parallel",
+  "alwaysApply",
+  "globs",
+  "trigger",
+  "tools",
+  "mcpServers",
+])
+
+/** Mapped keys plus the keys BlackAgents does not manage (e.g. Cursor's `readonly`), unchanged. */
+export function exportedFrontmatter(platform: Platform, artifact: Artifact): Record<string, unknown> {
+  const data = frontmatterFor(platform, artifact)
+  for (const [key, value] of Object.entries(artifact.frontmatter)) {
+    if (!MANAGED_KEYS.has(key) && value !== undefined) data[key] = value
+  }
+  return data
+}
+
 export function artifactToFile(
   artifact: Artifact,
   targetPlatform: Platform
 ): ExportFile {
-  const data = frontmatterFor(targetPlatform, artifact)
+  const data = exportedFrontmatter(targetPlatform, artifact)
   const body = artifact.body.trim()
   const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
   return {

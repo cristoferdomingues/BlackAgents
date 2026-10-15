@@ -47,7 +47,7 @@ test.describe("artifact editor", () => {
     await expect(page.getByText("Runs commands: every command asks you first.")).toBeVisible()
 
     await page.getByRole("tab", { name: "File" }).click()
-    await expect(page.getByText(".cursor/agents/code-reviewer.md")).toBeVisible()
+    await expect(page.getByText(".black-agents/artifacts/agents/code-reviewer.md")).toBeVisible()
     await expect(page.getByLabel("File content")).toContainText("- shell_run")
 
     await page.getByRole("button", { name: "Save" }).click()

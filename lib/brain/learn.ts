@@ -4,7 +4,7 @@ import { z } from "zod"
 import { findArtifact, scanWorkspace } from "@/lib/artifacts/parser"
 import { DEFAULT_PLATFORM } from "@/lib/artifacts/layout"
 import { nameSchema } from "@/lib/artifacts/schemas"
-import { serializeArtifact } from "@/lib/artifacts/serializer"
+import { ArtifactStoreError, createArtifact, updateArtifact } from "@/lib/artifacts/store"
 import type { Artifact } from "@/lib/artifacts/types"
 import { linkedArtifacts } from "@/lib/assistant/turn-artifacts"
 import {
@@ -13,7 +13,6 @@ import {
   LEARNING_MIN_IMPORTANCE,
 } from "@/lib/decision/classify-learning"
 import { loadDecisionClient, type ResolvedDecisionClient } from "@/lib/decision/client"
-import { pathExists, resolveInWorkspace, writeText } from "@/lib/fs-service"
 import { isProviderId } from "@/lib/llm/registry"
 import { checkArtifactStandards, hasErrors, RULE_MAX_LINES } from "@/lib/standards/checks"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
@@ -298,27 +297,27 @@ export async function decideProposal(
       if (!target || !spec) throw new ProposalError("The proposal has no target", 400)
       const existing = await findArtifact(root, target.type, target.name)
       if (spec.exists && !existing) throw new ProposalError(`The ${target.type} "${target.name}" no longer exists`, 409)
+      if (!spec.exists && existing) throw new ProposalError(`The ${target.type} "${target.name}" already exists`, 409)
       const finalDescription = description ?? existing?.description ?? ""
       const issues = checkArtifactStandards({ type: target.type, name: target.name, description: finalDescription, body: content })
       if (hasErrors(issues)) {
         throw new ProposalError(issues.find((i) => i.severity === "error")?.message ?? "Fails the authoring standards", 400)
       }
-      const { relPath, content: file } = serializeArtifact(
-        {
-          type: target.type,
-          platform: existing?.platform ?? DEFAULT_PLATFORM,
-          name: target.name,
-          description: finalDescription,
-          body: content,
-          extra: ruleExtra(existing),
-        },
-        existing?.frontmatter
-      )
-      const abs = resolveInWorkspace(root, relPath)
-      if (!spec.exists && (await pathExists(abs))) {
-        throw new ProposalError(`The ${target.type} "${target.name}" already exists`, 409)
+      const input = {
+        type: target.type,
+        platform: existing?.platform ?? DEFAULT_PLATFORM,
+        name: target.name,
+        description: finalDescription,
+        body: content,
+        extra: ruleExtra(existing),
       }
-      await writeText(abs, file)
+      try {
+        if (existing) await updateArtifact(root, target.name, input)
+        else await createArtifact(root, input)
+      } catch (err) {
+        if (err instanceof ArtifactStoreError) throw new ProposalError(err.message, err.status)
+        throw err
+      }
     }
     proposal.status = "approved"
     proposal.content = content

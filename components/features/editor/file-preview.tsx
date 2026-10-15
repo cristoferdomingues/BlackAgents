@@ -12,7 +12,7 @@ const PREVIEW_DEBOUNCE_MS = 400
 
 type PreviewState =
   | { status: "loading" }
-  | { status: "ready"; relPath: string; content: string }
+  | { status: "ready"; relPath: string; content: string; exports: string[] }
   | { status: "invalid"; message: string }
 
 /** The exact file Save will write, refreshed while the user types. */
@@ -30,12 +30,12 @@ export function FilePreview({
   React.useEffect(() => {
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      apiFetch<{ relPath: string; content: string }>("/api/artifacts/preview", {
+      apiFetch<{ relPath: string; content: string; exports?: string[] }>("/api/artifacts/preview", {
         method: "POST",
         body: key,
         signal: controller.signal,
       })
-        .then((data) => setState({ status: "ready", ...data }))
+        .then((data) => setState({ status: "ready", ...data, exports: data.exports ?? [] }))
         .catch((err: unknown) => {
           if (controller.signal.aborted) return
           setState({
@@ -101,6 +101,18 @@ export function FilePreview({
       >
         {state.content}
       </pre>
+      {state.exports.length > 0 ? (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>Each save also updates your IDE folders:</p>
+          <ul aria-label="Exported to" className="space-y-0.5">
+            {state.exports.map((file) => (
+              <li key={file}>
+                <code className="break-all">{file}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   )
 }

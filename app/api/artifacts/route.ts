@@ -1,13 +1,8 @@
 import { ok, fail, handle } from "@/lib/api-response"
 import { readConfig } from "@/lib/config"
-import {
-  pathExists,
-  resolveInWorkspace,
-  workspaceRoot,
-  writeText,
-} from "@/lib/fs-service"
-import { findArtifact, scanWorkspace } from "@/lib/artifacts/parser"
-import { serializeArtifact } from "@/lib/artifacts/serializer"
+import { workspaceRoot } from "@/lib/fs-service"
+import { scanWorkspace } from "@/lib/artifacts/parser"
+import { ArtifactStoreError, createArtifact } from "@/lib/artifacts/store"
 import { artifactInputSchema } from "@/lib/artifacts/schemas"
 
 export async function GET() {
@@ -26,17 +21,12 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return fail(parsed.error.issues[0]?.message ?? "Invalid artifact")
     }
-    const input = parsed.data
     const root = await workspaceRoot()
-
-    const { relPath, content } = serializeArtifact(input)
-    const abs = resolveInWorkspace(root, relPath)
-    if (await pathExists(abs)) {
-      return fail(`A ${input.type} named "${input.name}" already exists`, 409)
+    try {
+      return ok(await createArtifact(root, parsed.data), 201)
+    } catch (err) {
+      if (err instanceof ArtifactStoreError) return fail(err.message, err.status)
+      throw err
     }
-
-    await writeText(abs, content)
-    const created = await findArtifact(root, input.type, input.name)
-    return ok(created, 201)
   })
 }

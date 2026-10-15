@@ -1,5 +1,4 @@
 import { readdir } from "node:fs/promises"
-import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { POST } from "@/app/api/artifacts/preview/route"
@@ -31,12 +30,14 @@ describe("POST /api/artifacts/preview", () => {
     const res = await POST(preview({ input: agent }))
     expect(res.status).toBe(200)
     const json = await res.json()
-    expect(json.data.relPath).toBe(".cursor/agents/reviewer.md")
+    expect(json.data.relPath).toBe(".black-agents/artifacts/agents/reviewer.md")
+    expect(json.data.exports).toEqual([".cursor/agents/reviewer.md"])
     expect(json.data.content).toBe(
       "---\nname: reviewer\ndescription: Reviews code.\nparallel: true\ntools:\n  - fs_list\n  - fs_read\n---\n\nYou review.\n"
     )
-    const entries = await readdir(path.join(env.workspace, ".cursor")).catch(() => [])
-    expect(entries).not.toContain("agents")
+    const entries = await readdir(env.workspace)
+    expect(entries).not.toContain(".black-agents")
+    expect(entries).not.toContain(".cursor")
   })
 
   it("keeps extra frontmatter of the saved artifact when editing", async () => {

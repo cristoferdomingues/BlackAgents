@@ -187,6 +187,68 @@ test.describe("brain", () => {
     await expect(page.getByText("Approve saves metrics/revenue into .black-agents/knowledge/")).toBeVisible()
   })
 
+  test("reads a saved concept in the knowledge library", async ({ page }) => {
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({ json: { success: true, data: { proposals: [], workspaceNotes: [], agents: [] } } })
+    )
+    await page.route(/\/api\/knowledge$/, async (route) => {
+      const url = new URL(route.request().url())
+      const id = url.searchParams.get("id")
+      if (id === "overview/overview") {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "overview/overview",
+              title: "Overview",
+              description: "What BlackAgents is",
+              type: "Reference",
+              trust: "human-reviewed",
+              folder: "overview",
+              tags: [],
+              stale: false,
+              status: "stable",
+              body: "BlackAgents is local-first.\n\nSee [the stack](./tech-stack.md).",
+              sources: [],
+              generatedBy: "process:obsidian-import",
+              file: ".black-agents/knowledge/overview/overview.md",
+            },
+          },
+        })
+        return
+      }
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            concepts: [
+              {
+                id: "overview/overview",
+                title: "Overview",
+                description: "What BlackAgents is",
+                type: "Reference",
+                trust: "human-reviewed",
+                folder: "overview",
+                tags: [],
+                stale: false,
+                status: "stable",
+              },
+            ],
+          },
+        },
+      })
+    })
+
+    await page.goto("/brain")
+    await page.getByRole("tab", { name: "Knowledge" }).click()
+    await expect(page.getByText("No saved concepts yet")).toHaveCount(0)
+    await page.getByRole("button", { name: /Overview/ }).click()
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible()
+    await expect(page.getByText("BlackAgents is local-first.")).toBeVisible()
+    await expect(page.getByText("Reviewed by you")).toBeVisible()
+    await expect(page.getByText("Imported from Obsidian")).toBeVisible()
+  })
+
   test("sends a memory note to the inbox as knowledge", async ({ page }) => {
     await page.route("**/api/brain", (route) =>
       route.fulfill({

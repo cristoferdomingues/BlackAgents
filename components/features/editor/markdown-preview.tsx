@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
+import { conceptLinkTarget } from "@/lib/knowledge/links"
 import { cn } from "@/lib/utils"
 
 /**
@@ -12,9 +13,14 @@ import { cn } from "@/lib/utils"
 export function MarkdownPreview({
   content,
   variant = "panel",
+  fromId,
+  openConcept,
 }: {
   content: string
   variant?: "panel" | "inline"
+  /** Concept that contains this markdown, so relative links can open another concept. */
+  fromId?: string
+  openConcept?: (id: string) => void
 }) {
   const inline = variant === "inline"
   if (!content.trim()) {
@@ -36,7 +42,33 @@ export function MarkdownPreview({
         inline ? "min-w-0 break-words" : "h-[420px] overflow-y-auto rounded-md border p-4 scrollbar-thin"
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={
+          openConcept && fromId
+            ? {
+                a: ({ href, children }) => {
+                  const id = href ? conceptLinkTarget(fromId, href) : null
+                  if (!id) {
+                    const external = Boolean(href && /^[a-z]+:/i.test(href))
+                    return (
+                      <a href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>
+                        {children}
+                      </a>
+                    )
+                  }
+                  return (
+                    <button type="button" className="text-primary underline" onClick={() => openConcept(id)}>
+                      {children}
+                    </button>
+                  )
+                },
+              }
+            : undefined
+        }
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }

@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto"
+import path from "node:path"
 
-import { saveProposal } from "../brain/store"
+import { listProposals, saveProposal } from "../brain/store"
 import type { BrainProposal } from "../brain/types"
-import { checkDirectory, normalizeWorkspaceInput } from "../fs-service"
+import { checkDirectory, normalizeWorkspaceInput, readText, walkFiles } from "../fs-service"
 import { inspectBundle, readBundleConcept, type IndexLevel } from "./bundle"
-import type { BundlePreview, PreviewLevel } from "./explain"
+import type { BundlePreview, ObsidianPreview, ObsidianPreviewConcept, ObsidianQueueResult, PreviewLevel } from "./explain"
+import {
+  convertObsidianNotes,
+  OBSIDIAN_NOTE_LIMIT,
+  type ObsidianDraft,
+  type ObsidianNoteInput,
+} from "./obsidian"
 import { OkfVersionError } from "./schema"
-import { KnowledgePathError, assertConceptId, readConcept } from "./store"
+import { KnowledgePathError, assertConceptId, listConcepts, readConcept } from "./store"
 
 /**
  * Preview an OKF folder without writing. Queueing reads one concept into the
@@ -98,4 +105,154 @@ export async function queueConcept(workspaceRoot: string, bundlePath: string, id
   }
   await saveProposal(workspaceRoot, proposal)
   return proposal
+}
+
+async function requireFolder(folderPath: string): Promise<string> {
+  return bundleRoot(folderPath)
+}
+
+async function readVaultNotes(vaultPath: string): Promise<ObsidianNoteInput[]> {
+  const abs = await requireFolder(vaultPath)
+  const notes: ObsidianNoteInput[] = []
+  for (const rel of await walkFiles(abs)) {
+    const posix = rel.split(/[/\\]/).join("/")
+    if (posix.split("/").some((part) => part.startsWith("."))) continue
+    if (!posix.toLowerCase().endsWith(".md")) continue
+    const absolutePath = path.join(abs, rel)
+    notes.push({
+      relativePath: posix,
+      absolutePath,
+      content: await readText(absolutePath),
+    })
+  }
+  if (notes.length > OBSIDIAN_NOTE_LIMIT) {
+    throw new KnowledgeImportError(
+      `This vault has ${notes.length} notes. BlackAgents reads up to ${OBSIDIAN_NOTE_LIMIT} at a time.`,
+      400
+    )
+  }
+  return notes
+}
+
+interface SavedIndex {
+  ids: Set<string>
+  bySource: Map<string, string>
+  pendingIds: Set<string>
+  pendingSources: Set<string>
+}
+
+async function savedIndex(workspaceRoot: string): Promise<SavedIndex> {
+  const concepts = await listConcepts(workspaceRoot)
+  const bySource = new Map<string, string>()
+  for (const concept of concepts) {
+    for (const source of concept.frontmatter.sources ?? []) bySource.set(source.resource, concept.id)
+  }
+  const pendingIds = new Set<string>()
+  const pendingSources = new Set<string>()
+  for (const proposal of await listProposals(workspaceRoot)) {
+    if (proposal.status !== "pending" || proposal.target?.type !== "concept") continue
+    pendingIds.add(proposal.target.name)
+    for (const source of proposal.concept?.sources ?? []) pendingSources.add(source.resource)
+  }
+  return { ids: new Set(concepts.map((concept) => concept.id)), bySource, pendingIds, pendingSources }
+}
+
+function previewState(draft: ObsidianDraft, saved: SavedIndex): Pick<ObsidianPreviewConcept, "state" | "savedAs"> {
+  if (draft.error) return { state: "invalid" }
+  const source = draft.frontmatter.sources?.[0]?.resource
+  const savedAs = saved.ids.has(draft.id) ? draft.id : source ? saved.bySource.get(source) : undefined
+  if (savedAs) return { state: "saved", savedAs }
+  if (saved.pendingIds.has(draft.id) || (source !== undefined && saved.pendingSources.has(source))) return { state: "pending" }
+  return { state: "new" }
+}
+
+/** Read an Obsidian vault and show the concepts it would become. Writes nothing. */
+export async function previewObsidianVault(workspaceRoot: string, vaultPath: string): Promise<ObsidianPreview> {
+  const notes = await readVaultNotes(vaultPath)
+  const drafts = convertObsidianNotes(notes, new Date())
+  const saved = await savedIndex(workspaceRoot)
+  return {
+    path: await requireFolder(vaultPath),
+    concepts: drafts.map((draft) => ({
+      id: draft.id,
+      title: draft.title,
+      description: draft.description,
+      type: draft.frontmatter.type,
+      folder: draft.folder,
+      warnings: draft.warnings,
+      error: draft.error,
+      ...previewState(draft, saved),
+    })),
+  }
+}
+
+function queueProposal(workspaceRoot: string, draft: ObsidianDraft, now: string): BrainProposal {
+  return {
+    id: randomUUID(),
+    kind: "new_concept",
+    target: { type: "concept", name: draft.id },
+    concept: draft.frontmatter,
+    title: draft.title,
+    rationale: "From an Obsidian vault. Approve it to save the concept.",
+    content: draft.body,
+    description: draft.description,
+    source: { kind: "import", signal: "feedback" },
+    decision: { by: "feedback" },
+    status: "pending",
+    createdAt: now,
+  }
+}
+
+/**
+ * Queue selected Obsidian notes into the inbox. The knowledge files are written
+ * only when those proposals are approved.
+ */
+export async function queueObsidianConcepts(
+  workspaceRoot: string,
+  vaultPath: string,
+  ids: string[]
+): Promise<ObsidianQueueResult> {
+  const drafts = convertObsidianNotes(await readVaultNotes(vaultPath), new Date())
+  const byId = new Map(drafts.map((draft) => [draft.id, draft]))
+  const saved = await savedIndex(workspaceRoot)
+  const queued: ObsidianQueueResult["queued"] = []
+  const skipped: ObsidianQueueResult["skipped"] = []
+
+  for (const id of ids) {
+    const draft = byId.get(id)
+    if (!draft) {
+      skipped.push({ id, reason: "Not in this vault" })
+      continue
+    }
+    if (draft.error) {
+      skipped.push({ id, reason: draft.error })
+      continue
+    }
+    const state = previewState(draft, saved)
+    if (state.state === "saved") {
+      skipped.push({ id, reason: `Already saved as ${state.savedAs ?? id}` })
+      continue
+    }
+    if (state.state === "pending") {
+      skipped.push({ id, reason: "Already in the Inbox" })
+      continue
+    }
+    try {
+      assertConceptId(draft.id)
+    } catch (err) {
+      if (err instanceof KnowledgePathError) {
+        skipped.push({ id, reason: err.message })
+        continue
+      }
+      throw err
+    }
+    const proposal = queueProposal(workspaceRoot, draft, new Date().toISOString())
+    await saveProposal(workspaceRoot, proposal)
+    saved.pendingIds.add(draft.id)
+    const source = draft.frontmatter.sources?.[0]?.resource
+    if (source) saved.pendingSources.add(source)
+    queued.push({ id: draft.id, title: draft.title })
+  }
+
+  return { queued, skipped }
 }

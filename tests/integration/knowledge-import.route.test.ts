@@ -93,4 +93,49 @@ describe("POST /api/knowledge/import", () => {
     const again = await call({ action: "queue", path: root, id: "metrics/revenue" })
     expect(again.status).toBe(409)
   })
+
+  it("previews an Obsidian vault and saves a note only after approval", async () => {
+    const vault = path.join(env.workspace, "vault")
+    await seedArtifact(
+      env.workspace,
+      "vault/00 - MOC.md",
+      "---\ntype: moc\n---\n# Home\n- [[Start]] — How to begin\n"
+    )
+    await seedArtifact(
+      env.workspace,
+      "vault/01 - Guides/Start.md",
+      "---\ntype: guide\n---\n# Start\n\nSee [[00 - MOC|home]].\n"
+    )
+    await seedArtifact(env.workspace, "vault/.obsidian/hidden.md", "# Hidden\n")
+
+    const preview = await call({ action: "preview-obsidian", path: vault })
+    expect(preview.status).toBe(200)
+    const previewJson = await preview.json()
+    expect(previewJson.data.concepts.map((concept: { id: string }) => concept.id)).toEqual([
+      "map-of-content",
+      "guides/start",
+    ])
+    expect(previewJson.data.concepts[1]).toMatchObject({ state: "new", description: "How to begin" })
+    await expect(readdir(path.join(env.workspace, ".black-agents", "knowledge"))).rejects.toThrow()
+
+    const queued = await call({ action: "queue-obsidian", path: vault, ids: ["guides/start", "missing"] })
+    expect(queued.status).toBe(201)
+    const queuedJson = await queued.json()
+    expect(queuedJson.data.queued).toEqual([{ id: "guides/start", title: "Start" }])
+    expect(queuedJson.data.skipped).toEqual([{ id: "missing", reason: "Not in this vault" }])
+
+    const [proposal] = await listProposals(env.workspace)
+    const applied = await decideProposal(env.workspace, proposal.id, { action: "approve" })
+    expect(applied.status).toBe("approved")
+    const file = await readFile(path.join(env.workspace, ".black-agents/knowledge/guides/start.md"), "utf8")
+    expect(file).toContain("type: How To")
+    expect(file).toContain("human:local")
+    expect(file).toContain("[home](../map-of-content.md)")
+
+    const again = await call({ action: "preview-obsidian", path: vault })
+    const againJson = await again.json()
+    expect(againJson.data.concepts.find((concept: { id: string }) => concept.id === "guides/start")).toMatchObject({
+      state: "saved",
+    })
+  })
 })

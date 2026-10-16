@@ -235,6 +235,8 @@ export function ChatPage({
   const [conversationId, setConversationId] = React.useState(() => createConversationId())
   const [recentConversations, setRecentConversations] = React.useState<StoredConversation[]>([])
   const [historyReady, setHistoryReady] = React.useState(false)
+  const [historyPath, setHistoryPath] = React.useState("")
+  const historyPathRef = React.useRef<string | undefined>(undefined)
   const [input, setInput] = React.useState("")
   const [caret, setCaret] = React.useState(0)
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
@@ -266,6 +268,9 @@ export function ChatPage({
   const persistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const conversationIdRef = React.useRef(conversationId)
   conversationIdRef.current = conversationId
+  const workspacePath = workspace?.path ?? ""
+  const workspacePathRef = React.useRef(workspacePath)
+  const historyVisible = historyReady && historyPath === workspacePath
   const allArtifacts = React.useMemo(() => withBuiltinArtifacts(artifacts), [artifacts])
   const agents = React.useMemo(
     () => allArtifacts.filter((artifact) => artifact.type === "agent"),
@@ -317,9 +322,30 @@ export function ChatPage({
     }
   }, [])
 
-  // Restore the last matching conversation from localStorage (max 5 kept).
+  // Restore this workspace's last matching chat (max 5 kept per workspace).
   React.useEffect(() => {
-    const store = readConversationsStore()
+    if (workspaceLoading) return
+    const path = workspace?.path ?? ""
+    const pathChanged = historyPathRef.current !== path
+    historyPathRef.current = path
+    workspacePathRef.current = path
+    setHistoryPath(path)
+
+    if (!path) {
+      setRecentConversations([])
+      if (pathChanged) {
+        setTurns([])
+        setInput("")
+        setFiles([])
+        setLive(EMPTY_LIVE)
+        setAllowFileWrites(false)
+        setConversationId(createConversationId())
+      }
+      setHistoryReady(true)
+      return
+    }
+
+    const store = readConversationsStore(path)
     setRecentConversations(store.conversations)
     const active = store.activeId ? getConversation(store, store.activeId) : undefined
     const agentMatches =
@@ -330,10 +356,17 @@ export function ChatPage({
     } else {
       const id = createConversationId()
       setConversationId(id)
-      writeConversationsStore(setActiveConversation(store, id))
+      if (pathChanged) setTurns([])
+      writeConversationsStore(path, setActiveConversation(store, id))
+    }
+    if (pathChanged) {
+      setInput("")
+      setFiles([])
+      setLive(EMPTY_LIVE)
+      setAllowFileWrites(false)
     }
     setHistoryReady(true)
-  }, [selectedAgentName])
+  }, [selectedAgentName, workspace?.path, workspaceLoading])
 
   React.useEffect(() => {
     apiFetch<ProvidersState>("/api/providers")
@@ -496,16 +529,19 @@ export function ChatPage({
     setModel(nextModel)
   }
 
-  function saveTurns(nextTurns: Turn[]): void {
-    const nextStore = upsertConversation(readConversationsStore(), {
-      id: conversationIdRef.current,
+  function saveTurns(nextTurns: Turn[], scope?: { path: string; id: string }): void {
+    const path = scope?.path || workspacePath
+    const id = scope?.id || conversationIdRef.current
+    if (!path) return
+    const nextStore = upsertConversation(readConversationsStore(path), {
+      id,
       messages: nextTurns,
       agent: selectedAgent?.name,
       provider,
       model,
     })
-    writeConversationsStore(nextStore)
-    setRecentConversations(nextStore.conversations)
+    writeConversationsStore(path, nextStore)
+    if (path === workspacePathRef.current) setRecentConversations(nextStore.conversations)
   }
 
   /** `/name input` or `start @name`: show a run card instead of asking the model. */
@@ -594,6 +630,9 @@ export function ChatPage({
   async function send(text: string) {
     const content = text.trim()
     const sentFiles = files
+    const scope = { path: workspacePath, id: conversationIdRef.current }
+    const stillThisChat = (): boolean =>
+      historyPathRef.current === scope.path && conversationIdRef.current === scope.id
     if ((!content && sentFiles.length === 0) || sending) return
     if (agentNotFound) {
       toast.error(`Agent "${selectedAgentName}" was not found`)
@@ -662,14 +701,16 @@ export function ChatPage({
       const reply = outcome.final
       if (!reply) throw new Error("The assistant stopped before answering")
       const finalized = [...next, reply]
-      setTurns(finalized)
-      saveTurns(finalized)
+      if (stillThisChat()) setTurns(finalized)
+      saveTurns(finalized, scope)
       finished = true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The assistant failed")
-      setTurns((t) => t.slice(0, -1))
-      setInput(content)
-      setFiles(sentFiles)
+      if (stillThisChat()) {
+        setTurns((t) => t.slice(0, -1))
+        setInput(content)
+        setFiles(sentFiles)
+      }
       apiFetch<ProvidersState>("/api/providers")
         .then(setMeta)
         .catch(() => {
@@ -701,24 +742,26 @@ export function ChatPage({
   function startNewChat(): void {
     if (sending) return
     const id = createConversationId()
-    const store = setActiveConversation(readConversationsStore(), id)
-    writeConversationsStore(store)
+    if (workspacePath) {
+      const store = setActiveConversation(readConversationsStore(workspacePath), id)
+      writeConversationsStore(workspacePath, store)
+      setRecentConversations(store.conversations)
+    }
     setConversationId(id)
     setTurns([])
     setInput("")
     setFiles([])
     setLive(EMPTY_LIVE)
     setAllowFileWrites(false)
-    setRecentConversations(store.conversations)
   }
 
   function openRecentConversation(id: string): void {
-    if (sending || id === conversationId) return
-    const store = readConversationsStore()
+    if (sending || id === conversationId || !workspacePath) return
+    const store = readConversationsStore(workspacePath)
     const convo = getConversation(store, id)
     if (!convo) return
     const next = setActiveConversation(store, id)
-    writeConversationsStore(next)
+    writeConversationsStore(workspacePath, next)
     setRecentConversations(next.conversations)
     const target = convo.agent
       ? `/chat?agent=${encodeURIComponent(convo.agent)}`
@@ -951,7 +994,7 @@ export function ChatPage({
           ) : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-initial">
-          {historyReady && recentConversations.length > 0 ? (
+          {historyVisible && recentConversations.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -966,7 +1009,7 @@ export function ChatPage({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>Last 5 chats (this browser)</DropdownMenuLabel>
+                <DropdownMenuLabel>Last 5 chats in this workspace</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {recentConversations.map((convo) => (
                   <DropdownMenuItem
@@ -1159,7 +1202,7 @@ export function ChatPage({
               </p>
             </div>
           ) : null}
-          {turns.length === 0 ? (
+          {!historyVisible ? null : turns.length === 0 ? (
             <div className="space-y-6 py-10 text-center">
               <div className="space-y-3">
                 {selectedAgent ? (
@@ -1212,7 +1255,7 @@ export function ChatPage({
               />
             ))
           )}
-          {sending ? (
+          {sending && historyVisible ? (
             <div className="space-y-3">
               {live.artifacts.length > 0 ? <LoadedArtifacts artifacts={live.artifacts} /> : null}
               <ThinkingPanel

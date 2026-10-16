@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   CONVERSATIONS_STORAGE_KEY,
+  conversationsStorageKey,
   createConversationId,
   EMPTY_CONVERSATIONS_STORE,
   getConversation,
@@ -14,6 +15,7 @@ import {
   toStoredTurn,
   upsertConversation,
   writeConversationsStore,
+  type ConversationStorage,
   type ConversationsStore,
   type StoredTurn,
 } from "@/lib/chat/conversation-history"
@@ -117,6 +119,18 @@ describe("remove / setActive / get", () => {
   })
 })
 
+function memoryStorage(memory: Map<string, string>): ConversationStorage {
+  return {
+    getItem: (key) => memory.get(key) ?? null,
+    setItem: (key, value) => {
+      memory.set(key, value)
+    },
+    removeItem: (key) => {
+      memory.delete(key)
+    },
+  }
+}
+
 describe("parse / read / write", () => {
   it("rejects malformed payloads and round-trips through a memory map", () => {
     expect(parseConversationsStore(null)).toEqual(EMPTY_CONVERSATIONS_STORE)
@@ -124,6 +138,7 @@ describe("parse / read / write", () => {
     expect(createConversationId().length).toBeGreaterThan(8)
 
     const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
     const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, {
       id: "x",
       messages: turns(["hello"]),
@@ -132,10 +147,70 @@ describe("parse / read / write", () => {
       model: "gpt-4o",
       updatedAt: "2026-01-01T00:00:00.000Z",
     })
-    writeConversationsStore(store, (key, value) => memory.set(key, value))
-    expect(memory.get(CONVERSATIONS_STORAGE_KEY)).toContain("hello")
-    expect(
-      readConversationsStore((key) => memory.get(key) ?? null)
-    ).toEqual(store)
+    writeConversationsStore("/work/alpha", store, storage)
+    expect(memory.get(conversationsStorageKey("/work/alpha"))).toContain("hello")
+    expect(readConversationsStore("/work/alpha", storage)).toEqual(store)
+    expect(readConversationsStore("  ", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
+  })
+
+  it("keeps each workspace's chats separate", () => {
+    const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
+    const alpha = upsertConversation(EMPTY_CONVERSATIONS_STORE, {
+      id: "a",
+      messages: turns(["alpha chat"]),
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    })
+    const beta = upsertConversation(EMPTY_CONVERSATIONS_STORE, {
+      id: "b",
+      messages: turns(["beta chat"]),
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    })
+    writeConversationsStore("/work/alpha", alpha, storage)
+    writeConversationsStore("/work/beta", beta, storage)
+
+    expect(readConversationsStore("/work/alpha", storage).conversations.map((c) => c.id)).toEqual(["a"])
+    expect(readConversationsStore("/work/beta", storage).conversations.map((c) => c.id)).toEqual(["b"])
+    expect(conversationsStorageKey("/work/alpha")).not.toBe(conversationsStorageKey("/work/beta"))
+    expect(memory.has(CONVERSATIONS_STORAGE_KEY)).toBe(false)
+  })
+
+  it("moves the old shared list into the first workspace that opens it", () => {
+    const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
+    const legacy = upsertConversation(EMPTY_CONVERSATIONS_STORE, {
+      id: "old",
+      messages: turns(["from before"]),
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    })
+    memory.set(CONVERSATIONS_STORAGE_KEY, JSON.stringify(legacy))
+
+    expect(readConversationsStore("/work/alpha", storage)).toEqual(legacy)
+    expect(memory.has(CONVERSATIONS_STORAGE_KEY)).toBe(false)
+    expect(readConversationsStore("/work/beta", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
+    expect(readConversationsStore("/work/alpha", storage).conversations[0]?.title).toBe("from before")
+  })
+
+  it("does not give a blank path the old shared list", () => {
+    const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
+    memory.set(CONVERSATIONS_STORAGE_KEY, JSON.stringify({ conversations: [], activeId: null }))
+    expect(readConversationsStore("", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
+    expect(memory.has(CONVERSATIONS_STORAGE_KEY)).toBe(true)
+  })
+
+  it("drops a broken shared list instead of copying it", () => {
+    const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
+    memory.set(CONVERSATIONS_STORAGE_KEY, "{")
+    expect(readConversationsStore("/work/alpha", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
+    expect(memory.has(CONVERSATIONS_STORAGE_KEY)).toBe(false)
+  })
+
+  it("returns an empty store when a workspace payload is broken", () => {
+    const memory = new Map<string, string>()
+    const storage = memoryStorage(memory)
+    memory.set(conversationsStorageKey("/work/alpha"), "{")
+    expect(readConversationsStore("/work/alpha", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
   })
 })

@@ -3,8 +3,13 @@ import { z } from "zod"
 import { attachmentMeta, attachmentMetaSchema, type Attachment } from "@/lib/chat/attachments"
 
 /**
- * Browser-local chat history (no DB). Keeps the 5 most recent finished
- * conversations in localStorage so a refresh or revisit can restore them.
+ * Browser-local chat history (no DB). Each workspace keeps its own 5 most
+ * recent finished conversations in localStorage, so a refresh restores that
+ * workspace's chats and another workspace does not see them.
+ *
+ * Older builds stored every workspace in {@link CONVERSATIONS_STORAGE_KEY}.
+ * The first workspace opened after this change takes that list, then the
+ * shared key is removed.
  *
  * Electron note: each launch uses a new loopback port/origin, so localStorage
  * does not survive restarts there — same limitation as other browser-only
@@ -13,6 +18,17 @@ import { attachmentMeta, attachmentMetaSchema, type Attachment } from "@/lib/cha
 
 export const MAX_RECENT_CONVERSATIONS = 5
 export const CONVERSATIONS_STORAGE_KEY = "black-agents:conversations:v1"
+
+/** localStorage key for one workspace. Paths are encoded so slashes stay in the key. */
+export function conversationsStorageKey(workspacePath: string): string {
+  return `${CONVERSATIONS_STORAGE_KEY}:${encodeURIComponent(workspacePath.trim())}`
+}
+
+export interface ConversationStorage {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem: (key: string) => void
+}
 export const TITLE_MAX_LENGTH = 60
 
 const turnArtifactSchema = z.object({
@@ -171,25 +187,60 @@ export function parseConversationsStore(raw: unknown): ConversationsStore {
 }
 
 export function readConversationsStore(
-  getItem: (key: string) => string | null = defaultGetItem
+  workspacePath: string,
+  storage: ConversationStorage = browserStorage
 ): ConversationsStore {
+  const path = workspacePath.trim()
+  if (!path) return EMPTY_CONVERSATIONS_STORE
+  const key = conversationsStorageKey(path)
   try {
-    const raw = getItem(CONVERSATIONS_STORAGE_KEY)
-    if (!raw) return EMPTY_CONVERSATIONS_STORE
-    return parseConversationsStore(JSON.parse(raw) as unknown)
+    const own = storage.getItem(key)
+    if (own) return parseConversationsStore(JSON.parse(own) as unknown)
   } catch {
     return EMPTY_CONVERSATIONS_STORE
   }
+  return adoptLegacyStore(path, key, storage)
 }
 
 export function writeConversationsStore(
+  workspacePath: string,
   store: ConversationsStore,
-  setItem: (key: string, value: string) => void = defaultSetItem
+  storage: ConversationStorage = browserStorage
 ): void {
+  const path = workspacePath.trim()
+  if (!path) return
   try {
-    setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(store))
+    storage.setItem(conversationsStorageKey(path), JSON.stringify(store))
   } catch {
     // private mode / quota — non-fatal
+  }
+}
+
+/** Move the old shared list into this workspace once, then delete it. */
+function adoptLegacyStore(
+  workspacePath: string,
+  key: string,
+  storage: ConversationStorage
+): ConversationsStore {
+  let legacyRaw: string | null
+  try {
+    legacyRaw = storage.getItem(CONVERSATIONS_STORAGE_KEY)
+  } catch {
+    return EMPTY_CONVERSATIONS_STORE
+  }
+  if (!legacyRaw) return EMPTY_CONVERSATIONS_STORE
+  try {
+    const legacy = parseConversationsStore(JSON.parse(legacyRaw) as unknown)
+    writeConversationsStore(workspacePath, legacy, storage)
+    if (storage.getItem(key)) storage.removeItem(CONVERSATIONS_STORAGE_KEY)
+    return legacy
+  } catch {
+    try {
+      storage.removeItem(CONVERSATIONS_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
+    return EMPTY_CONVERSATIONS_STORE
   }
 }
 
@@ -209,4 +260,19 @@ function defaultSetItem(key: string, value: string): void {
   } catch {
     // ignore
   }
+}
+
+function defaultRemoveItem(key: string): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
+const browserStorage: ConversationStorage = {
+  getItem: defaultGetItem,
+  setItem: defaultSetItem,
+  removeItem: defaultRemoveItem,
 }

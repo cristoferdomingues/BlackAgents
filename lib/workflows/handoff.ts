@@ -3,6 +3,7 @@ import type { WorkspaceFile } from "../files/schema"
 import { isFileWriteTool } from "../runtime/tool-names"
 import type { ToolExecutionTrace } from "../runtime/types"
 import { loginStepNote } from "./login"
+import { REVIEW_INSTRUCTION } from "./review"
 import type { StepRun, Workflow, WorkflowStep } from "./schema"
 
 export const HANDOFF_OUTPUT_MAX_CHARS = 12_000
@@ -81,6 +82,7 @@ export function buildStepMessage(params: {
   }
   const loginNote = params.loginNote ?? (step.login ? loginStepNote(workflow.name, step.id) : "")
   if (loginNote) parts.push(loginNote)
+  if (step.review) parts.push(REVIEW_INSTRUCTION)
   if (params.retryNote) parts.push(`## Retry\n\n${params.retryNote}`)
   const isLast = index === workflow.steps.length - 1
   parts.push(

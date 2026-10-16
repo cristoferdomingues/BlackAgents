@@ -139,6 +139,11 @@ export function RunView({ id }: { id: string }) {
                       {step.gate.by === "jev" ? `Jev: ${step.gate.decision}` : "Gate: continue"}
                     </Badge>
                   ) : null}
+                  {step.verdict ? (
+                    <Badge variant={step.verdict === "reject" ? "destructive" : "secondary"}>
+                      {step.verdict === "reject" ? "Review: rejected" : "Review: approved"}
+                    </Badge>
+                  ) : null}
                   {step.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-primary" aria-label="Step running" /> : null}
                   <RunStatusBadge status={step.status} />
                 </div>

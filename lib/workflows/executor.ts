@@ -23,6 +23,7 @@ import { buildStepMessage, filesChangedBy, handoffsFor } from "./handoff"
 import { alreadyLoggedInNote, loginSecretIds, loginStepNote } from "./login"
 import { requestLogin, type LoginDecision } from "./login-wait"
 import { stepModelLayers, stepResolveOptions, type ResolveLlmOptions, type ResolvedLlm } from "./llm"
+import { parseReviewVerdict } from "./review"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
 export const REPORT_MAX_CHARS = 2_000
@@ -327,6 +328,7 @@ export async function executeRun(
 
         stepRun.output = content
         stepRun.filesChanged = filesChangedBy(stepRun.toolExecutions)
+        stepRun.verdict = step.review ? (parseReviewVerdict(content) ?? undefined) : undefined
         gate = step.gate
           ? await decideGate({ resolved, workflow, run, step: stepRun, instructions: step.instructions, isLast: index === workflow.steps.length - 1 })
           : undefined

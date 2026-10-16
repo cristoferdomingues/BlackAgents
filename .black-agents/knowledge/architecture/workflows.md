@@ -49,7 +49,8 @@ verified:
       "input": "previous",                         // previous | all | task
       "tools": ["fs_read"], "mcpServers": [],      // optional overrides
       "provider": "anthropic", "model": "claude-sonnet-4-20250514", // optional
-      "allowWrites": false, "maxTurns": 6, "gate": true }
+      "allowWrites": false, "maxTurns": 6, "gate": true,
+      "review": false }                            // true = ends with VERDICT: approve|reject
   ],
   "limits": { "stepTimeoutMinutes": 10, "runTimeoutMinutes": 60, "maxRetries": 1 },
   "selfAssess": false
@@ -74,6 +75,7 @@ flowchart LR
 - **Handoff** (`handoff.ts`): earlier output is passed as **untrusted JSON** `{ fromStep, agent, output, filesChanged }`, never as instructions. `filesChanged` comes from successful `fs_write` calls.
 - **Approvals**: the run moves to `waiting_approval` with `pendingApproval` set; the user decides on the run page or in the list's panel ([Agent Runtime & Approvals](./agent-runtime-approvals.md)).
 - **Gate**: Jev's `retry` repeats the step up to `maxRetries`; `stop` skips the rest. Low confidence = continue.
+- **Review** (`review.ts`): a `review: true` step is told to end with `VERDICT: approve` or `VERDICT: reject`. The executor stores it as `StepRun.verdict` (badge on the run page). It does not stop or loop the run; with `selfAssess`, a reject becomes feedback for the reviewed agents ([Second Brain](./second-brain.md)).
 - **Limits**: step and run timeouts (`AbortSignal.timeout`), user cancel.
 - **LLM choice** (`llm.ts`): resolved for each step in this order: step → agent frontmatter → workflow → Assistant default → first verified provider. A layer may use `model: "task:vision"` (or `fast` / `reasoning`) to follow Settings → AI → Models by task. Credentials are cached by the final provider + model.
 - **Fail fast**: manual and scheduled runs check every step before queueing. A missing task model or unverified provider returns/records a clear error.

@@ -146,6 +146,15 @@ describe("handoff", () => {
     expect(text).toContain('"output": "built"')
     expect(text).toContain("## Retry")
     expect(text).toContain("final result")
+    expect(text).not.toContain("VERDICT:")
+  })
+
+  it("asks review steps for a verdict line", () => {
+    const workflow = wf()
+    const step = { ...workflow.steps[1], review: true }
+    const text = buildStepMessage({ workflow, step, index: 1, task: "Ship it", handoffs: handoffsFor(step, done) })
+    expect(text).toContain("## Review")
+    expect(text).toContain("`VERDICT: approve` or `VERDICT: reject`")
   })
 
   it("collects files from successful builtin fs_write and fs_edit calls only", () => {

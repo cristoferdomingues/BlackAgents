@@ -239,4 +239,75 @@ describe("selfAssessRun", () => {
     expect(await selfAssessRun(run, wf, d)).toEqual([{ kind: "proposed", proposalId: expect.any(String) }])
     expect(await selfAssessRun(run, { ...wf, selfAssess: false }, d)).toEqual([])
   })
+
+  function reviewRun(reviewOutput: string, selfAssess = true) {
+    const wf = workflowSchema.parse({
+      name: "w",
+      selfAssess,
+      steps: [
+        { id: "build", agent: "coder", instructions: "Write the login form" },
+        { id: "review", agent: "reviewer", review: true },
+      ],
+    })
+    const run = newRun({ id: "r", workflow: wf, workspaceRoot: env.workspace, trigger: "manual", task: "Add login" })
+    run.status = "succeeded"
+    run.steps[0] = { ...run.steps[0], status: "succeeded", output: "form.tsx written" }
+    run.steps[1] = { ...run.steps[1], status: "succeeded", output: reviewOutput }
+    return { wf, run }
+  }
+
+  it("turns a reviewer reject into thumbs-down feedback for the reviewed agent, even without Jev", async () => {
+    const { wf, run } = reviewRun("- No input validation\n- No tests\nVERDICT: reject")
+    const d = deps(proposalReply({ action: "update_rule", content: "Validate every input with zod.", target: { type: "rule", name: "style" } }))
+    const results = await selfAssessRun(run, wf, d)
+    expect(results[0]).toEqual({ kind: "proposed", proposalId: expect.any(String) })
+    expect(results.slice(1).every((r) => r.kind === "recorded")).toBe(true)
+
+    const prompt = d.provider.requests[0].messages[0].content
+    expect(prompt).toContain('Reviewer \\"reviewer\\" (step \\"review\\") rejected this work')
+    expect(prompt).toContain("No input validation")
+    expect(prompt).not.toContain("VERDICT: reject")
+    expect(prompt).toContain("Write the login form")
+    expect(prompt).toContain("form.tsx written")
+
+    const [proposal] = await listProposals(env.workspace)
+    expect(proposal).toMatchObject({
+      kind: "update_rule",
+      agent: "coder",
+      target: { type: "rule", name: "style" },
+      source: { kind: "run", signal: "feedback", rating: "down", runId: "r" },
+    })
+  })
+
+  it("sends no review feedback on approve, missing verdict, or when selfAssess is off", async () => {
+    for (const [output, selfAssess] of [
+      ["Fine.\nVERDICT: approve", true],
+      ["I think it is wrong.", true],
+      ["Bad.\nVERDICT: reject", false],
+    ] as const) {
+      const { wf, run } = reviewRun(output, selfAssess)
+      const d = deps(proposalReply({ action: "memory_note", content: "x" }))
+      const results = await selfAssessRun(run, wf, d)
+      expect(results.every((r) => r.kind === "recorded")).toBe(true)
+      expect(d.provider.requests).toHaveLength(0)
+    }
+  })
+
+  it("does not send review feedback to a reviewed review step", async () => {
+    const wf = workflowSchema.parse({
+      name: "w",
+      selfAssess: true,
+      steps: [
+        { id: "first-review", agent: "reviewer", review: true },
+        { id: "second-review", agent: "coder", review: true },
+      ],
+    })
+    const run = newRun({ id: "r", workflow: wf, workspaceRoot: env.workspace, trigger: "manual", task: "t" })
+    run.status = "succeeded"
+    run.steps[0] = { ...run.steps[0], status: "succeeded", output: "VERDICT: approve" }
+    run.steps[1] = { ...run.steps[1], status: "succeeded", output: "VERDICT: reject" }
+    const d = deps(proposalReply({ action: "memory_note", content: "x" }))
+    await selfAssessRun(run, wf, d)
+    expect(d.provider.requests).toHaveLength(0)
+  })
 })

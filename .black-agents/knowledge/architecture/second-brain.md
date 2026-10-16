@@ -42,6 +42,7 @@ Notes are one line each: `- [YYYY-MM-DD] text`. You can edit the files by hand.
 
 - **Feedback**: thumbs up/down + comment under chat replies and finished runs (`POST /api/brain/feedback`).
 - **Self**: a workflow with `selfAssess: true` sends each finished step after the run.
+- **Review**: in a `selfAssess` workflow, a step with `review: true` that ends with `VERDICT: reject` sends thumbs-down feedback (its reasons as the comment) to each agent whose work it received. It is explicit feedback, so it works without Jev, and it goes before the self signals (3/run cap). The draft prompt prefers fixing that agent's skills or rules.
 
 ## From Signal to Proposal (`lib/brain/learn.ts` → `processSignal`)
 

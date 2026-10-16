@@ -19,7 +19,9 @@ import type { OkfConceptFrontmatter } from "@/lib/knowledge/schema"
 import { isProviderId } from "@/lib/llm/registry"
 import { checkArtifactStandards, hasErrors, RULE_MAX_LINES } from "@/lib/standards/checks"
 import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
+import { handoffsFor } from "@/lib/workflows/handoff"
 import { resolveRunLlm, type ResolvedLlm } from "@/lib/workflows/llm"
+import { parseReviewVerdict, reviewReasons } from "@/lib/workflows/review"
 import type { Workflow, WorkflowRun } from "@/lib/workflows/schema"
 
 import { appendLog, appendNote, formatNoteText, listProposals, readProposal, saveProposal } from "./store"
@@ -129,6 +131,8 @@ Pick exactly one action:
 - "update_skill" / "update_rule": rewrite an existing artifact; "content" is the FULL new markdown body.
 - "new_skill" / "new_rule": a new artifact; kebab-case name, "description", full body. Skills need these sections: ${STANDARDS_SPEC.skill.requiredSections.map((x) => `"## ${x}"`).join(", ")}. Rules stay under ${RULE_MAX_LINES} lines.
 - "nothing": no reusable lesson.
+
+When the comment is a reviewer rejecting this agent's work, find the gap in the agent's skills or rules that caused it and fix it there. Use a memory note only when no skill or rule fits.
 ${action ? `\nThe decision engine already chose the action "${action}". Use it unless it is clearly impossible.\n` : ""}
 Reply with ONLY a fenced block:
 
@@ -539,7 +543,47 @@ export async function decideProposal(
   return proposal
 }
 
-/** End-of-run reflection: each finished step becomes a `self` signal (Jev decides). */
+const REVIEW_COMMENT_MAX = 2_000
+
+function stepTask(run: WorkflowRun, workflow: Workflow, index: number): string {
+  return `${run.task}\n\n${workflow.steps[index]?.instructions ?? ""}`.trim().slice(0, 4_000)
+}
+
+/** A `VERDICT: reject` from a review step is explicit feedback for each agent whose work it received. */
+function reviewSignals(run: WorkflowRun, workflow: Workflow): FeedbackSignal[] {
+  const signals: FeedbackSignal[] = []
+  for (const [index, step] of run.steps.entries()) {
+    const def = workflow.steps[index]
+    if (!def?.review || step.status !== "succeeded" || !step.output) continue
+    if (parseReviewVerdict(step.output) !== "reject") continue
+    const header = `Reviewer "${step.agent}" (step "${step.id}") rejected this work:\n`
+    const reasons = reviewReasons(step.output)
+    const room = REVIEW_COMMENT_MAX - header.length
+    const comment = header + (reasons.length > room ? `${reasons.slice(0, room - 1)}…` : reasons)
+    for (const handoff of handoffsFor(def, run.steps.slice(0, index))) {
+      const reviewedIndex = run.steps.findIndex((s) => s.id === handoff.fromStep)
+      if (workflow.steps[reviewedIndex]?.review) continue
+      signals.push({
+        source: "run",
+        kind: "feedback",
+        agent: handoff.agent,
+        rating: "down",
+        comment,
+        userMessage: stepTask(run, workflow, reviewedIndex),
+        reply: handoff.output.slice(0, 8_000),
+        runId: run.id,
+        provider: workflow.provider,
+        model: workflow.model,
+      })
+    }
+  }
+  return signals
+}
+
+/**
+ * End-of-run reflection. Review rejections go first (explicit feedback for the
+ * reviewed agent), then each finished step becomes a `self` signal (Jev decides).
+ */
 export async function selfAssessRun(
   run: WorkflowRun,
   workflow: Workflow,
@@ -547,9 +591,11 @@ export async function selfAssessRun(
 ): Promise<FeedbackResult[]> {
   if (!workflow.selfAssess || run.status !== "succeeded") return []
   const results: FeedbackResult[] = []
+  for (const signal of reviewSignals(run, workflow)) {
+    results.push(await processSignal(run.workspaceRoot, signal, deps))
+  }
   for (const [index, step] of run.steps.entries()) {
     if (step.status !== "succeeded" || !step.output) continue
-    const instructions = workflow.steps[index]?.instructions ?? ""
     results.push(
       await processSignal(
         run.workspaceRoot,
@@ -557,7 +603,7 @@ export async function selfAssessRun(
           source: "run",
           kind: "self",
           agent: step.agent,
-          userMessage: `${run.task}\n\n${instructions}`.trim().slice(0, 4_000),
+          userMessage: stepTask(run, workflow, index),
           reply: step.output.slice(0, 8_000),
           runId: run.id,
           provider: workflow.provider,

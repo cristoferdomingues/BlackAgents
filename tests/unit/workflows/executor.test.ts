@@ -133,6 +133,15 @@ describe("executeRun", () => {
     expect(run.report).toContain("Stopped early")
   })
 
+  it("records a review step's verdict only on review steps", async () => {
+    const provider = scriptedProvider([{ content: "code\nVERDICT: approve" }, { content: "No tests.\nVERDICT: reject" }])
+    const wf = workflow({ steps: [{ id: "build", agent: "planner" }, { id: "review", agent: "builder", review: true }] })
+    const run = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("succeeded")
+    expect(run.steps[0].verdict).toBeUndefined()
+    expect(run.steps[1].verdict).toBe("reject")
+  })
+
   it("ignores low-confidence gate answers", async () => {
     const wf = workflow({ steps: [{ id: "plan", agent: "planner", gate: true }] })
     const jev = fakeJev({ next: choiceAnswer("stop", 0.5) })

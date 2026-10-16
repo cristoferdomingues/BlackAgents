@@ -70,6 +70,7 @@ interface StepDraft {
   allowWrites: boolean
   maxTurns: number
   gate: boolean
+  review: boolean
   login: boolean
   username: string
   password: string
@@ -109,6 +110,7 @@ function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
     allowWrites: false,
     maxTurns: DEFAULT_STEP_TURNS,
     gate: false,
+    review: false,
     login: false,
     username: "",
     password: "",
@@ -146,6 +148,7 @@ function toDraft(wf: Workflow): Draft {
         allowWrites: s.allowWrites,
         maxTurns: s.maxTurns,
         gate: s.gate,
+        review: s.review,
         login: s.login,
         username: "",
         password: "",
@@ -172,6 +175,7 @@ function toInput(d: Draft): { body: unknown; error: string | null } {
       allowWrites: s.allowWrites,
       maxTurns: s.maxTurns,
       gate: s.gate,
+      review: s.review,
       login: s.login,
       ...stepModelFields(s.modelChoice, s.model),
     })
@@ -689,6 +693,10 @@ export function WorkflowBuilder({ name }: { name?: string }) {
               <div className="flex items-center gap-2">
                 <Switch id={`${step.key}-gate`} checked={step.gate} onCheckedChange={(v) => setStep(step.key, { gate: v })} />
                 <Label htmlFor={`${step.key}-gate`}>Jev checks the result</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id={`${step.key}-review`} checked={step.review} onCheckedChange={(v) => setStep(step.key, { review: v })} />
+                <Label htmlFor={`${step.key}-review`}>This step reviews earlier work</Label>
               </div>
             </CardContent>
           </Card>

@@ -95,6 +95,59 @@ test.describe("workflows", () => {
     expect(saved).toMatchObject({ name: "review-line", task: "Ship it", steps: [{ id: "step-1", agent: "planner", gate: true }] })
   })
 
+  test("saves a review step", async ({ page }) => {
+    let saved: unknown
+    await page.route("**/api/workflows", async (route) => {
+      saved = route.request().postDataJSON()
+      await route.fulfill({ status: 201, json: { success: true, data: { workflow } } })
+    })
+    await page.route("**/api/workflows/review-line", (route) =>
+      route.fulfill({ json: { success: true, data: { workflow, active: false } } })
+    )
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByLabel("This step reviews earlier work").click()
+    await page.getByRole("button", { name: "Save" }).click()
+
+    await expect(page).toHaveURL(/\/workflows\/review-line$/)
+    expect(saved).toMatchObject({ steps: [{ id: "step-1", agent: "planner", review: true, gate: false }] })
+  })
+
+  test("shows a review step's verdict", async ({ page }) => {
+    await page.route("**/api/runs/run-1/events", (route) =>
+      fulfillSse(route, [
+        [
+          "run",
+          run({
+            steps: [
+              { id: "plan", agent: "planner", status: "succeeded", attempts: 1, output: "Built", toolExecutions: [], filesChanged: [] },
+              {
+                id: "review",
+                agent: "planner",
+                status: "succeeded",
+                attempts: 1,
+                output: "No tests.\n\nVERDICT: reject",
+                verdict: "reject",
+                toolExecutions: [],
+                filesChanged: [],
+              },
+            ],
+          }),
+        ],
+      ])
+    )
+
+    await page.goto("/workflows/runs/run-1")
+    await expect(page.getByText("Review: rejected")).toBeVisible()
+    await expect(page.getByText("Review: approved")).toHaveCount(0)
+  })
+
   test("saves a login step without putting the password in the workflow", async ({ page }) => {
     let savedWorkflow: { steps?: Array<{ login?: boolean }> } | undefined
     let savedSecrets: { secrets?: Record<string, string> } | undefined

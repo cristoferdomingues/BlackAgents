@@ -5,6 +5,7 @@ import { inspectModelRef, providerIdSchema, type ModelSource } from "../llm/mode
 import type { ChatModelTask } from "../llm/task-models"
 import { builtinToolNameSchema } from "../runtime/tool-names"
 import type { ApprovalRequest, ToolExecutionTrace } from "../runtime/types"
+import type { ReviewVerdict } from "./review"
 
 /**
  * Workflows: a production line of agents. Each step runs one workspace agent;
@@ -46,6 +47,11 @@ export const workflowStepSchema = z.object({
   maxTurns: z.number().int().min(1).max(MAX_STEP_TURNS).default(DEFAULT_STEP_TURNS),
   /** Ask Jev after this step: continue, retry the step, or stop the line. */
   gate: z.boolean().default(false),
+  /**
+   * This step reviews the work it receives and ends with `VERDICT: approve` or
+   * `VERDICT: reject`. With `selfAssess`, a reject is feedback for the reviewed agents.
+   */
+  review: z.boolean().default(false),
   /**
    * This step signs in to a website. The username and password are stored as
    * secrets (`browser.<workflow>.<step>.username` / `.password`), never in this file.
@@ -163,6 +169,8 @@ export interface StepRun {
   toolExecutions: ToolExecutionTrace[]
   filesChanged: string[]
   gate?: StepGateResult
+  /** Review steps only; missing when the reviewer gave no `VERDICT:` line. */
+  verdict?: ReviewVerdict
   startedAt?: string
   finishedAt?: string
   /** Provider that actually ran this step. Missing on runs saved before model routing. */

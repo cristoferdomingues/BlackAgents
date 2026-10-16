@@ -6,6 +6,15 @@ import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import type { AiSettings, JevOpenRouterKeySource, JevProviderPreference } from "@/lib/settings"
+import {
+  ACTION,
+  FILE_WRITES_ALERT,
+  FILE_WRITES_DIALOG_BODY,
+  FILE_WRITES_DIALOG_TITLE,
+  FILE_WRITES_LABEL,
+  FILE_WRITES_OFF,
+  TERM_JEV,
+} from "@/lib/settings/explain"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 
 interface AiSettingsSnapshot {
@@ -126,9 +136,10 @@ export function AiSettingsCard() {
   if (!data) {
     return (
       <Card>
-        <CardContent className="space-y-3 py-6">
-          <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
-          <div className="h-9 w-full animate-pulse rounded bg-muted" />
+        <CardContent className="space-y-3 py-6" aria-busy="true">
+          <p className="text-sm text-muted-foreground">Loading AI settings…</p>
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-9 w-full" />
         </CardContent>
       </Card>
     )
@@ -171,6 +182,7 @@ export function AiSettingsCard() {
               Save
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">{ACTION.saveTurns}</p>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <Switch
@@ -182,25 +194,18 @@ export function AiSettingsCard() {
                   else void save({ assistant: { autoApproveFileWrites: false } })
                 }}
               />
-              <Label htmlFor="assistant-auto-file-writes">Allow file writes without asking</Label>
+              <Label htmlFor="assistant-auto-file-writes">{FILE_WRITES_LABEL}</Label>
             </div>
             {data.settings.assistant.autoApproveFileWrites ? (
               <div
                 role="alert"
-                className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
               >
-                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <p>
-                  File writes run with no approval. The assistant can create and overwrite files in
-                  your workspace, including files you did not mean to change. Check the files after
-                  a chat. Writes into config folders still ask.
-                </p>
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p>{FILE_WRITES_ALERT}</p>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Off: each file write asks you to deny it, allow it for that message, or allow it for
-                the chat.
-              </p>
+              <p className="text-xs text-muted-foreground">{FILE_WRITES_OFF}</p>
             )}
           </div>
         </CardContent>
@@ -209,12 +214,8 @@ export function AiSettingsCard() {
       <Dialog open={writeWarningOpen} onOpenChange={setWriteWarningOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Allow file writes without asking?</DialogTitle>
-            <DialogDescription>
-              The assistant can create and change files in your workspace without asking you. It can
-              overwrite a file you did not want to change. Check the files after each chat. Writes
-              into config folders still ask.
-            </DialogDescription>
+            <DialogTitle>{FILE_WRITES_DIALOG_TITLE}</DialogTitle>
+            <DialogDescription>{FILE_WRITES_DIALOG_BODY}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWriteWarningOpen(false)} disabled={busy !== null}>
@@ -246,11 +247,7 @@ export function AiSettingsCard() {
               </Badge>
             ) : null}
           </CardTitle>
-          <CardDescription>
-            Optional. Jev is a fast classifier from TypeSafe. It picks which artifacts go into a chat,
-            gates workflow steps, and decides what the Second Brain should learn. When it is off or
-            fails, everything works as before.
-          </CardDescription>
+          <CardDescription>{TERM_JEV}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
@@ -432,6 +429,7 @@ export function AiSettingsCard() {
             {busy === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
             Test connection
           </Button>
+          <p className="text-xs text-muted-foreground">{ACTION.testJev}</p>
         </CardContent>
       </Card>
     </div>

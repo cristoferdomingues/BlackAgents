@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { ACTION, BROWSER_LOAD_ERROR, EMPTY } from "@/lib/settings/explain"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 
 interface BrowserFlowSummary {
@@ -58,7 +60,8 @@ interface BrowserStatus {
 export function BrowserAutomationCard() {
   const { workspace } = useWorkspace()
   const [status, setStatus] = React.useState<BrowserStatus | null>(null)
-  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(true)
   const [busy, setBusy] = React.useState(false)
   const [flowName, setFlowName] = React.useState("my-browser-flow")
   const [dailyAt, setDailyAt] = React.useState("09:05")
@@ -75,14 +78,17 @@ export function BrowserAutomationCard() {
     try {
       const data = await apiFetch<BrowserStatus>("/api/browser")
       setStatus(data)
-    } catch {
-      setStatus(null)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : BROWSER_LOAD_ERROR)
     } finally {
       setLoading(false)
     }
   }, [workspace])
 
   React.useEffect(() => {
+    setStatus(null)
+    setError(null)
     void load()
   }, [load])
 
@@ -299,8 +305,9 @@ export function BrowserAutomationCard() {
   if (!workspace) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          Select an active workspace to configure browser automation.
+        <CardContent className="space-y-2 py-8 text-center">
+          <p className="text-sm font-medium">No active workspace</p>
+          <p className="text-sm text-muted-foreground">{EMPTY.noWorkspaceBrowser}</p>
         </CardContent>
       </Card>
     )
@@ -322,10 +329,29 @@ export function BrowserAutomationCard() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {loading && !status ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading…
+          {loading && !status && !error ? (
+            <div className="space-y-2" aria-busy="true">
+              <p className="text-sm text-muted-foreground">Loading browser settings…</p>
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-2/3" />
+            </div>
+          ) : null}
+
+          {error && !status ? (
+            <div role="alert" className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-destructive">{error}</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+                Retry
+              </Button>
+            </div>
+          ) : null}
+
+          {error && status ? (
+            <div role="alert" className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-destructive">{error}</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+                Retry
+              </Button>
             </div>
           ) : null}
 
@@ -362,6 +388,7 @@ export function BrowserAutomationCard() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleCheck className="h-4 w-4" />}
                 Enable Playwright MCP
               </Button>
+              <p className="text-xs text-muted-foreground">{ACTION.enableBrowser}</p>
 
               <div className="flex items-center justify-between gap-3 rounded-md border p-3">
                 <div className="space-y-0.5">
@@ -459,6 +486,9 @@ export function BrowserAutomationCard() {
               Start recording
             </Button>
           )}
+          <p className="text-xs text-muted-foreground">
+            {status?.recording ? ACTION.stopAndSave : ACTION.startRecording}
+          </p>
         </CardContent>
       </Card>
 
@@ -481,10 +511,10 @@ export function BrowserAutomationCard() {
             ].sort()
             if (ids.length === 0) {
               return (
-                <p className="text-sm text-muted-foreground">
-                  No flow secrets referenced yet. Password-like fills are promoted when you save
-                  a flow.
-                </p>
+                <div className="space-y-2 rounded-lg border border-dashed px-4 py-6 text-center">
+                  <p className="text-sm font-medium">{EMPTY.secretsTitle}</p>
+                  <p className="text-sm text-muted-foreground">{EMPTY.secretsText}</p>
+                </div>
               )
             }
             return (
@@ -592,10 +622,13 @@ export function BrowserAutomationCard() {
             </div>
           </div>
 
+          <p className="text-xs text-muted-foreground">{ACTION.dailyBind}</p>
+
           {!status?.flows.length ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No flows yet. Record one or save traces from Chat.
-            </p>
+            <div className="space-y-2 rounded-lg border border-dashed px-4 py-6 text-center">
+              <p className="text-sm font-medium">{EMPTY.flowsTitle}</p>
+              <p className="text-sm text-muted-foreground">{EMPTY.flowsText}</p>
+            </div>
           ) : (
             <ul className="space-y-2">
               {status.flows.map((f) => (

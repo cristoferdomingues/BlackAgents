@@ -42,31 +42,33 @@ function promoteMap(
 
   for (const key of secretKeySet) {
     const current = values[key]
-    if (current === undefined) {
-      return {
-        ok: false,
-        error: `Cannot store secret for ${kind} "${key}" — it is not set on the server`,
-      }
-    }
-
     const id = mcpSecretId(serverName, kind, key)
-    const existingRef = parseFullSecretRef(current)
-    if (existingRef) {
-      if (!existingSecrets[existingRef] && !upserts[existingRef]) {
-        return {
-          ok: false,
-          error: `MCP secret "${existingRef}" is not configured`,
+
+    if (current !== undefined) {
+      const existingRef = parseFullSecretRef(current)
+      if (existingRef) {
+        if (!existingSecrets[existingRef] && !upserts[existingRef]) {
+          return {
+            ok: false,
+            error: `MCP secret "${existingRef}" is not configured`,
+          }
         }
+        next[key] = formatSecretRef(existingRef)
+        continue
       }
-      next[key] = formatSecretRef(existingRef)
-      continue
     }
 
-    const trimmed = current.trim()
-    if (!trimmed) {
+    // Missing or blank means "keep the stored secret" when one exists.
+    if (current === undefined || !current.trim()) {
       if (existingSecrets[id]) {
         next[key] = formatSecretRef(id)
         continue
+      }
+      if (current === undefined) {
+        return {
+          ok: false,
+          error: `Cannot store secret for ${kind} "${key}" — it is not set on the server`,
+        }
       }
       return {
         ok: false,
@@ -82,8 +84,9 @@ function promoteMap(
 }
 
 /**
- * Move selected header/env values into secrets.json and leave `${secret:id}`
- * placeholders in the workspace mcp.json config.
+ * Move selected header/env values into secret upserts and leave `${secret:id}`
+ * placeholders in the config. The caller chooses whether to write them.
+ * A missing or blank secret value keeps the stored secret when one exists.
  */
 export function promoteMcpSecrets(
   input: PromoteMcpSecretsInput

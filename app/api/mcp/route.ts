@@ -1,5 +1,3 @@
-import { z } from "zod"
-
 import { ok, fail, handle } from "@/lib/api-response"
 import { readConfig } from "@/lib/config"
 import {
@@ -8,12 +6,13 @@ import {
   saveWorkspaceMcpServer,
 } from "@/lib/mcp/config"
 import { getWorkspaceServersStatus, testMcpServer } from "@/lib/mcp/client"
+import { blankPlainHeaderError } from "@/lib/mcp/headers"
 import {
   mcpSecretIdsForServer,
   promoteMcpSecrets,
 } from "@/lib/mcp/promote-secrets"
 import { readMcpPolicy, trustOf } from "@/lib/mcp/policy"
-import { mcpServerConfigSchema } from "@/lib/mcp/types"
+import { mcpServerWriteSchema } from "@/lib/mcp/types"
 import { getMcpSecrets, removeMcpSecrets, setMcpSecrets } from "@/lib/secrets"
 
 /**
@@ -38,22 +37,6 @@ export async function GET() {
   })
 }
 
-const postSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Server name is required")
-    .regex(
-      /^[a-zA-Z0-9_-]+$/,
-      "Use alphanumeric characters, dashes, or underscores for server name"
-    ),
-  config: mcpServerConfigSchema,
-  /** Header names whose values are stored in secrets.json (not mcp.json). */
-  secretHeaders: z.array(z.string().trim().min(1)).optional(),
-  /** Env keys whose values are stored in secrets.json (not mcp.json). */
-  secretEnv: z.array(z.string().trim().min(1)).optional(),
-})
-
 /**
  * Add or update an MCP server configuration in .black-agents/mcp.json.
  * Optional secretHeaders / secretEnv move token values into ~/.black-agents/secrets.json.
@@ -66,7 +49,7 @@ export async function POST(req: Request) {
     }
 
     const json = await req.json().catch(() => null)
-    const parsed = postSchema.safeParse(json)
+    const parsed = mcpServerWriteSchema.safeParse(json)
     if (!parsed.success) {
       return fail(parsed.error.issues[0]?.message ?? "Invalid MCP server config")
     }
@@ -76,6 +59,9 @@ export async function POST(req: Request) {
     if (!serverConfig.command && !serverConfig.url) {
       return fail("Either 'command' or 'url' must be specified for an MCP server")
     }
+
+    const plainHeaderError = blankPlainHeaderError(serverConfig.headers, secretHeaders)
+    if (plainHeaderError) return fail(plainHeaderError)
 
     const existingSecrets = await getMcpSecrets()
     const promoted = promoteMcpSecrets({

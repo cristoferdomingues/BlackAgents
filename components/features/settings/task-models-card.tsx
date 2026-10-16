@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface TaskModelsSnapshot {
@@ -124,7 +125,14 @@ function VoiceTaskPanel({ task }: { task: ModelTask }) {
       </div>
     )
   }
-  if (!data) return <div className="h-9 w-full animate-pulse rounded bg-muted" />
+  if (!data) {
+    return (
+      <div className="space-y-2" aria-busy="true">
+        <p className="text-sm text-muted-foreground">Loading models…</p>
+        <Skeleton className="h-9 w-full" />
+      </div>
+    )
+  }
 
   const trimmed = value.trim()
   const unchanged = trimmed === (data.saved ?? data.effective ?? "")
@@ -303,7 +311,14 @@ function ChatTaskPanel({ task }: { task: ChatModelTask }) {
       </div>
     )
   }
-  if (!data) return <div className="h-9 w-full animate-pulse rounded bg-muted" />
+  if (!data) {
+    return (
+      <div className="space-y-2" aria-busy="true">
+        <p className="text-sm text-muted-foreground">Loading models…</p>
+        <Skeleton className="h-9 w-full" />
+      </div>
+    )
+  }
 
   const trimmed = value.trim()
   const unchanged = data.savedModel

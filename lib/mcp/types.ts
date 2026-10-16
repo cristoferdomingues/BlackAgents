@@ -25,9 +25,12 @@ const mcpHeaderNameSchema = z
     "Use a valid HTTP header name"
   )
 
+/**
+ * Empty is allowed so an edit can keep a stored secret (blank replacement).
+ * A blank header that is not listed as a secret is rejected by the write routes.
+ */
 const mcpHeaderValueSchema = z
   .string()
-  .min(1, "Header value is required")
   .refine((value) => !/[\r\n]/.test(value), "Header value cannot contain line breaks")
 
 export const mcpServerConfigSchema = z
@@ -57,6 +60,29 @@ export const mcpServerConfigSchema = z
 
 export type McpServerConfigInput = z.input<typeof mcpServerConfigSchema>
 export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>
+
+export const mcpServerNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Server name is required")
+  .regex(
+    /^[a-zA-Z0-9_-]+$/,
+    "Use alphanumeric characters, dashes, or underscores for server name"
+  )
+
+const mcpSecretKeyListSchema = z.array(z.string().trim().min(1)).optional()
+
+/** Body for saving or testing an MCP server. Secrets stay out of mcp.json. */
+export const mcpServerWriteSchema = z.object({
+  name: mcpServerNameSchema,
+  config: mcpServerConfigSchema,
+  /** Header names whose values are stored as secrets, not in mcp.json. */
+  secretHeaders: mcpSecretKeyListSchema,
+  /** Env keys whose values are stored as secrets, not in mcp.json. */
+  secretEnv: mcpSecretKeyListSchema,
+})
+
+export type McpServerWriteInput = z.infer<typeof mcpServerWriteSchema>
 
 export const mcpConfigSchema = z.object({
   mcpServers: z.record(mcpServerConfigSchema).default({}),

@@ -4,8 +4,28 @@ import { stubWorkspace } from "./support/stubs"
 
 test("saves a command MCP server with a secret", async ({ page }) => {
   let saved: unknown = null
+  let tested: unknown = null
 
   await stubWorkspace(page)
+  await page.route("**/api/mcp/test", async (route) => {
+    tested = route.request().postDataJSON()
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          name: "github",
+          status: "connected",
+          tools: [],
+          config: {
+            command: "npx",
+            args: ["-y", "server"],
+            env: { GITHUB_TOKEN: "${secret:mcp.github.env.GITHUB_TOKEN}" },
+            transport: "stdio",
+          },
+        },
+      },
+    })
+  })
   await page.route("**/api/mcp", async (route) => {
     if (route.request().method() === "POST") {
       saved = route.request().postDataJSON()
@@ -106,4 +126,5 @@ test("saves a command MCP server with a secret", async ({ page }) => {
     },
     secretEnv: ["GITHUB_TOKEN"],
   })
+  expect(tested).toEqual(saved)
 })

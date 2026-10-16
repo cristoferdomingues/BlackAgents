@@ -3,40 +3,41 @@
 import * as React from "react"
 import {
   Check,
-  ChevronDown,
-  ChevronUp,
   CircleCheck,
   Code2,
   Coins,
   FileCode,
   FolderOpen,
   FolderPlus,
+  HelpCircle,
+  Info,
   Loader2,
   Plug,
-  Plus,
   Sparkles,
-  Terminal,
   Trash2,
   TriangleAlert,
-  Zap,
   Brain,
   Globe,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import { WORKSPACE_TEMPLATES } from "@/lib/workspace/templates"
-import { collectMcpEnv, type McpEnvRow } from "@/lib/mcp/env"
-import { collectMcpHeaders, type McpHeaderRow } from "@/lib/mcp/headers"
-import type { McpTrust } from "@/lib/mcp/policy"
-import { mcpSecretId } from "@/lib/mcp/secret-refs"
-import type { McpServerConfig, McpServerStatus, McpTransportType } from "@/lib/mcp/types"
+import {
+  ACTION,
+  EMPTY,
+  HOW_IT_WORKS_STEPS,
+  HOW_IT_WORKS_TITLE,
+  SETTINGS_INTRO,
+  SETTINGS_INTRO_STORAGE_KEY,
+  TAB_INTRO,
+  TAB_TOOLTIP,
+} from "@/lib/settings/explain"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
 import { BrowserAutomationCard } from "@/components/features/settings/browser-automation-card"
-import { McpTrustSelect } from "@/components/features/settings/mcp-trust-select"
+import { McpServersPanel } from "@/components/features/settings/mcp-servers-panel"
 import { TaskModelsCard } from "@/components/features/settings/task-models-card"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,6 +51,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface CheckResult {
   exists: boolean
@@ -59,40 +61,22 @@ interface CheckResult {
   platforms: { id: string; label: string }[]
 }
 
-interface McpListResponse {
-  servers: Array<McpServerStatus & { trust: McpTrust }>
-  totalTools: number
-}
-
 const TEMPLATE_ICONS: Record<WorkspaceTemplate, React.ComponentType<{ className?: string }>> = {
   crypto: Coins,
   software: Code2,
   blank: FileCode,
 }
 
-function remoteLabel(config: McpServerConfig): string {
-  if (config.transport === "sse") return "SSE "
-  if (config.transport === "http" || Boolean(config.url)) return "HTTP "
-  return ""
+function subscribeIntro(): () => void {
+  return () => undefined
 }
 
-function headerNameList(config: McpServerConfig): string[] {
-  return Object.keys(config.headers ?? {})
+function readIntroDismissed(): boolean {
+  return window.localStorage.getItem(SETTINGS_INTRO_STORAGE_KEY) === "1"
 }
 
-function envNameList(config: McpServerConfig): string[] {
-  return Object.keys(config.env ?? {})
-}
-
-function secretHint(
-  serverName: string,
-  kind: "header" | "env",
-  key: string,
-  secretStatuses: Record<string, { configured: boolean; last4?: string }> | undefined
-): string | null {
-  const status = secretStatuses?.[mcpSecretId(serverName, kind, key)]
-  if (!status?.configured) return null
-  return status.last4 ? `••••${status.last4}` : "stored"
+function introDismissedOnServer(): boolean {
+  return true
 }
 
 export function SettingsPage({ initialTab = "create" }: { initialTab?: string }) {
@@ -108,6 +92,16 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
   // The server reads `?tab=` and passes the same value to the first client
   // render, avoiding a hydration mismatch on direct links to the AI tab.
   const [tab, setTab] = React.useState(initialTab)
+  const [totalMcpTools, setTotalMcpTools] = React.useState(0)
+  const introDismissed = React.useSyncExternalStore(subscribeIntro, readIntroDismissed, introDismissedOnServer)
+  const [introOverride, setIntroOverride] = React.useState<boolean | null>(null)
+  const introOpen = introOverride ?? !introDismissed
+
+  function toggleIntro(): void {
+    const next = !introOpen
+    setIntroOverride(next)
+    if (!next) window.localStorage.setItem(SETTINGS_INTRO_STORAGE_KEY, "1")
+  }
 
   // "Open Existing" state
   const [openPath, setOpenPath] = React.useState("")
@@ -122,51 +116,8 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
   const [createChecking, setCreateChecking] = React.useState(false)
   const [creating, setCreating] = React.useState(false)
 
-  // MCP Servers state
-  const [mcpServers, setMcpServers] = React.useState<McpListResponse["servers"]>([])
-  const [totalMcpTools, setTotalMcpTools] = React.useState(0)
-  const [loadingMcp, setLoadingMcp] = React.useState(false)
-  const [expandedServer, setExpandedServer] = React.useState<string | null>(null)
-
-  // Add MCP server form
-  const [mcpName, setMcpName] = React.useState("")
-  const [mcpType, setMcpType] = React.useState<McpTransportType>("stdio")
-  const [mcpCommand, setMcpCommand] = React.useState("")
-  const [mcpArgs, setMcpArgs] = React.useState("")
-  const [mcpUrl, setMcpUrl] = React.useState("")
-  const [mcpHeaders, setMcpHeaders] = React.useState<McpHeaderRow[]>([
-    { name: "", value: "" },
-  ])
-  const [mcpEnv, setMcpEnv] = React.useState<McpEnvRow[]>([{ name: "", value: "" }])
-  const [savingMcp, setSavingMcp] = React.useState(false)
-  const [deletingMcp, setDeletingMcp] = React.useState<string | null>(null)
-
   // General busy state
   const [busyPath, setBusyPath] = React.useState<string | null>(null)
-
-  // Load MCP servers when active workspace changes
-  const loadMcp = React.useCallback(async () => {
-    if (!workspace) {
-      setMcpServers([])
-      setTotalMcpTools(0)
-      return
-    }
-    setLoadingMcp(true)
-    try {
-      const res = await apiFetch<McpListResponse>("/api/mcp")
-      setMcpServers(res.servers)
-      setTotalMcpTools(res.totalTools)
-    } catch {
-      setMcpServers([])
-      setTotalMcpTools(0)
-    } finally {
-      setLoadingMcp(false)
-    }
-  }, [workspace])
-
-  React.useEffect(() => {
-    void loadMcp()
-  }, [loadMcp])
 
   // Debounced check for "Open Existing"
   React.useEffect(() => {
@@ -253,95 +204,6 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
     }
   }
 
-  async function handleSaveMcpServer() {
-    const name = mcpName.trim()
-    if (!name) {
-      toast.error("Please provide a server name")
-      return
-    }
-    if (mcpType === "stdio" && !mcpCommand.trim()) {
-      toast.error("Command is required for stdio server")
-      return
-    }
-    if (mcpType !== "stdio" && !mcpUrl.trim()) {
-      toast.error("URL is required for a remote server")
-      return
-    }
-
-    const collectedHeaders =
-      mcpType === "stdio" ? { ok: true as const, headers: {} } : collectMcpHeaders(mcpHeaders)
-    if (!collectedHeaders.ok) {
-      toast.error(collectedHeaders.error)
-      return
-    }
-
-    const collectedEnv =
-      mcpType === "stdio" ? collectMcpEnv(mcpEnv) : { ok: true as const, env: {} }
-    if (!collectedEnv.ok) {
-      toast.error(collectedEnv.error)
-      return
-    }
-
-    setSavingMcp(true)
-    try {
-      const args = mcpArgs
-        .split(" ")
-        .map((a) => a.trim())
-        .filter(Boolean)
-
-      const headerNames = Object.keys(collectedHeaders.headers)
-      const envNames = Object.keys(collectedEnv.env)
-      const payload = {
-        name,
-        config: {
-          command: mcpType === "stdio" ? mcpCommand.trim() : undefined,
-          args: mcpType === "stdio" ? args : undefined,
-          env: mcpType === "stdio" ? collectedEnv.env : undefined,
-          url: mcpType === "stdio" ? undefined : mcpUrl.trim(),
-          headers: mcpType === "stdio" ? undefined : collectedHeaders.headers,
-          transport: mcpType,
-        },
-        ...(mcpType !== "stdio" && headerNames.length > 0
-          ? { secretHeaders: headerNames }
-          : {}),
-        ...(mcpType === "stdio" && envNames.length > 0 ? { secretEnv: envNames } : {}),
-      }
-
-      await apiFetch("/api/mcp", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })
-
-      toast.success(`Configured MCP server "${name}"`)
-      setMcpName("")
-      setMcpCommand("")
-      setMcpArgs("")
-      setMcpUrl("")
-      setMcpHeaders([{ name: "", value: "" }])
-      setMcpEnv([{ name: "", value: "" }])
-      await loadMcp()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to configure MCP server")
-    } finally {
-      setSavingMcp(false)
-    }
-  }
-
-  async function handleDeleteMcpServer(name: string) {
-    setDeletingMcp(name)
-    try {
-      await apiFetch(`/api/mcp?name=${encodeURIComponent(name)}`, {
-        method: "DELETE",
-      })
-      toast.success(`Removed MCP server "${name}"`)
-      await loadMcp()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to remove MCP server")
-    } finally {
-      setDeletingMcp(null)
-    }
-  }
-
   async function activate(path: string) {
     setBusyPath(path)
     await setActive(path)
@@ -356,24 +218,30 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Workspaces & Tools</h1>
-        <p className="text-sm text-muted-foreground">
-          Create workspaces, connect Model Context Protocol (MCP) servers, and manage projects.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Workspaces & Tools</h1>
+          <p className="text-sm text-muted-foreground">{SETTINGS_INTRO}</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={toggleIntro} aria-expanded={introOpen}>
+          <HelpCircle className="h-4 w-4" />
+          How it works
+        </Button>
       </div>
+
+      {introOpen ? <HowItWorks onClose={toggleIntro} /> : null}
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid h-auto min-h-9 w-full grid-cols-2 gap-1 sm:grid-cols-5">
-          <TabsTrigger value="create" className="gap-1.5 px-2">
+          <SettingsTab value="create" tooltip={TAB_TOOLTIP.create}>
             <FolderPlus className="size-4 shrink-0 text-primary" />
             <span className="truncate">Create Workspace</span>
-          </TabsTrigger>
-          <TabsTrigger value="open" className="gap-1.5 px-2">
+          </SettingsTab>
+          <SettingsTab value="open" tooltip={TAB_TOOLTIP.open}>
             <FolderOpen className="size-4 shrink-0 text-primary" />
             <span className="truncate">Open Existing</span>
-          </TabsTrigger>
-          <TabsTrigger value="mcp" className="gap-1.5 px-2">
+          </SettingsTab>
+          <SettingsTab value="mcp" tooltip={TAB_TOOLTIP.mcp}>
             <Plug className="size-4 shrink-0 text-primary" />
             <span className="truncate">MCP Servers</span>
             {totalMcpTools > 0 ? (
@@ -381,28 +249,31 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                 {totalMcpTools}
               </Badge>
             ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="browser" className="gap-1.5 px-2">
+          </SettingsTab>
+          <SettingsTab value="browser" tooltip={TAB_TOOLTIP.browser}>
             <Globe className="size-4 shrink-0 text-primary" />
             <span className="truncate">Browser</span>
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1.5 px-2">
+          </SettingsTab>
+          <SettingsTab value="ai" tooltip={TAB_TOOLTIP.ai}>
             <Brain className="size-4 shrink-0 text-primary" />
             <span className="truncate">AI</span>
-          </TabsTrigger>
+          </SettingsTab>
         </TabsList>
 
         <TabsContent value="ai" className="space-y-4 pt-2">
+          <TabIntro>{TAB_INTRO.ai}</TabIntro>
           <AiSettingsCard />
           <TaskModelsCard />
         </TabsContent>
 
         <TabsContent value="browser" className="space-y-4 pt-2">
+          <TabIntro>{TAB_INTRO.browser}</TabIntro>
           <BrowserAutomationCard />
         </TabsContent>
 
         {/* Tab 1: Create New Workspace */}
         <TabsContent value="create" className="space-y-4 pt-2">
+          <TabIntro>{TAB_INTRO.create}</TabIntro>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Initialize a new workspace</CardTitle>
@@ -488,6 +359,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                     Create
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">{ACTION.createWorkspace}</p>
 
                 {createPath.trim() ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
@@ -496,11 +368,11 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                         <Loader2 className="h-3 w-3 animate-spin" /> Checking location…
                       </span>
                     ) : createCheck?.exists ? (
-                      <span className="flex items-center gap-1 text-amber-500">
+                      <span className="flex items-center gap-1 text-foreground">
                         <CircleCheck className="h-3.5 w-3.5" /> Folder already exists — starter artifacts will be seeded into it.
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-emerald-500">
+                      <span className="flex items-center gap-1 text-primary">
                         <Check className="h-3.5 w-3.5" /> New directory will be created at this location.
                       </span>
                     )}
@@ -513,6 +385,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
 
         {/* Tab 2: Open Existing Folder */}
         <TabsContent value="open" className="space-y-4 pt-2">
+          <TabIntro>{TAB_INTRO.open}</TabIntro>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Open an existing workspace</CardTitle>
@@ -552,6 +425,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                     Open
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">{ACTION.openWorkspace}</p>
 
                 {openPath.trim() ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
@@ -560,7 +434,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                         <Loader2 className="h-3 w-3 animate-spin" /> Checking…
                       </span>
                     ) : openValid ? (
-                      <span className="flex items-center gap-1 text-emerald-500">
+                      <span className="flex items-center gap-1 text-primary">
                         <Check className="h-3.5 w-3.5" /> Valid directory
                       </span>
                     ) : (
@@ -592,460 +466,9 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
           </Card>
         </TabsContent>
 
-        {/* Tab 3: Model Context Protocol (MCP) Servers */}
         <TabsContent value="mcp" className="space-y-4 pt-2">
-          {!workspace ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Please select or create an active workspace first to manage its MCP servers.
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Plug className="h-4 w-4 text-purple-400" />
-                        Active Workspace MCP Servers
-                      </CardTitle>
-                      <CardDescription>
-                        Configured in <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
-                        Auth tokens are stored in{" "}
-                        <code className="rounded bg-muted px-1">~/.black-agents/secrets.json</code>, not
-                        the workspace file. Tools from these servers are available to agent personas in Chat.
-                      </CardDescription>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void loadMcp()}
-                      disabled={loadingMcp}
-                      className="gap-1.5"
-                    >
-                      {loadingMcp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                      Refresh
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {mcpServers.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      No MCP servers configured in this workspace. Add one below to provide live tools to your agents.
-                    </p>
-                  ) : (
-                    mcpServers.map((s) => {
-                      const isExpanded = expandedServer === s.name
-                      return (
-                        <div
-                          key={s.name}
-                          className="rounded-lg border bg-card p-3 space-y-2 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Terminal className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <span className="font-semibold text-sm truncate">{s.name}</span>
-                              <Badge
-                                variant={
-                                  s.status === "connected"
-                                    ? "default"
-                                    : s.status === "disabled"
-                                    ? "secondary"
-                                    : "destructive"
-                                }
-                                className="text-[10px] px-1.5 py-0"
-                              >
-                                {s.status === "connected"
-                                  ? `${s.tools.length} tools active`
-                                  : s.status}
-                              </Badge>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <McpTrustSelect server={s.name} value={s.trust} />
-                              {s.tools.length > 0 ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setExpandedServer(isExpanded ? null : s.name)
-                                  }
-                                  className="h-7 px-2 text-xs gap-1"
-                                >
-                                  Tools
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                  )}
-                                </Button>
-                              ) : null}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                disabled={deletingMcp === s.name}
-                                onClick={() => void handleDeleteMcpServer(s.name)}
-                              >
-                                {deletingMcp === s.name ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="text-xs text-muted-foreground font-mono bg-muted/40 p-2 rounded space-y-1">
-                            <p>
-                              <span className="font-sans">{remoteLabel(s.config)}</span>
-                              {s.config.command ? (
-                                <span>
-                                  {s.config.command} {(s.config.args ?? []).join(" ")}
-                                </span>
-                              ) : (
-                                <span>{s.config.url}</span>
-                              )}
-                            </p>
-                            {headerNameList(s.config).length > 0 ? (
-                              <p className="font-sans">
-                                Headers:{" "}
-                                {headerNameList(s.config)
-                                  .map((h) => {
-                                    const hint = secretHint(s.name, "header", h, s.secretStatuses)
-                                    return hint ? `${h} (${hint})` : h
-                                  })
-                                  .join(", ")}
-                              </p>
-                            ) : null}
-                            {envNameList(s.config).length > 0 ? (
-                              <p className="font-sans">
-                                Secrets:{" "}
-                                {envNameList(s.config)
-                                  .map((key) => {
-                                    const hint = secretHint(s.name, "env", key, s.secretStatuses)
-                                    return hint ? `${key} (${hint})` : key
-                                  })
-                                  .join(", ")}
-                              </p>
-                            ) : null}
-                          </div>
-
-                          {s.error ? (
-                            <p className="text-xs text-destructive flex items-center gap-1">
-                              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                              {s.error}
-                            </p>
-                          ) : null}
-
-                          {isExpanded && s.tools.length > 0 ? (
-                            <div className="pt-2 border-t space-y-1.5">
-                              <p className="text-xs font-medium text-muted-foreground">Provided Tools:</p>
-                              <div className="grid grid-cols-1 gap-1">
-                                {s.tools.map((t) => (
-                                  <div
-                                    key={t.name}
-                                    className="text-xs font-mono bg-background p-1.5 rounded border flex flex-col gap-0.5"
-                                  >
-                                    <span className="font-semibold text-primary">{t.name}</span>
-                                    {t.description ? (
-                                      <span className="text-[11px] text-muted-foreground font-sans">
-                                        {t.description}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Add MCP Server Form */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Add an MCP Server</CardTitle>
-                  <CardDescription>
-                    Add a local command, an HTTP server (POST), or an old SSE server.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="mcp-name">Server Name</Label>
-                      <Input
-                        id="mcp-name"
-                        placeholder="e.g. crypto-tools, fetch, github"
-                        value={mcpName}
-                        onChange={(e) => setMcpName(e.target.value)}
-                        spellCheck={false}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Transport Type</Label>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant={mcpType === "stdio" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setMcpType("stdio")}
-                          aria-pressed={mcpType === "stdio"}
-                          className="flex-1"
-                        >
-                          Command
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={mcpType === "http" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setMcpType("http")}
-                          aria-pressed={mcpType === "http"}
-                          className="flex-1"
-                        >
-                          HTTP
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={mcpType === "sse" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setMcpType("sse")}
-                          aria-pressed={mcpType === "sse"}
-                          className="flex-1"
-                        >
-                          SSE
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {mcpType === "stdio" ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="mcp-command">Command</Label>
-                          <Input
-                            id="mcp-command"
-                            placeholder="e.g. npx, node, python3"
-                            value={mcpCommand}
-                            onChange={(e) => setMcpCommand(e.target.value)}
-                            spellCheck={false}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="mcp-args">Arguments (space-separated)</Label>
-                          <Input
-                            id="mcp-args"
-                            placeholder="e.g. -y crypto-mcp-server --port 8080"
-                            value={mcpArgs}
-                            onChange={(e) => setMcpArgs(e.target.value)}
-                            spellCheck={false}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label>Secrets</Label>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setMcpEnv((rows) => [...rows, { name: "", value: "" }])
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add secret
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Environment variables for the command, such as an API key.
-                          Values are saved as secrets; only a{" "}
-                          <code className="rounded bg-muted px-1">{`\${secret:…}`}</code> placeholder
-                          is written to{" "}
-                          <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
-                        </p>
-                        {mcpEnv.map((row, index) => (
-                          <div key={index} className="flex gap-2">
-                            <Input
-                              className="min-w-0 flex-1"
-                              aria-label={`Secret ${index + 1} name`}
-                              placeholder="GITHUB_TOKEN"
-                              value={row.name}
-                              onChange={(e) =>
-                                setMcpEnv((rows) =>
-                                  rows.map((item, i) =>
-                                    i === index ? { ...item, name: e.target.value } : item
-                                  )
-                                )
-                              }
-                              spellCheck={false}
-                              autoComplete="off"
-                            />
-                            <Input
-                              className="min-w-0 flex-1"
-                              type="password"
-                              aria-label={`Secret ${index + 1} value`}
-                              placeholder="ghp_… or other token"
-                              value={row.value}
-                              onChange={(e) =>
-                                setMcpEnv((rows) =>
-                                  rows.map((item, i) =>
-                                    i === index ? { ...item, value: e.target.value } : item
-                                  )
-                                )
-                              }
-                              spellCheck={false}
-                              autoComplete="new-password"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="shrink-0"
-                              aria-label={`Remove secret ${index + 1}`}
-                              onClick={() =>
-                                setMcpEnv((rows) =>
-                                  rows.length === 1
-                                    ? [{ name: "", value: "" }]
-                                    : rows.filter((_, i) => i !== index)
-                                )
-                              }
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="mcp-url">
-                          {mcpType === "http" ? "Server URL" : "Server URL (SSE)"}
-                        </Label>
-                        <Input
-                          id="mcp-url"
-                          placeholder={
-                            mcpType === "http"
-                              ? "https://your-app/api/mcp"
-                              : "https://mcp.example.com/sse"
-                          }
-                          value={mcpUrl}
-                          onChange={(e) => setMcpUrl(e.target.value)}
-                          spellCheck={false}
-                        />
-                        {mcpType === "http" ? (
-                          <p className="text-xs text-muted-foreground">
-                            Uses HTTP POST. The address should end with the MCP path, like /api/mcp.
-                          </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Old SSE connection. It opens the URL with GET.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label>Headers</Label>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setMcpHeaders((rows) => [...rows, { name: "", value: "" }])
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add header
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          For GitHub MCP, use Authorization and{" "}
-                          <span className="font-mono">Bearer ghp_…</span> (or a fine-grained PAT).
-                          Values are saved as secrets; only a{" "}
-                          <code className="rounded bg-muted px-1">{`\${secret:…}`}</code> placeholder
-                          is written to{" "}
-                          <code className="rounded bg-muted px-1">.black-agents/mcp.json</code>.
-                        </p>
-                        {mcpHeaders.map((row, index) => (
-                          <div key={index} className="flex gap-2">
-                            <Input
-                              className="min-w-0 flex-1"
-                              aria-label={`Header ${index + 1} name`}
-                              placeholder="Authorization"
-                              value={row.name}
-                              onChange={(e) =>
-                                setMcpHeaders((rows) =>
-                                  rows.map((item, i) =>
-                                    i === index ? { ...item, name: e.target.value } : item
-                                  )
-                                )
-                              }
-                              spellCheck={false}
-                              autoComplete="off"
-                            />
-                            <Input
-                              className="min-w-0 flex-1"
-                              type="password"
-                              aria-label={`Header ${index + 1} value`}
-                              placeholder="Bearer ghp_… or other token"
-                              value={row.value}
-                              onChange={(e) =>
-                                setMcpHeaders((rows) =>
-                                  rows.map((item, i) =>
-                                    i === index ? { ...item, value: e.target.value } : item
-                                  )
-                                )
-                              }
-                              spellCheck={false}
-                              autoComplete="new-password"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="shrink-0"
-                              aria-label={`Remove header ${index + 1}`}
-                              onClick={() =>
-                                setMcpHeaders((rows) =>
-                                  rows.length === 1
-                                    ? [{ name: "", value: "" }]
-                                    : rows.filter((_, i) => i !== index)
-                                )
-                              }
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <Button
-                    disabled={savingMcp || !mcpName.trim()}
-                    onClick={() => void handleSaveMcpServer()}
-                    className="gap-1.5"
-                  >
-                    {savingMcp ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plug className="h-4 w-4" />
-                    )}
-                    Test & Save Server
-                  </Button>
-                </CardContent>
-              </Card>
-            </>
-          )}
+          <TabIntro>{TAB_INTRO.mcp}</TabIntro>
+          <McpServersPanel onToolCount={setTotalMcpTools} />
         </TabsContent>
       </Tabs>
 
@@ -1054,14 +477,23 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         <CardHeader>
           <CardTitle className="text-base">Saved workspaces</CardTitle>
           <CardDescription>
-            Switch between workspaces. The active one is read, written, and visualized in BlackAgents.
+            {ACTION.setActive} {ACTION.removeWorkspace}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {workspaces.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No workspaces yet. Create or open one above to get started.
-            </p>
+            <div className="space-y-3 rounded-lg border border-dashed px-4 py-8 text-center">
+              <p className="text-sm font-medium">{EMPTY.workspacesTitle}</p>
+              <p className="text-sm text-muted-foreground">{EMPTY.workspacesText}</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setTab("create")}>
+                  Create a workspace
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setTab("open")}>
+                  Open a folder
+                </Button>
+              </div>
+            </div>
           ) : (
             workspaces.map((ws) => {
               const isActive = workspace?.path === ws.path
@@ -1099,6 +531,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                       variant="outline"
                       size="sm"
                       disabled={busy}
+                      title={ACTION.setActive}
                       onClick={() => void activate(ws.path)}
                     >
                       {busy ? (
@@ -1112,6 +545,7 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
                     size="icon"
                     className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
                     aria-label={`Remove ${ws.name}`}
+                    title={ACTION.removeWorkspace}
                     disabled={busy}
                     onClick={() => void remove(ws.path)}
                   >
@@ -1124,5 +558,58 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function SettingsTab({
+  value,
+  tooltip,
+  children,
+}: {
+  value: string
+  tooltip: string
+  children: React.ReactNode
+}): React.ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <TabsTrigger value={value} className="gap-1.5 px-2">
+          {children}
+        </TabsTrigger>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function TabIntro({ children }: { children: React.ReactNode }): React.ReactElement {
+  return (
+    <p className="flex gap-2 text-sm text-muted-foreground">
+      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </p>
+  )
+}
+
+function HowItWorks({ onClose }: { onClose: () => void }): React.ReactElement {
+  return (
+    <section aria-labelledby="settings-how" className="space-y-4 rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="settings-how" className="text-sm font-semibold">
+          {HOW_IT_WORKS_TITLE}
+        </h2>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Got it
+        </Button>
+      </div>
+      <ol className="grid gap-3 sm:grid-cols-3">
+        {HOW_IT_WORKS_STEPS.map((step) => (
+          <li key={step.title} className="space-y-1.5 rounded-md bg-muted/40 p-3">
+            <p className="text-sm font-medium">{step.title}</p>
+            <p className="text-xs text-muted-foreground">{step.text}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }

@@ -9,7 +9,11 @@ import { maybeRecordBrowserTraces } from "@/lib/browser/recording"
 import { getMcpSecrets } from "@/lib/secrets"
 
 import { readWorkspaceMcpConfig } from "./config"
-import { mcpServerSecretStatuses, resolveMcpServerSecrets } from "./resolve-secrets"
+import {
+  mcpServerSecretStatuses,
+  redactSecretValues,
+  resolveMcpServerSecrets,
+} from "./resolve-secrets"
 import { prepareStdioLaunch } from "./stdio-command"
 import { mcpAuthRequestInit, resolveMcpTransport } from "./transport"
 import type {
@@ -48,15 +52,21 @@ function withTimeout<T>(
   })
 }
 
+/**
+ * Open a live MCP session.
+ * Pass `secrets` to resolve `${secret:…}` from that map instead of secrets.json.
+ * Omit it to keep the normal read from secrets.json.
+ */
 export async function createMcpConnection(
   config: McpServerConfig,
-  cwd?: string
+  cwd?: string,
+  secrets?: Record<string, string>
 ): Promise<{ client: Client; transport: Transport }> {
   const client = new Client(CLIENT_INFO, {
     capabilities: {},
   })
 
-  const mcpSecrets = await getMcpSecrets()
+  const mcpSecrets = secrets ?? (await getMcpSecrets())
   const resolved = resolveMcpServerSecrets(config, mcpSecrets)
 
   const kind = resolveMcpTransport(resolved)
@@ -194,10 +204,12 @@ interface AcquiredSession {
 async function acquireSession(
   serverName: string,
   config: McpServerConfig,
-  cwd: string | undefined
+  cwd: string | undefined,
+  secrets?: Record<string, string>
 ): Promise<AcquiredSession> {
-  if (!keepsSession(serverName) || !cwd) {
-    const opened = await createMcpConnection(config, cwd)
+  // An explicit map is an unsaved draft. Do not reuse or replace the kept browser process.
+  if (!keepsSession(serverName) || !cwd || secrets !== undefined) {
+    const opened = await createMcpConnection(config, cwd, secrets)
     return { ...opened, persistent: false, run: (task) => task() }
   }
 
@@ -232,12 +244,18 @@ async function releaseSession(session: AcquiredSession): Promise<void> {
   await session.transport.close().catch(() => {})
 }
 
+/**
+ * Connect and list tools.
+ * Pass `secrets` to use that map (an unsaved draft) instead of secrets.json.
+ * Returned `config` is the object passed in — send placeholders, not raw secrets.
+ */
 export async function testMcpServer(
   name: string,
   config: McpServerConfig,
-  cwd?: string
+  cwd?: string,
+  secrets?: Record<string, string>
 ): Promise<McpServerStatus> {
-  const mcpSecrets = await getMcpSecrets()
+  const mcpSecrets = secrets ?? (await getMcpSecrets())
   const secretStatuses = mcpServerSecretStatuses(config, mcpSecrets)
 
   if (config.disabled) {
@@ -253,7 +271,7 @@ export async function testMcpServer(
   let session: AcquiredSession | null = null
 
   try {
-    session = await acquireSession(name, config, cwd)
+    session = await acquireSession(name, config, cwd, secrets)
 
     const active = session
     const listResult = await active.run(() =>
@@ -279,11 +297,14 @@ export async function testMcpServer(
     }
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err)
-    const error =
+    const error = redactSecretValues(
       /ENOENT/i.test(raw) && config.command
         ? `${raw}. Could not find "${config.command}" on PATH. ` +
           `Install Node.js (includes npx), or re-enable the server from Settings so the command is resolved to an absolute path.`
-        : raw
+        : raw,
+      mcpSecrets,
+      4
+    )
     if (session?.persistent && cwd && isBrokenSessionError(err)) {
       await closePersistentMcpServer(cwd, name)
     }

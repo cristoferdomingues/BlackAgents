@@ -8,6 +8,23 @@ export type CollectMcpHeadersResult =
   | { ok: false; error: string }
 
 /**
+ * A header that is not stored as a secret still needs a value.
+ * Secret headers may be blank so an edit can keep the stored secret.
+ */
+export function blankPlainHeaderError(
+  headers: Record<string, string> | undefined,
+  secretHeaders: string[] | undefined
+): string | null {
+  const secretNames = new Set(secretHeaders ?? [])
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (!value.trim() && !secretNames.has(name)) {
+      return "Header value is required"
+    }
+  }
+  return null
+}
+
+/**
  * Turn header rows from the settings form into a header map.
  * Blank rows are skipped. A row needs both a name and a value.
  */

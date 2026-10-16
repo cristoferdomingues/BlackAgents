@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { blankPlainHeaderError } from "@/lib/mcp/headers"
 import {
   findSecretRefs,
   formatSecretRef,
@@ -11,9 +12,13 @@ import {
 import { promoteMcpSecrets } from "@/lib/mcp/promote-secrets"
 import {
   collectMcpServerSecretIds,
+  firstMissingMcpSecret,
   mcpServerSecretStatuses,
+  redactMcpServerStatus,
+  redactSecretValues,
   resolveMcpServerSecrets,
 } from "@/lib/mcp/resolve-secrets"
+import type { McpServerStatus } from "@/lib/mcp/types"
 
 describe("mcp secret refs", () => {
   it("builds a stable id for a header", () => {
@@ -93,6 +98,48 @@ describe("promoteMcpSecrets", () => {
     )
   })
 
+  it("keeps a stored secret when the replacement is blank", () => {
+    const result = promoteMcpSecrets({
+      serverName: "github",
+      config: {
+        command: "npx",
+        args: [],
+        headers: {},
+        env: { GITHUB_TOKEN: "  " },
+        disabled: false,
+      },
+      secretEnv: ["GITHUB_TOKEN"],
+      existingSecrets: {
+        "mcp.github.env.GITHUB_TOKEN": "ghp_stdio_secret",
+      },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.upserts).toEqual({})
+    expect(result.config.env.GITHUB_TOKEN).toBe("${secret:mcp.github.env.GITHUB_TOKEN}")
+  })
+
+  it("rejects a placeholder whose secret is missing", () => {
+    const result = promoteMcpSecrets({
+      serverName: "github",
+      config: {
+        url: "https://api.githubcopilot.com/mcp/",
+        headers: {
+          Authorization: "${secret:mcp.github.header.Authorization}",
+        },
+        args: [],
+        env: {},
+        disabled: false,
+      },
+      secretHeaders: ["Authorization"],
+      existingSecrets: {},
+    })
+    expect(result).toEqual({
+      ok: false,
+      error: 'MCP secret "mcp.github.header.Authorization" is not configured',
+    })
+  })
+
   it("keeps an existing secret when the value is already a ref", () => {
     const result = promoteMcpSecrets({
       serverName: "github",
@@ -163,5 +210,76 @@ describe("resolveMcpServerSecrets", () => {
     expect(mcpServerSecretStatuses(config, secrets)).toEqual({
       "mcp.github.env.GITHUB_TOKEN": { configured: true, last4: "9999" },
     })
+  })
+
+  it("finds the first secret that has no stored value", () => {
+    const config = {
+      url: "https://app.example/api/mcp",
+      headers: { Authorization: "${secret:mcp.github.header.Authorization}" },
+      args: [] as string[],
+      env: {} as Record<string, string>,
+      disabled: false,
+    }
+    expect(firstMissingMcpSecret(config, {})).toBe("mcp.github.header.Authorization")
+    expect(
+      firstMissingMcpSecret(config, {
+        "mcp.github.header.Authorization": "Bearer ghp_stored",
+      })
+    ).toBeNull()
+  })
+})
+
+describe("redact MCP secrets", () => {
+  const draft = "Bearer ghp_test_token_9999"
+  const stored = "ghp_stdio_stored_4242"
+
+  it("replaces longer secret values before shorter ones", () => {
+    const inner = "ghp_test_token_9999"
+    expect(
+      redactSecretValues(`saw ${draft} and ${stored}`, { a: draft, b: stored, c: inner }, 4)
+    ).toBe("saw ••••9999 and ••••4242")
+    expect(redactSecretValues("short", { a: "no" })).toBe("short")
+  })
+
+  it("masks a draft secret in headers and strips it from errors and tools", () => {
+    const status: McpServerStatus = {
+      name: "github",
+      status: "error",
+      error: `rejected ${draft}`,
+      config: {
+        url: "https://api.githubcopilot.com/mcp/",
+        headers: { Authorization: draft },
+        args: [],
+        env: {},
+        disabled: false,
+      },
+      tools: [
+        {
+          server: "github",
+          name: "list",
+          description: `uses ${draft}`,
+          inputSchema: { note: stored },
+        },
+      ],
+    }
+    const redacted = redactMcpServerStatus(
+      status,
+      {
+        "mcp.github.header.Authorization": draft,
+        "mcp.github.env.GITHUB_TOKEN": stored,
+      },
+      { "mcp.github.header.Authorization": draft }
+    )
+    expect(redacted.config.headers.Authorization).toBe("${secret:mcp.github.header.Authorization}")
+    expect(redacted.error).toBe("rejected ••••9999")
+    expect(redacted.tools[0]?.description).toBe("uses ••••9999")
+    expect(redacted.tools[0]?.inputSchema.note).toBe("••••4242")
+    expect(JSON.stringify(redacted)).not.toContain("ghp_test_token_9999")
+    expect(JSON.stringify(redacted)).not.toContain("ghp_stdio_stored_4242")
+  })
+
+  it("still requires a value for a header that is not a secret", () => {
+    expect(blankPlainHeaderError({ Authorization: "  " }, [])).toBe("Header value is required")
+    expect(blankPlainHeaderError({ Authorization: "  " }, ["Authorization"])).toBeNull()
   })
 })

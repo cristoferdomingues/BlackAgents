@@ -4,8 +4,29 @@ import { stubWorkspace } from "./support/stubs"
 
 test("saves an HTTP MCP server with a header", async ({ page }) => {
   let saved: unknown = null
+  let tested: unknown = null
 
   await stubWorkspace(page)
+  await page.route("**/api/mcp/test", async (route) => {
+    tested = route.request().postDataJSON()
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          name: "blacklionfi",
+          status: "connected",
+          tools: [],
+          config: {
+            url: "https://app.example/api/mcp",
+            headers: {
+              Authorization: "${secret:mcp.blacklionfi.header.Authorization}",
+            },
+            transport: "http",
+          },
+        },
+      },
+    })
+  })
   await page.route("**/api/mcp", async (route) => {
     if (route.request().method() === "POST") {
       saved = route.request().postDataJSON()
@@ -105,4 +126,5 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
     },
     secretHeaders: ["Authorization"],
   })
+  expect(tested).toEqual(saved)
 })

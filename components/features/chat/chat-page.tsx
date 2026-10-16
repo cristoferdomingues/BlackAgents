@@ -68,6 +68,11 @@ import {
   type DraftInspection,
   type NormalizedDraft,
 } from "@/lib/llm/draft"
+import {
+  inspectKnowledgeDraft,
+  stripKnowledgeBlock,
+  type KnowledgeDraftInspection,
+} from "@/lib/llm/knowledge-draft"
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
 import { inspectModelRef, type ModelRef } from "@/lib/llm/model-ref"
 import {
@@ -114,6 +119,10 @@ import { BundleCard } from "@/components/features/chat/bundle-card"
 import { ThinkingPanel } from "@/components/features/chat/thinking-panel"
 import { FeedbackBar } from "@/components/features/chat/feedback-bar"
 import { WorkflowDraftCard } from "@/components/features/chat/workflow-draft-card"
+import {
+  KnowledgeDraftCard,
+  KnowledgeDraftProblemCard,
+} from "@/components/features/chat/knowledge-draft-card"
 import { WorkflowRunCard } from "@/components/features/chat/workflow-run-card"
 import { ApprovalCard } from "@/components/features/approvals/approval-card"
 import {
@@ -1512,12 +1521,17 @@ function Message({
   const isUser = turn.role === "user"
   const bundle = isUser ? null : extractBundle(turn.content)
   const workflowDraft = isUser || bundle ? null : extractWorkflowDraft(turn.content)
+  const knowledgeCheck: KnowledgeDraftInspection =
+    isUser || bundle || workflowDraft ? { kind: "none" } : inspectKnowledgeDraft(turn.content)
+  const knowledgeDraft = knowledgeCheck.kind === "ok" ? knowledgeCheck.draft : null
   const draftCheck: DraftInspection =
-    isUser || bundle || workflowDraft ? { kind: "none" } : inspectDraft(turn.content)
+    isUser || bundle || workflowDraft || knowledgeCheck.kind !== "none"
+      ? { kind: "none" }
+      : inspectDraft(turn.content)
   const draft = draftCheck.kind === "ok" ? draftCheck.draft : null
   const prose = isUser
     ? turn.content
-    : stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content)))
+    : stripKnowledgeBlock(stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content))))
   const attached = turnAttachments(turn)
   const runTarget = turn.workflowRun
     ? workflows.find((item) => item.workflow.name === turn.workflowRun?.workflow)?.workflow
@@ -1583,6 +1597,14 @@ function Message({
           <DraftProblemCard
             type={draftCheck.type}
             message={draftCheck.message}
+            onFix={onFixIssues}
+            fixDisabled={fixDisabled}
+          />
+        ) : null}
+        {knowledgeDraft ? <KnowledgeDraftCard draft={knowledgeDraft} /> : null}
+        {knowledgeCheck.kind === "invalid" ? (
+          <KnowledgeDraftProblemCard
+            message={knowledgeCheck.message}
             onFix={onFixIssues}
             fixDisabled={fixDisabled}
           />

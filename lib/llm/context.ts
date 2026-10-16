@@ -6,6 +6,7 @@ import { loadStandards } from "../standards"
 import { BUILTIN_TOOL_NAMES } from "../runtime/tool-names"
 import { BUNDLE_FENCE, MAX_BUNDLE_RULES, MAX_BUNDLE_SKILLS } from "./bundle"
 import { ARTIFACT_DRAFT_FENCE } from "./draft"
+import { KNOWLEDGE_DRAFT_FENCE } from "./knowledge-draft"
 import { WORKFLOW_DRAFT_FENCE } from "./workflow-draft"
 import { MAX_WORKFLOW_STEPS } from "../workflows/schema"
 import { listWorkflows } from "../workflows/store"
@@ -178,7 +179,33 @@ Rules for the workflow block:
 - To update a workflow listed above, keep its name and return the full definition.
 - The user starts a workflow by typing "/workflow-name input" or "start @workflow-name"; the app handles that, not you.
 
-Emit at most one draft, bundle, or workflow block per reply, never more than one.`
+## Knowledge protocol
+
+When the user explicitly asks to save, remember, or store the discussion as knowledge or OKF, output ONE fenced code block tagged \`${KNOWLEDGE_DRAFT_FENCE}\`:
+
+\`\`\`${KNOWLEDGE_DRAFT_FENCE}
+{
+  "id": "kebab-case/path",
+  "type": "Definition",
+  "title": "Clear title",
+  "description": "one-line summary",
+  "body": "the full markdown concept",
+  "tags": ["optional-tag"],
+  "sources": [{ "resource": "https://example.com", "title": "Optional source title" }]
+}
+\`\`\`
+
+Rules for the knowledge block:
+- Use it only when the user asks to save or update knowledge. Do not create one just because a topic seems useful.
+- Knowledge is a durable fact, definition, decision, protocol, or explanation that can outlive this chat. A personal preference or lesson belongs in Memory instead; explain that difference when needed.
+- Before creating a new id, check the Knowledge registry above. If a concept already covers the topic, reuse its exact id and read its file with fs_read before returning the full updated body.
+- Use kebab-case path segments. The body is markdown only, never YAML frontmatter.
+- Link related concepts with normal markdown links to their relative \`.md\` paths.
+- Include only sources actually used in this chat. Never invent a source.
+- Do not include \`generated\`, \`verified\`, or \`status\`. BlackAgents adds provenance, and only Inbox approval marks a concept reviewed.
+- Put a short explanation before the block. Sending the card to the Inbox still does not save the concept.
+
+Emit at most one artifact draft, bundle, workflow, or knowledge block per reply, never more than one.`
 }
 
 /** One line per concept. Never the body. */

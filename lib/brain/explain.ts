@@ -48,6 +48,7 @@ export function approveEffect(proposal: Pick<BrainProposal, "kind" | "agent" | "
 export function proposalOrigin(proposal: Pick<BrainProposal, "source" | "decision">): string {
   if (proposal.source.kind === "import") return "From an OKF bundle you previewed."
   if (proposal.source.kind === "memory") return "From a memory note you chose to save as knowledge."
+  if (proposal.source.kind === "assistant") return "From the Assistant. You asked to save it as knowledge."
   const from =
     proposal.source.signal === "self"
       ? "a workflow self-check"

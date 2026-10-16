@@ -340,10 +340,26 @@ async function applyConcept(
   proposal.description = next.description
 }
 
-/** Queue a memory note as knowledge. The proposal gets `generated` only; approval adds `verified`. */
-export async function proposeConceptFromMemory(
+export interface ConceptProposalInput {
+  id: string
+  type: string
+  title?: string
+  content: string
+  description?: string
+  tags?: string[]
+  sources?: OkfConceptFrontmatter["sources"]
+}
+
+export type ConceptProposalOrigin = "memory" | "assistant"
+
+/**
+ * Queue durable knowledge from a trusted UI action. The proposal gets
+ * provenance only; approval is the only operation that adds `verified`.
+ */
+export async function proposeConcept(
   root: string,
-  input: { id: string; type: string; title?: string; content: string; description?: string },
+  input: ConceptProposalInput,
+  origin: ConceptProposalOrigin,
   now = new Date()
 ): Promise<BrainProposal> {
   const content = input.content.trim()
@@ -363,13 +379,16 @@ export async function proposeConceptFromMemory(
     throw new ProposalError(issues.find((issue) => issue.severity === "error")?.message ?? "The concept is not valid", 400)
   }
   const title = input.title?.trim() || input.id.split("/").at(-1) || input.id
+  const generatedBy = origin === "memory" ? "process:memory-promotion" : "process:assistant-chat"
   const frontmatter: OkfConceptFrontmatter = {
     ...(existing?.frontmatter ?? { type: input.type.trim(), extra: {} }),
     type: input.type.trim(),
     title,
     description: input.description?.trim() || existing?.frontmatter.description,
+    tags: input.tags ?? existing?.frontmatter.tags,
+    sources: input.sources ?? existing?.frontmatter.sources,
     extra: existing?.frontmatter.extra ?? {},
-    generated: existing?.frontmatter.generated ?? { by: "process:memory-promotion", at: stamp(now) },
+    generated: existing?.frontmatter.generated ?? { by: generatedBy, at: stamp(now) },
   }
   delete frontmatter.verified
   const proposal: BrainProposal = {
@@ -378,10 +397,13 @@ export async function proposeConceptFromMemory(
     target: { type: "concept", name: input.id },
     concept: frontmatter,
     title,
-    rationale: "A memory note promoted to durable knowledge.",
+    rationale:
+      origin === "memory"
+        ? "A memory note promoted to durable knowledge."
+        : "The user asked the Assistant to save this as durable knowledge.",
     content,
     description: frontmatter.description,
-    source: { kind: "memory", signal: "feedback" },
+    source: { kind: origin, signal: "feedback" },
     decision: { by: "feedback" },
     status: "pending",
     createdAt: now.toISOString(),
@@ -394,6 +416,15 @@ export async function proposeConceptFromMemory(
     kind: proposal.kind,
   })
   return proposal
+}
+
+/** Queue a memory note as knowledge. Kept as the Brain Memory UI entry point. */
+export async function proposeConceptFromMemory(
+  root: string,
+  input: ConceptProposalInput,
+  now = new Date()
+): Promise<BrainProposal> {
+  return proposeConcept(root, input, "memory", now)
 }
 
 /** Approve (apply) or reject a pending proposal. */

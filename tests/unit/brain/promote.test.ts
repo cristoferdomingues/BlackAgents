@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { decideProposal, ProposalError, proposeConceptFromMemory } from "@/lib/brain/learn"
+import {
+  decideProposal,
+  ProposalError,
+  proposeConcept,
+  proposeConceptFromMemory,
+} from "@/lib/brain/learn"
 import { readConcept } from "@/lib/knowledge/store"
 import { makeTempEnv, type TempEnv } from "../../helpers/workspace"
 
@@ -58,5 +63,40 @@ describe("memory to concept", () => {
       proposeConceptFromMemory(env.workspace, { id: "../secret", type: "Metric", content: "no" })
     ).rejects.toBeInstanceOf(ProposalError)
     await expect(readFile(path.join(env.workspace, ".black-agents/knowledge"), "utf8")).rejects.toThrow()
+  })
+
+  it("queues Assistant knowledge with provenance and updates an existing id", async () => {
+    const first = await proposeConcept(
+      env.workspace,
+      {
+        id: "architecture/agent-loop",
+        type: "Design Decision",
+        title: "Agent loop",
+        description: "How the bounded loop works.",
+        content: "The loop has a fixed turn limit.",
+        tags: ["runtime"],
+        sources: [{ resource: "https://example.com/runtime", title: "Runtime docs" }],
+      },
+      "assistant"
+    )
+    expect(first.kind).toBe("new_concept")
+    expect(first.source.kind).toBe("assistant")
+    expect(first.concept?.generated?.by).toBe("process:assistant-chat")
+    expect(first.concept?.verified).toBeUndefined()
+    expect(first.concept?.tags).toEqual(["runtime"])
+    expect(first.concept?.sources?.[0]?.resource).toBe("https://example.com/runtime")
+
+    await decideProposal(env.workspace, first.id, { action: "approve" })
+    const update = await proposeConcept(
+      env.workspace,
+      {
+        id: "architecture/agent-loop",
+        type: "Design Decision",
+        content: "The loop has a fixed turn and tool limit.",
+      },
+      "assistant"
+    )
+    expect(update.kind).toBe("update_concept")
+    expect(update.concept?.verified).toBeUndefined()
   })
 })

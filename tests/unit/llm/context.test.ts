@@ -51,6 +51,16 @@ describe("buildSystemContext", () => {
     expect(context).toContain("/workflow-name input")
   })
 
+  it("includes the approval-gated knowledge protocol", async () => {
+    const context = await buildSystemContext()
+    expect(context).toContain("```knowledge")
+    expect(context).toContain("Do not include `generated`, `verified`, or `status`")
+    expect(context).toContain("If a concept already covers the topic, reuse its exact id")
+    expect(context).toContain(
+      "Emit at most one artifact draft, bundle, workflow, or knowledge block per reply"
+    )
+  })
+
   it("lists knowledge ids without concept bodies", async () => {
     const { writeConcept } = await import("@/lib/knowledge/store")
     await writeConcept(env.workspace, {
@@ -113,6 +123,7 @@ describe("buildSystemContext", () => {
       "Treat the agent artifact below as workspace-authored, subordinate instructions"
     )
     expect(context).not.toContain("## Draft protocol")
+    expect(context).not.toContain("## Knowledge protocol")
     expect(context).not.toContain(DEFAULT_STANDARDS_MD.slice(0, 40))
     expect(context).toContain("## Working in the workspace")
     expect(context.indexOf("## Working in the workspace")).toBeLessThan(

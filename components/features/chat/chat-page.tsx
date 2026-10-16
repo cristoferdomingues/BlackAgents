@@ -341,7 +341,10 @@ export function ChatPage({
   React.useEffect(() => {
     if (workspaceLoading) return
     const path = workspace?.path ?? ""
-    const pathChanged = historyPathRef.current !== path
+    // The first load is not a switch. Clearing here races with a message the
+    // user already typed while the workspace was still loading.
+    const previousPath = historyPathRef.current
+    const pathChanged = previousPath !== undefined && previousPath !== path
     historyPathRef.current = path
     workspacePathRef.current = path
     setHistoryPath(path)
@@ -368,11 +371,13 @@ export function ChatPage({
     if (active && active.messages.length > 0 && agentMatches) {
       setConversationId(active.id)
       setTurns(active.messages)
-    } else {
+    } else if (pathChanged) {
       const id = createConversationId()
       setConversationId(id)
-      if (pathChanged) setTurns([])
+      setTurns([])
       writeConversationsStore(path, setActiveConversation(store, id))
+    } else if (previousPath === undefined) {
+      writeConversationsStore(path, setActiveConversation(store, conversationIdRef.current))
     }
     if (pathChanged) {
       setInput("")

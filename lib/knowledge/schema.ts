@@ -244,8 +244,9 @@ export function normalizeFrontmatter(data: Record<string, unknown>, body: string
     const issue = parsed.error.issues[0]
     const field = issue?.path.join(".")
     const message = issue?.message ?? "Invalid frontmatter"
+    if (message === "Required") return { error: `${field ?? "field"} is required` }
     const named = !field || message.startsWith(field) ? message : `${field}: ${message}`
-    return { error: named === "Required" ? `${field ?? "field"} is required` : named }
+    return { error: named }
   }
 
   const value = parsed.data

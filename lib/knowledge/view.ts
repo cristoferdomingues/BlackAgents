@@ -1,6 +1,7 @@
 import type { OkfConcept } from "./parse"
 import { linkedConceptIds } from "./links"
 import { isStale, trustTier, type TrustTier } from "./schema"
+import type { KnowledgeFileIssue } from "./store"
 
 /** One saved concept, without its body. Safe to list. */
 export interface KnowledgeListItem {
@@ -31,6 +32,7 @@ export interface KnowledgeGraphLink {
 export interface KnowledgeLibraryView {
   concepts: KnowledgeListItem[]
   links: KnowledgeGraphLink[]
+  issues: KnowledgeFileIssue[]
 }
 
 function folderOf(id: string): string {
@@ -67,7 +69,11 @@ export function toKnowledgeConceptView(concept: OkfConcept, now: Date): Knowledg
 }
 
 /** Saved concepts and the markdown links between them. */
-export function toKnowledgeLibraryView(concepts: OkfConcept[], now: Date): KnowledgeLibraryView {
+export function toKnowledgeLibraryView(
+  concepts: OkfConcept[],
+  now: Date,
+  issues: KnowledgeFileIssue[] = []
+): KnowledgeLibraryView {
   const ids = new Set(concepts.map((concept) => concept.id))
   const links: KnowledgeGraphLink[] = []
   const seen = new Set<string>()
@@ -85,5 +91,6 @@ export function toKnowledgeLibraryView(concepts: OkfConcept[], now: Date): Knowl
   return {
     concepts: concepts.map((concept) => toKnowledgeListItem(concept, now)),
     links,
+    issues,
   }
 }

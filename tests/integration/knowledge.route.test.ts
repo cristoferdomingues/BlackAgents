@@ -45,6 +45,7 @@ describe("GET /api/knowledge", () => {
       { id: "start", title: "Start", trust: "human-reviewed", folder: "" },
     ])
     expect(listData.links).toEqual([])
+    expect(listData.issues).toEqual([])
     const one = await get("start")
     expect(one.status).toBe(200)
     expect((await one.json()).data.body).toContain("Hello.")
@@ -54,5 +55,23 @@ describe("GET /api/knowledge", () => {
   it("rejects a bad id and a missing concept", async () => {
     expect((await get("Bad Id")).status).toBe(400)
     expect((await get("missing")).status).toBe(404)
+  })
+
+  it("reports invalid Markdown files instead of hiding them", async () => {
+    await seedArtifact(env.workspace, ".black-agents/knowledge/Bad Name.md", "# Missing frontmatter\n")
+    await seedArtifact(env.workspace, ".black-agents/knowledge/good-name.md", "# Missing frontmatter\n")
+
+    const data = (await (await get()).json()).data
+    expect(data.concepts).toEqual([])
+    expect(data.issues).toEqual([
+      {
+        file: ".black-agents/knowledge/Bad Name.md",
+        reason: "The path must use kebab-case folders and a kebab-case .md file name.",
+      },
+      {
+        file: ".black-agents/knowledge/good-name.md",
+        reason: "type is required",
+      },
+    ])
   })
 })

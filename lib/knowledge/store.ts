@@ -50,17 +50,47 @@ export function conceptIdFromRel(relPath: string): string | null {
   return id
 }
 
-export async function listConcepts(workspaceRoot: string): Promise<OkfConcept[]> {
+export interface KnowledgeFileIssue {
+  file: string
+  reason: string
+}
+
+export interface KnowledgeStoreInspection {
+  concepts: OkfConcept[]
+  issues: KnowledgeFileIssue[]
+}
+
+/** Read every concept and report invalid Markdown files instead of hiding them. */
+export async function inspectKnowledgeStore(workspaceRoot: string): Promise<KnowledgeStoreInspection> {
   const dir = resolveInWorkspace(workspaceRoot, KNOWLEDGE_DIR)
-  if (!(await pathExists(dir))) return []
+  if (!(await pathExists(dir))) return { concepts: [], issues: [] }
   const concepts: OkfConcept[] = []
+  const issues: KnowledgeFileIssue[] = []
   for (const rel of (await walkFiles(dir)).sort()) {
+    const normalized = rel.split(path.sep).join("/")
+    if (!normalized.endsWith(".md")) continue
+    const base = path.posix.basename(normalized)
+    if (base === "index.md" || base === "log.md") continue
     const id = conceptIdFromRel(rel)
-    if (!id) continue
+    if (!id) {
+      issues.push({
+        file: `${KNOWLEDGE_DIR}/${normalized}`,
+        reason: "The path must use kebab-case folders and a kebab-case .md file name.",
+      })
+      continue
+    }
     const parsed = parseConceptContent(id, await readText(path.join(dir, rel)))
-    if (parsed.ok) concepts.push(parsed.concept)
+    if (parsed.ok) {
+      concepts.push(parsed.concept)
+    } else {
+      issues.push({ file: `${KNOWLEDGE_DIR}/${normalized}`, reason: parsed.message })
+    }
   }
-  return concepts
+  return { concepts, issues }
+}
+
+export async function listConcepts(workspaceRoot: string): Promise<OkfConcept[]> {
+  return (await inspectKnowledgeStore(workspaceRoot)).concepts
 }
 
 export async function readConcept(workspaceRoot: string, id: string): Promise<OkfConcept | null> {

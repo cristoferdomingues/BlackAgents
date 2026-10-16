@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { List, Loader2, Network } from "lucide-react"
+import { AlertTriangle, List, Loader2, Network, RefreshCw } from "lucide-react"
 
 import { apiFetch, ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -10,6 +10,7 @@ import {
   groupKnowledge,
   KNOWLEDGE_LIBRARY_EMPTY,
   KNOWLEDGE_LIBRARY_INTRO,
+  KNOWLEDGE_VALIDATION_INTRO,
   STATUS_LABEL,
   TRUST_LABEL,
 } from "@/lib/knowledge/explain"
@@ -28,7 +29,12 @@ function errorText(err: unknown, fallback: string): string {
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; concepts: KnowledgeListItem[]; links: KnowledgeLibraryView["links"] }
+  | {
+      kind: "ready"
+      concepts: KnowledgeListItem[]
+      links: KnowledgeLibraryView["links"]
+      issues: KnowledgeLibraryView["issues"]
+    }
 
 type LibraryMode = "list" | "graph"
 
@@ -47,7 +53,14 @@ export function KnowledgeLibrary(): React.ReactElement {
     let cancelled = false
     apiFetch<KnowledgeLibraryView>("/api/knowledge")
       .then((data) => {
-        if (!cancelled) setState({ kind: "ready", concepts: data.concepts, links: data.links ?? [] })
+        if (!cancelled) {
+          setState({
+            kind: "ready",
+            concepts: data.concepts,
+            links: data.links ?? [],
+            issues: data.issues ?? [],
+          })
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: errorText(err, "Could not load knowledge") })
@@ -79,6 +92,7 @@ export function KnowledgeLibrary(): React.ReactElement {
 
   const concepts = state.kind === "ready" ? state.concepts : []
   const links = state.kind === "ready" ? state.links : []
+  const issues = state.kind === "ready" ? state.issues : []
   const needle = query.trim().toLowerCase()
   const visible = needle
     ? concepts.filter((item) =>
@@ -89,7 +103,21 @@ export function KnowledgeLibrary(): React.ReactElement {
 
   return (
     <section className="space-y-3" aria-label="Knowledge library">
-      <p className="text-sm text-muted-foreground">{KNOWLEDGE_LIBRARY_INTRO}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted-foreground">{KNOWLEDGE_LIBRARY_INTRO}</p>
+          {state.kind === "ready" ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {concepts.length} saved {concepts.length === 1 ? "concept" : "concepts"}
+              {issues.length > 0 ? ` · ${issues.length} invalid ${issues.length === 1 ? "file" : "files"}` : ""}
+            </p>
+          ) : null}
+        </div>
+        <Button type="button" size="sm" variant="outline" disabled={state.kind === "loading"} onClick={retry}>
+          <RefreshCw className="h-4 w-4" />
+          Check files
+        </Button>
+      </div>
       {state.kind === "loading" ? <Skeleton className="h-24 w-full" /> : null}
       {state.kind === "error" ? (
         <p role="alert" className="text-sm text-destructive">
@@ -98,6 +126,27 @@ export function KnowledgeLibrary(): React.ReactElement {
             Retry
           </Button>
         </p>
+      ) : null}
+      {state.kind === "ready" && issues.length > 0 ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3" role="alert">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {issues.length} knowledge {issues.length === 1 ? "file needs" : "files need"} attention
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{KNOWLEDGE_VALIDATION_INTRO}</p>
+              <ul className="mt-2 space-y-1.5">
+                {issues.map((issue) => (
+                  <li key={issue.file} className="text-xs">
+                    <code className="break-all">{issue.file}</code>
+                    <span className="block text-destructive">{issue.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
       ) : null}
       {state.kind === "ready" && concepts.length === 0 ? (
         <p className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">

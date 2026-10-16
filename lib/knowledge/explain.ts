@@ -17,6 +17,9 @@ export const KNOWLEDGE_LIBRARY_INTRO =
 export const KNOWLEDGE_LIBRARY_EMPTY =
   "No saved concepts yet. Approve one from the Inbox, or bring a folder in below."
 
+export const KNOWLEDGE_VALIDATION_INTRO =
+  "These Markdown files are not valid concepts yet. Fix the path or frontmatter, then check the folder again."
+
 export const KNOWLEDGE_GRAPH_INTRO =
   "Each dot is a saved concept. A line means one concept links to another. Pulses show the direction of that link."
 

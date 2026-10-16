@@ -254,6 +254,8 @@ test.describe("brain", () => {
     await page.goto("/brain")
     await page.getByRole("tab", { name: "Knowledge" }).click()
     await expect(page.getByText("No saved concepts yet")).toHaveCount(0)
+    await expect(page.getByText("2 saved concepts")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Check files" })).toBeVisible()
     await page.getByRole("button", { name: /Overview/ }).click()
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible()
     await expect(page.getByText("BlackAgents is local-first.")).toBeVisible()

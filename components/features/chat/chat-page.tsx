@@ -73,6 +73,11 @@ import {
   stripKnowledgeBlock,
   type KnowledgeDraftInspection,
 } from "@/lib/llm/knowledge-draft"
+import {
+  inspectMemoryDraft,
+  stripMemoryBlock,
+  type MemoryDraftInspection,
+} from "@/lib/llm/memory-draft"
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
 import { inspectModelRef, type ModelRef } from "@/lib/llm/model-ref"
 import {
@@ -123,6 +128,7 @@ import {
   KnowledgeDraftCard,
   KnowledgeDraftProblemCard,
 } from "@/components/features/chat/knowledge-draft-card"
+import { MemoryDraftCard, MemoryDraftProblemCard } from "@/components/features/chat/memory-draft-card"
 import { WorkflowRunCard } from "@/components/features/chat/workflow-run-card"
 import { ApprovalCard } from "@/components/features/approvals/approval-card"
 import {
@@ -1285,7 +1291,11 @@ export function ChatPage({
               {live.content ? (
                 <div className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">
                   <MarkdownPreview
-                    content={stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))}
+                    content={stripMemoryBlock(
+                      stripKnowledgeBlock(
+                        stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))
+                      )
+                    )}
                     variant="inline"
                   />
                 </div>
@@ -1521,17 +1531,24 @@ function Message({
   const isUser = turn.role === "user"
   const bundle = isUser ? null : extractBundle(turn.content)
   const workflowDraft = isUser || bundle ? null : extractWorkflowDraft(turn.content)
+  const memoryCheck: MemoryDraftInspection =
+    isUser || bundle || workflowDraft ? { kind: "none" } : inspectMemoryDraft(turn.content)
+  const memoryDraft = memoryCheck.kind === "ok" ? memoryCheck.draft : null
   const knowledgeCheck: KnowledgeDraftInspection =
-    isUser || bundle || workflowDraft ? { kind: "none" } : inspectKnowledgeDraft(turn.content)
+    isUser || bundle || workflowDraft || memoryCheck.kind !== "none"
+      ? { kind: "none" }
+      : inspectKnowledgeDraft(turn.content)
   const knowledgeDraft = knowledgeCheck.kind === "ok" ? knowledgeCheck.draft : null
   const draftCheck: DraftInspection =
-    isUser || bundle || workflowDraft || knowledgeCheck.kind !== "none"
+    isUser || bundle || workflowDraft || memoryCheck.kind !== "none" || knowledgeCheck.kind !== "none"
       ? { kind: "none" }
       : inspectDraft(turn.content)
   const draft = draftCheck.kind === "ok" ? draftCheck.draft : null
   const prose = isUser
     ? turn.content
-    : stripKnowledgeBlock(stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content))))
+    : stripMemoryBlock(
+        stripKnowledgeBlock(stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content))))
+      )
   const attached = turnAttachments(turn)
   const runTarget = turn.workflowRun
     ? workflows.find((item) => item.workflow.name === turn.workflowRun?.workflow)?.workflow
@@ -1597,6 +1614,14 @@ function Message({
           <DraftProblemCard
             type={draftCheck.type}
             message={draftCheck.message}
+            onFix={onFixIssues}
+            fixDisabled={fixDisabled}
+          />
+        ) : null}
+        {memoryDraft ? <MemoryDraftCard draft={memoryDraft} /> : null}
+        {memoryCheck.kind === "invalid" ? (
+          <MemoryDraftProblemCard
+            message={memoryCheck.message}
             onFix={onFixIssues}
             fixDisabled={fixDisabled}
           />

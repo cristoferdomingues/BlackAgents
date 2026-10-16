@@ -74,6 +74,16 @@ describe("proposalOrigin", () => {
     )
   })
 
+  it("says a memory draft came from the Assistant", () => {
+    expect(
+      proposalOrigin({
+        kind: "memory_note",
+        source: source({ kind: "assistant" }),
+        decision: { by: "feedback" },
+      })
+    ).toBe("From the Assistant. You asked to remember this.")
+  })
+
   it("describes feedback from the Assistant", () => {
     expect(proposalOrigin({ source: source({ rating: "down" }), decision: { by: "feedback" } })).toBe(
       "From your thumbs down in the Assistant."

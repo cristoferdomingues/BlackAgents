@@ -7,6 +7,7 @@ import { BUILTIN_TOOL_NAMES } from "../runtime/tool-names"
 import { BUNDLE_FENCE, MAX_BUNDLE_RULES, MAX_BUNDLE_SKILLS } from "./bundle"
 import { ARTIFACT_DRAFT_FENCE } from "./draft"
 import { KNOWLEDGE_DRAFT_FENCE } from "./knowledge-draft"
+import { MEMORY_DRAFT_FENCE } from "./memory-draft"
 import { WORKFLOW_DRAFT_FENCE } from "./workflow-draft"
 import { MAX_WORKFLOW_STEPS } from "../workflows/schema"
 import { listWorkflows } from "../workflows/store"
@@ -205,7 +206,26 @@ Rules for the knowledge block:
 - Do not include \`generated\`, \`verified\`, or \`status\`. BlackAgents adds provenance, and only Inbox approval marks a concept reviewed.
 - Put a short explanation before the block. Sending the card to the Inbox still does not save the concept.
 
-Emit at most one artifact draft, bundle, workflow, or knowledge block per reply, never more than one.`
+## Memory protocol
+
+When the user states a lasting preference or instruction for future chats, output ONE fenced code block tagged \`${MEMORY_DRAFT_FENCE}\`. Examples: "from now on", "remember", "always", "never", "I prefer", or "call me".
+
+\`\`\`${MEMORY_DRAFT_FENCE}
+{
+  "title": "How to address the user",
+  "content": "Call the user Mr. Bombastic.",
+  "agent": "optional-agent-name"
+}
+\`\`\`
+
+Rules for the memory block:
+- Use it for a preference, name, or lesson that should follow the user into later chats. A durable project fact belongs in the knowledge block instead.
+- If the request is unclear, ask one short question. Do not guess a memory note.
+- "content" is one short sentence, at most 500 characters.
+- Omit "agent" so every agent remembers it. Set "agent" only when the user names one existing workspace agent.
+- Do not write the memory file yourself. The card only sends a proposal to the Inbox.
+
+Emit at most one artifact draft, bundle, workflow, knowledge, or memory block per reply, never more than one.`
 }
 
 /** One line per concept. Never the body. */

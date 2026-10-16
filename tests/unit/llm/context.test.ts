@@ -56,8 +56,11 @@ describe("buildSystemContext", () => {
     expect(context).toContain("```knowledge")
     expect(context).toContain("Do not include `generated`, `verified`, or `status`")
     expect(context).toContain("If a concept already covers the topic, reuse its exact id")
+    expect(context).toContain("```memory")
+    expect(context).toContain("Call the user Mr. Bombastic.")
+    expect(context).toContain("Omit \"agent\" so every agent remembers it.")
     expect(context).toContain(
-      "Emit at most one artifact draft, bundle, workflow, or knowledge block per reply"
+      "Emit at most one artifact draft, bundle, workflow, knowledge, or memory block per reply"
     )
   })
 
@@ -124,6 +127,7 @@ describe("buildSystemContext", () => {
     )
     expect(context).not.toContain("## Draft protocol")
     expect(context).not.toContain("## Knowledge protocol")
+    expect(context).not.toContain("## Memory protocol")
     expect(context).not.toContain(DEFAULT_STANDARDS_MD.slice(0, 40))
     expect(context).toContain("## Working in the workspace")
     expect(context.indexOf("## Working in the workspace")).toBeLessThan(

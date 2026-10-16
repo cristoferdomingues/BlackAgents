@@ -22,7 +22,7 @@ import { STANDARDS_SPEC } from "@/lib/standards/default-standards"
 import { resolveRunLlm, type ResolvedLlm } from "@/lib/workflows/llm"
 import type { Workflow, WorkflowRun } from "@/lib/workflows/schema"
 
-import { appendLog, appendNote, listProposals, readProposal, saveProposal } from "./store"
+import { appendLog, appendNote, formatNoteText, listProposals, readProposal, saveProposal } from "./store"
 import {
   LEARNING_ACTIONS,
   type BrainProposal,
@@ -414,6 +414,52 @@ export async function proposeConcept(
     event: "proposed",
     proposalId: proposal.id,
     kind: proposal.kind,
+  })
+  return proposal
+}
+
+/**
+ * Queue a preference the user asked the Assistant to remember. Approval writes
+ * the note. An omitted agent means every agent.
+ */
+export async function proposeMemoryNote(
+  root: string,
+  input: { title: string; content: string; agent?: string },
+  now = new Date()
+): Promise<BrainProposal> {
+  const content = formatNoteText(input.content)
+  if (!content) throw new ProposalError("The note is empty", 400)
+  const title = input.title.trim()
+  if (!title) throw new ProposalError("A title is required", 400)
+
+  let agent: string | undefined
+  if (input.agent) {
+    const parsed = nameSchema.safeParse(input.agent)
+    if (!parsed.success) throw new ProposalError(parsed.error.issues[0]?.message ?? "Invalid agent name", 400)
+    const existing = await findArtifact(root, "agent", parsed.data)
+    if (!existing) throw new ProposalError(`The agent "${parsed.data}" does not exist`, 404)
+    agent = parsed.data
+  }
+
+  const proposal: BrainProposal = {
+    id: randomUUID(),
+    kind: "memory_note",
+    agent,
+    title,
+    rationale: "The user asked the Assistant to remember this.",
+    content,
+    source: { kind: "assistant", signal: "feedback" },
+    decision: { by: "feedback" },
+    status: "pending",
+    createdAt: now.toISOString(),
+  }
+  await saveProposal(root, proposal)
+  await appendLog(root, {
+    at: now.toISOString(),
+    event: "proposed",
+    proposalId: proposal.id,
+    kind: proposal.kind,
+    agent,
   })
   return proposal
 }

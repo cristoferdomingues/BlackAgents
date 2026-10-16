@@ -3,6 +3,9 @@
 /** Folder name of an exported OKF bundle, inside the destination. */
 export const OKF_BUNDLE_DIR = "okf"
 
+/** Maximum notes handled by one Obsidian preview/import. */
+export const OBSIDIAN_NOTE_LIMIT = 1_000
+
 export const OKF_EXPORT_LABEL = "OKF Bundle"
 
 export const OKF_EXPORT_WHERE =

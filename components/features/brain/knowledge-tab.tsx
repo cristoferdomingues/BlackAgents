@@ -9,6 +9,7 @@ import {
   KNOWLEDGE_IMPORT_CHOICE,
   KNOWLEDGE_TAB_INTRO,
   OBSIDIAN_IMPORT_INTRO,
+  OBSIDIAN_NOTE_LIMIT,
   type BundlePreview,
   type ObsidianPreview,
   type ObsidianQueueResult,
@@ -283,17 +284,22 @@ function ObsidianImport({ onQueued }: { onQueued: () => void }): React.ReactElem
       </form>
       {preview ? (
         <div className="space-y-3" aria-label="Vault preview">
-          <p className="text-xs text-muted-foreground">Nothing has been saved.</p>
+          <p className="text-xs text-muted-foreground">
+            {preview.concepts.length} {preview.concepts.length === 1 ? "note" : "notes"} found · {fresh.length} new.
+            Nothing is saved until you approve it in the Inbox. Up to {OBSIDIAN_NOTE_LIMIT.toLocaleString()} notes can be
+            imported at once.
+          </p>
           {preview.concepts.length === 0 ? (
             <p className="text-sm text-muted-foreground">This vault has no notes.</p>
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy || picked.size === 0} onClick={() => void queue([...picked])}>
-                  Add selected to inbox
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Add selected ({picked.size})
                 </Button>
                 <Button size="sm" variant="outline" disabled={busy || fresh.length === 0} onClick={() => void queue(fresh.map((concept) => concept.id))}>
-                  Add all new
+                  Add all new ({fresh.length})
                 </Button>
               </div>
               <ul className="space-y-2">

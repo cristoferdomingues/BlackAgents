@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { ok, fail, handle } from "@/lib/api-response"
 import { workspaceRoot } from "@/lib/fs-service"
+import { OBSIDIAN_NOTE_LIMIT } from "@/lib/knowledge/explain"
 import { KnowledgeImportError, previewBundle, previewObsidianVault, queueConcept, queueObsidianConcepts } from "@/lib/knowledge/import"
 
 const folder = z.string().trim().min(1, "A folder path is required")
@@ -17,7 +18,10 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("queue-obsidian"),
     path: folder,
-    ids: z.array(z.string().trim().min(1)).min(1, "Choose at least one note").max(100, "Choose at most 100 notes"),
+    ids: z
+      .array(z.string().trim().min(1))
+      .min(1, "Choose at least one note")
+      .max(OBSIDIAN_NOTE_LIMIT, `Choose at most ${OBSIDIAN_NOTE_LIMIT} notes`),
   }),
 ])
 

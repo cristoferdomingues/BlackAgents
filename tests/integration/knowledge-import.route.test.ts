@@ -138,4 +138,16 @@ describe("POST /api/knowledge/import", () => {
       state: "saved",
     })
   })
+
+  it("accepts more than 100 Obsidian notes in one Inbox request", async () => {
+    const vault = path.join(env.workspace, "large-vault")
+    await seedArtifact(env.workspace, "large-vault/Start.md", "---\ntype: reference\n---\n# Start\n")
+    const ids = ["start", ...Array.from({ length: 100 }, (_, index) => `missing-${index}`)]
+
+    const response = await call({ action: "queue-obsidian", path: vault, ids })
+    expect(response.status).toBe(201)
+    const data = (await response.json()).data
+    expect(data.queued).toEqual([{ id: "start", title: "Start" }])
+    expect(data.skipped).toHaveLength(100)
+  })
 })

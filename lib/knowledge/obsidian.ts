@@ -1,6 +1,7 @@
 import path from "node:path"
 
 import { safeParseMatter } from "../artifacts/parser"
+import { OBSIDIAN_NOTE_LIMIT } from "./explain"
 import { normalizeFrontmatter, type OkfConceptFrontmatter } from "./schema"
 
 /**
@@ -9,7 +10,7 @@ import { normalizeFrontmatter, type OkfConceptFrontmatter } from "./schema"
  */
 
 export const OBSIDIAN_ACTOR = "process:obsidian-import"
-export const OBSIDIAN_NOTE_LIMIT = 200
+export { OBSIDIAN_NOTE_LIMIT }
 
 const TYPES: Record<string, string> = {
   moc: "Reference",

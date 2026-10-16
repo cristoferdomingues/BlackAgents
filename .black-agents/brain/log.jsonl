@@ -10,3 +10,41 @@
 {"at":"2026-10-15T16:15:30.904Z","event":"recorded","reason":"Jev found nothing important to keep"}
 {"at":"2026-10-15T16:20:47.240Z","event":"recorded","reason":"Jev found nothing important to keep"}
 {"at":"2026-10-15T16:24:25.166Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-10-16T16:15:40.271Z","event":"applied","proposalId":"7ebe810d-c6b7-4ca7-9332-d05e463d288e","kind":"new_concept","target":"concept:devops/releases"}
+{"at":"2026-10-16T16:15:41.705Z","event":"applied","proposalId":"df2c8989-4c46-4c9a-8c70-ef792c4bf4cb","kind":"new_concept","target":"concept:devops/github-pages"}
+{"at":"2026-10-16T16:15:42.253Z","event":"applied","proposalId":"b72931fd-2bd3-4188-8d0b-69b837a883a6","kind":"new_concept","target":"concept:devops/devops-overview"}
+{"at":"2026-10-16T16:15:42.686Z","event":"applied","proposalId":"7585085e-3200-4f01-9304-0637a688121e","kind":"new_concept","target":"concept:devops/ci-cd-pipeline"}
+{"at":"2026-10-16T16:15:43.143Z","event":"applied","proposalId":"b832ad13-cf41-45ee-aabc-1afcc04d5a19","kind":"new_concept","target":"concept:specs/youtube-sources"}
+{"at":"2026-10-16T16:15:43.602Z","event":"applied","proposalId":"864f07df-7267-459d-98e0-a7c26a8db4fb","kind":"new_concept","target":"concept:specs/workflow-step-models"}
+{"at":"2026-10-16T16:15:44.079Z","event":"applied","proposalId":"a5a6b793-7228-40a3-ad11-f089ed79ed58","kind":"new_concept","target":"concept:specs/task-model-kinds"}
+{"at":"2026-10-16T16:15:44.528Z","event":"applied","proposalId":"54e86622-05a9-4e72-af43-61769eab2af6","kind":"new_concept","target":"concept:specs/model-routing"}
+{"at":"2026-10-16T16:15:45.011Z","event":"applied","proposalId":"78d7f72f-e258-4e71-8374-d95be697f65f","kind":"new_concept","target":"concept:specs/browser-automation"}
+{"at":"2026-10-16T16:15:45.510Z","event":"applied","proposalId":"3adfcda9-bec2-451d-8820-61dea8881545","kind":"new_concept","target":"concept:specs/assisted-artifact-drafting"}
+{"at":"2026-10-16T16:15:45.968Z","event":"applied","proposalId":"16338ddd-1fc8-4dc5-b23d-6718ae720f50","kind":"new_concept","target":"concept:specs/artifact-mentions"}
+{"at":"2026-10-16T16:15:46.419Z","event":"applied","proposalId":"dda8f1ea-b98d-40af-9607-20498127ca9a","kind":"new_concept","target":"concept:specs/agent-models"}
+{"at":"2026-10-16T16:15:46.885Z","event":"applied","proposalId":"502f7574-6da4-48f5-9707-18f82dec5990","kind":"new_concept","target":"concept:roadmap/future-phases"}
+{"at":"2026-10-16T16:15:47.327Z","event":"applied","proposalId":"6512e563-6c75-4d6a-bac5-6efcc9b9e9cf","kind":"new_concept","target":"concept:ui/ui-overview"}
+{"at":"2026-10-16T16:15:47.802Z","event":"applied","proposalId":"d2444df0-fb0d-4bec-a212-47f85242299d","kind":"new_concept","target":"concept:api/api-reference"}
+{"at":"2026-10-16T16:15:48.302Z","event":"applied","proposalId":"f6d8e1fd-b49b-4464-a977-2c216accd14b","kind":"new_concept","target":"concept:artifacts/skills"}
+{"at":"2026-10-16T16:15:48.769Z","event":"applied","proposalId":"8555a7a1-03f3-46fc-bc39-1f764f60fd28","kind":"new_concept","target":"concept:artifacts/rules"}
+{"at":"2026-10-16T16:15:49.244Z","event":"applied","proposalId":"f9e6a58d-fd41-4b34-b948-a41b992e8a3e","kind":"new_concept","target":"concept:artifacts/commands"}
+{"at":"2026-10-16T16:15:49.728Z","event":"applied","proposalId":"15c3e396-de8e-4f2f-bb91-7acff6bd97be","kind":"new_concept","target":"concept:artifacts/authoring-standards"}
+{"at":"2026-10-16T16:15:52.009Z","event":"applied","proposalId":"109e9a72-8b37-42b8-873f-7dcd89646c61","kind":"new_concept","target":"concept:artifacts/artifact-types-overview"}
+{"at":"2026-10-16T16:15:52.578Z","event":"applied","proposalId":"80542c85-19db-419d-873c-0695a9e313b0","kind":"new_concept","target":"concept:artifacts/agents"}
+{"at":"2026-10-16T16:15:53.203Z","event":"applied","proposalId":"bd9738f0-2a94-4f56-be56-3f12bcb2c009","kind":"new_concept","target":"concept:architecture/workspace-filesystem-safety"}
+{"at":"2026-10-16T16:15:53.840Z","event":"applied","proposalId":"5ac3d90e-3c54-4d44-902c-968d0db9b182","kind":"new_concept","target":"concept:architecture/workflows"}
+{"at":"2026-10-16T16:15:54.433Z","event":"applied","proposalId":"8196588c-40e8-4cff-8cac-a4dec2370a7e","kind":"new_concept","target":"concept:architecture/second-brain"}
+{"at":"2026-10-16T16:15:54.975Z","event":"applied","proposalId":"a42151fb-428c-445c-8c47-dcb03a2a6cc7","kind":"new_concept","target":"concept:architecture/relationship-graph"}
+{"at":"2026-10-16T16:15:55.516Z","event":"applied","proposalId":"c654b75b-43d7-4aa7-aa6c-9e5fbe367fb6","kind":"new_concept","target":"concept:architecture/mcp-servers"}
+{"at":"2026-10-16T16:15:56.049Z","event":"applied","proposalId":"3d1a4c83-474f-46d1-901c-a72d22568a14","kind":"new_concept","target":"concept:architecture/llm-integration"}
+{"at":"2026-10-16T16:15:56.604Z","event":"applied","proposalId":"f0d37380-36b6-4e42-a0cf-f21119457776","kind":"new_concept","target":"concept:architecture/knowledge-okf"}
+{"at":"2026-10-16T16:15:57.064Z","event":"applied","proposalId":"7b6bb710-7bd4-4fb4-b169-1ddf6bcd187c","kind":"new_concept","target":"concept:architecture/jev-decision-engine"}
+{"at":"2026-10-16T16:15:57.666Z","event":"applied","proposalId":"83669783-b365-47b8-a0d7-02c8c10996c6","kind":"new_concept","target":"concept:architecture/electron-desktop"}
+{"at":"2026-10-16T16:15:58.190Z","event":"applied","proposalId":"81eec6f3-8116-4548-b5a6-4a897a450d21","kind":"new_concept","target":"concept:architecture/domain-model"}
+{"at":"2026-10-16T16:15:58.723Z","event":"applied","proposalId":"d6000cc9-d905-4000-be83-ef9c82bc0a5d","kind":"new_concept","target":"concept:architecture/architecture-overview"}
+{"at":"2026-10-16T16:15:59.282Z","event":"applied","proposalId":"25a433e3-d65e-4030-aa89-f20eb1214d93","kind":"new_concept","target":"concept:architecture/agent-runtime-approvals"}
+{"at":"2026-10-16T16:15:59.832Z","event":"applied","proposalId":"2f8e8d33-fd59-4c1b-9c0a-e369dadb3892","kind":"new_concept","target":"concept:overview/testing"}
+{"at":"2026-10-16T16:16:00.400Z","event":"applied","proposalId":"fa14af06-08a4-4c43-a7c9-11f03dbbd987","kind":"new_concept","target":"concept:overview/tech-stack"}
+{"at":"2026-10-16T16:16:00.950Z","event":"applied","proposalId":"3bdfb9f4-7640-45c5-bf74-cb33c0c86660","kind":"new_concept","target":"concept:overview/overview"}
+{"at":"2026-10-16T16:16:01.473Z","event":"applied","proposalId":"f79bdda3-7331-4c60-90e6-382d7d503592","kind":"new_concept","target":"concept:overview/getting-started"}
+{"at":"2026-10-16T16:16:05.855Z","event":"applied","proposalId":"14f40ac9-6f88-4c9e-a35e-93c8ab7e0531","kind":"new_concept","target":"concept:map-of-content"}

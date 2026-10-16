@@ -191,7 +191,7 @@ test.describe("brain", () => {
     await page.route("**/api/brain", (route) =>
       route.fulfill({ json: { success: true, data: { proposals: [], workspaceNotes: [], agents: [] } } })
     )
-    await page.route(/\/api\/knowledge$/, async (route) => {
+    await page.route(/\/api\/knowledge(?:\?|$)/, async (route) => {
       const url = new URL(route.request().url())
       const id = url.searchParams.get("id")
       if (id === "overview/overview") {

@@ -3,15 +3,16 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowDown, ArrowUp, FolderOpen, Loader2, Play, Plus, Save, Trash2, Workflow as WorkflowIcon } from "lucide-react"
+import { FolderOpen, Loader2, Play, Plus, Save, Trash2, Workflow as WorkflowIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import type { WorkspaceFile } from "@/lib/files/schema"
 import type { ProviderId } from "@/lib/llm/types"
 import { parseStoredWorkflowDraft, WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
-import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, DEFAULT_AGENT_TOOLS, type BuiltinToolName } from "@/lib/runtime/tool-names"
+import { DEFAULT_AGENT_TOOLS } from "@/lib/runtime/tool-names"
 import { loginSecretIds } from "@/lib/workflows/login"
+import { stepIndexOfIssue, stepLinkText } from "@/lib/workflows/step-explain"
 import {
   DEFAULT_RUN_TIMEOUT_MINUTES,
   DEFAULT_STEP_TIMEOUT_MINUTES,
@@ -20,13 +21,11 @@ import {
   MAX_RUN_TIMEOUT_MINUTES,
   MAX_STEP_FILES,
   MAX_STEP_TIMEOUT_MINUTES,
-  MAX_STEP_TURNS,
   MAX_WORKFLOW_STEPS,
   workflowSchema,
   type RunSummary,
   type Workflow,
   type WorkflowRun,
-  type WorkflowStep,
 } from "@/lib/workflows/schema"
 import {
   effectiveModelText,
@@ -34,7 +33,6 @@ import {
   modelFormFromFrontmatter,
   stepModelFields,
   stepModelIssue,
-  type ModelSelectValue,
 } from "@/components/features/models/model-choice"
 import { useSavedTaskModels } from "@/components/features/models/model-choice-fields"
 import { useWorkspace } from "@/components/providers/workspace-provider"
@@ -49,34 +47,13 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
 import { formatTime, RunStatusBadge } from "./run-status"
-import { StepModelSection } from "./step-model-section"
+import { StepCard, type StepDraft } from "./step-card"
 
 const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
   { id: "openai", label: "OpenAI" },
   { id: "anthropic", label: "Anthropic" },
   { id: "custom", label: "Custom" },
 ]
-
-interface StepDraft {
-  key: string
-  id: string
-  agent: string
-  instructions: string
-  input: WorkflowStep["input"]
-  files: string[]
-  ownTools: boolean
-  tools: BuiltinToolName[]
-  mcpServers?: string[]
-  allowWrites: boolean
-  maxTurns: number
-  gate: boolean
-  review: boolean
-  login: boolean
-  username: string
-  password: string
-  modelChoice: ModelSelectValue
-  model: string
-}
 
 interface Draft {
   name: string
@@ -97,10 +74,17 @@ interface Draft {
 let keySeq = 0
 const nextKey = (): string => `step-${++keySeq}`
 
-function emptyStep(index: number, agent = "", key = nextKey()): StepDraft {
+function freeStepId(steps: StepDraft[]): string {
+  const taken = new Set(steps.map((s) => s.id.trim()))
+  let n = steps.length + 1
+  while (taken.has(`step-${n}`)) n++
+  return `step-${n}`
+}
+
+function emptyStep(id: string, agent = "", key = nextKey()): StepDraft {
   return {
     key,
-    id: `step-${index + 1}`,
+    id,
     agent,
     instructions: "",
     input: "previous",
@@ -159,11 +143,11 @@ function toDraft(wf: Workflow): Draft {
   }
 }
 
-function toInput(d: Draft): { body: unknown; error: string | null } {
+function toInput(d: Draft): { body: unknown; error: string | null; stepKey?: string } {
   const steps: unknown[] = []
   for (const s of d.steps) {
     const issue = stepModelIssue(s.modelChoice, s.model, s.id.trim() || s.id)
-    if (issue) return { body: null, error: issue }
+    if (issue) return { body: null, error: issue, stepKey: s.key }
     steps.push({
       id: s.id.trim(),
       agent: s.agent,
@@ -210,6 +194,30 @@ function numberValue(raw: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n
 }
 
+/** The flow line between steps: how the next step gets its input, plus "add a step here". */
+function StepLink({ text, canAdd, onAdd }: { text: string; canAdd: boolean; onAdd: () => void }): React.ReactElement {
+  return (
+    <div className="flex items-center gap-3">
+      <span aria-hidden className="flex w-7 shrink-0 justify-center">
+        <span className="h-7 w-px bg-border" />
+      </span>
+      <span className="text-xs text-muted-foreground">{text}</span>
+      {canAdd ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-6 px-2 text-xs text-muted-foreground"
+          onClick={onAdd}
+        >
+          <Plus className="h-3 w-3" />
+          Add step here
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 /** Take (once) a draft the Assistant handed over; for an edit, only one with the same name. */
 function takeChatDraft(name?: string): Workflow | null {
   const workflow = parseStoredWorkflowDraft(sessionStorage.getItem(WORKFLOW_DRAFT_STORAGE_KEY))
@@ -239,8 +247,9 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     runTimeoutMinutes: DEFAULT_RUN_TIMEOUT_MINUTES,
     maxRetries: 1,
     selfAssess: false,
-    steps: [emptyStep(0, "", "step-initial")],
+    steps: [emptyStep("step-1", "", "step-initial")],
   }))
+  const [openKey, setOpenKey] = React.useState<string | null>("step-initial")
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [workspaceFiles, setWorkspaceFiles] = React.useState<WorkspaceFile[]>([])
@@ -266,7 +275,9 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     if (!name || !workspace) return
     apiFetch<{ workflow: Workflow }>(`/api/workflows/${encodeURIComponent(name)}`)
       .then(({ workflow }) => {
-        setDraft(toDraft(takeChatDraft(name) ?? workflow))
+        const next = toDraft(takeChatDraft(name) ?? workflow)
+        setDraft(next)
+        setOpenKey(next.steps[0]?.key ?? null)
         setLoad({ kind: "ready" })
       })
       .catch((err: unknown) =>
@@ -281,7 +292,10 @@ export function WorkflowBuilder({ name }: { name?: string }) {
     void Promise.resolve().then(() => {
       if (cancelled) return
       const workflow = takeChatDraft()
-      if (workflow) setDraft(toDraft(workflow))
+      if (!workflow) return
+      const next = toDraft(workflow)
+      setDraft(next)
+      setOpenKey(next.steps[0]?.key ?? null)
     })
     return () => {
       cancelled = true
@@ -299,17 +313,37 @@ export function WorkflowBuilder({ name }: { name?: string }) {
       steps.splice(index + delta, 0, step)
       return { ...d, steps }
     })
+  const insertStep = (at: number): void => {
+    const step = emptyStep(freeStepId(draft.steps), agents[0]?.name)
+    setDraft((d) => ({ ...d, steps: [...d.steps.slice(0, at), step, ...d.steps.slice(at)] }))
+    setOpenKey(step.key)
+  }
+  const removeStep = (key: string): void => {
+    setDraft((d) => ({ ...d, steps: d.steps.filter((s) => s.key !== key) }))
+    if (openKey === key) setOpenKey(null)
+  }
+  const canAddStep = draft.steps.length < MAX_WORKFLOW_STEPS
 
   async function save() {
     const input = toInput(draft)
     if (input.error) {
       setError(input.error)
+      if (input.stepKey) setOpenKey(input.stepKey)
       return
     }
     const parsed = workflowSchema.safeParse(input.body)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
-      setError(`${issue?.path.length ? `${issue.path.join(".")}: ` : ""}${issue?.message ?? "Invalid workflow"}`)
+      const stepIndex = issue ? stepIndexOfIssue(issue.path) : null
+      const stepKey = stepIndex === null ? undefined : draft.steps[stepIndex]?.key
+      if (stepKey) setOpenKey(stepKey)
+      const where =
+        stepIndex !== null && issue
+          ? `Step ${stepIndex + 1}${issue.path.length > 2 ? ` (${issue.path.slice(2).join(".")})` : ""}: `
+          : issue?.path.length
+            ? `${issue.path.join(".")}: `
+            : ""
+      setError(`${where}${issue?.message ?? "Invalid workflow"}`)
       return
     }
     setError(null)
@@ -450,13 +484,11 @@ export function WorkflowBuilder({ name }: { name?: string }) {
 
       <section aria-label="Steps" className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Steps</h2>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={draft.steps.length >= MAX_WORKFLOW_STEPS}
-            onClick={() => set("steps", [...draft.steps, emptyStep(draft.steps.length, agents[0]?.name)])}
-          >
+          <div>
+            <h2 className="text-base font-semibold">Steps</h2>
+            <p className="text-xs text-muted-foreground">Steps run from top to bottom. Click a step to open it.</p>
+          </div>
+          <Button variant="outline" size="sm" disabled={!canAddStep} onClick={() => insertStep(draft.steps.length)}>
             <Plus className="h-4 w-4" />
             Add step
           </Button>
@@ -466,241 +498,67 @@ export function WorkflowBuilder({ name }: { name?: string }) {
             This workspace has no agents yet. <Link className="underline" href="/agents/new">Create an agent</Link> first.
           </p>
         ) : null}
-        {draft.steps.map((step, index) => (
-          <Card key={step.key}>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-3">
-              <CardTitle className="text-sm">Step {index + 1}</CardTitle>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="icon" aria-label={`Move step ${index + 1} up`} disabled={index === 0} onClick={() => moveStep(index, -1)}>
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" aria-label={`Move step ${index + 1} down`} disabled={index === draft.steps.length - 1} onClick={() => moveStep(index, 1)}>
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Remove step ${index + 1}`}
-                  disabled={draft.steps.length === 1}
-                  onClick={() => set("steps", draft.steps.filter((s) => s.key !== step.key))}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor={`${step.key}-id`}>Step id</Label>
-                <Input id={`${step.key}-id`} value={step.id} onChange={(e) => setStep(step.key, { id: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`${step.key}-agent`}>Agent</Label>
-                <Select value={step.agent} onValueChange={(v) => setStep(step.key, { agent: v })}>
-                  <SelectTrigger id={`${step.key}-agent`}>
-                    <SelectValue placeholder="Choose an agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agents.map((a) => (
-                      <SelectItem key={a.name} value={a.name}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor={`${step.key}-instructions`}>Instructions for this step</Label>
-                <Textarea
-                  id={`${step.key}-instructions`}
-                  rows={3}
-                  value={step.instructions}
-                  onChange={(e) => setStep(step.key, { instructions: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <Label>Files for this step</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Attached files get passed with their disk path so the agent can upload them in browser forms or read them.
-                    </p>
-                  </div>
-                  <FilePickerDialog
-                    selectedNames={step.files}
-                    multiSelect
-                    disabled={step.files.length >= MAX_STEP_FILES}
-                    onFilesUpdated={setWorkspaceFiles}
-                    onPick={(picked) => {
-                      const exists = step.files.includes(picked.name)
-                      const next = exists
-                        ? step.files.filter((f) => f !== picked.name)
-                        : step.files.length < MAX_STEP_FILES
-                          ? [...step.files, picked.name]
-                          : step.files
-                      setStep(step.key, { files: next })
-                    }}
-                    trigger={
-                      <Button type="button" variant="outline" size="sm">
-                        <FolderOpen className="h-4 w-4" />
-                        Select or upload files
-                      </Button>
-                    }
-                  />
-                </div>
-                {step.files.length > 0 ? (
-                  <ul className="flex flex-wrap gap-1.5" aria-label={`Files for step ${index + 1}`}>
-                    {step.files.map((fileName) => {
-                      const meta = workspaceFiles.find((f) => f.name === fileName)
-                      return (
-                        <li key={fileName}>
-                          <WorkspaceFileChip
-                            name={fileName}
-                            originalName={meta?.originalName}
-                            kind={meta?.kind}
-                            onRemove={() =>
-                              setStep(step.key, { files: step.files.filter((f) => f !== fileName) })
-                            }
-                          />
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : null}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`${step.key}-input`}>Input</Label>
-                <Select
-                  value={step.input}
-                  onValueChange={(v) => setStep(step.key, { input: v === "task" ? "task" : v === "all" ? "all" : "previous" })}
-                >
-                  <SelectTrigger id={`${step.key}-input`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="previous">Previous step output</SelectItem>
-                    <SelectItem value="all">All earlier outputs</SelectItem>
-                    <SelectItem value="task">Only the task</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`${step.key}-turns`}>Tool-call limit (1–{MAX_STEP_TURNS})</Label>
-                <Input
-                  id={`${step.key}-turns`}
-                  type="number"
-                  min={1}
-                  max={MAX_STEP_TURNS}
-                  value={step.maxTurns}
-                  onChange={(e) => setStep(step.key, { maxTurns: numberValue(e.target.value, step.maxTurns) })}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id={`${step.key}-own-tools`}
-                    checked={step.ownTools}
-                    onCheckedChange={(v) => setStep(step.key, { ownTools: v })}
-                  />
-                  <Label htmlFor={`${step.key}-own-tools`}>Use the agent&apos;s own tools</Label>
-                </div>
-                {!step.ownTools ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {BUILTIN_TOOL_NAMES.map((tool) => (
-                      <div key={tool} className="flex items-center gap-2">
-                        <Switch
-                          id={`${step.key}-tool-${tool}`}
-                          checked={step.tools.includes(tool)}
-                          onCheckedChange={(v) =>
-                            setStep(step.key, {
-                              tools: v ? [...step.tools, tool] : step.tools.filter((t) => t !== tool),
-                            })
-                          }
-                        />
-                        <Label htmlFor={`${step.key}-tool-${tool}`} className="font-normal">
-                          {BUILTIN_TOOL_LABELS[tool].label}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <StepModelSection
-                stepKey={step.key}
-                modelChoice={step.modelChoice}
-                model={step.model}
-                summary={(() => {
-                  const fields = stepModelFields(step.modelChoice, step.model)
-                  const agent = agents.find((item) => item.name === step.agent)
-                  return effectiveModelText({
-                    stepModel: fields.model,
-                    stepProvider: fields.provider,
-                    agentModel: agent?.frontmatter.model,
-                    agentProvider: agent?.frontmatter.provider,
-                    workflowModel: draft.model,
-                    workflowProvider: draft.provider === "default" ? undefined : draft.provider,
-                    tasks: taskModels.choices,
-                  })
-                })()}
-                taskChoices={taskModels.choices}
-                onChange={(patch) => setStep(step.key, patch)}
+        <ol aria-label="Workflow steps">
+          {draft.steps.map((step, index) => (
+            <li key={step.key}>
+              <StepLink
+                text={stepLinkText(index, step.input)}
+                canAdd={index > 0 && canAddStep}
+                onAdd={() => insertStep(index)}
               />
-              <div className="space-y-3 sm:col-span-2">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id={`${step.key}-login`}
-                    checked={step.login}
-                    onCheckedChange={(v) => setStep(step.key, { login: v })}
+              <div className="flex gap-3">
+                <span
+                  aria-hidden
+                  className="mt-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-muted text-xs font-semibold"
+                >
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <StepCard
+                    step={step}
+                    index={index}
+                    total={draft.steps.length}
+                    open={openKey === step.key}
+                    agents={agents}
+                    workspaceFiles={workspaceFiles}
+                    modelSummary={(() => {
+                      const fields = stepModelFields(step.modelChoice, step.model)
+                      const agent = agents.find((item) => item.name === step.agent)
+                      return effectiveModelText({
+                        stepModel: fields.model,
+                        stepProvider: fields.provider,
+                        agentModel: agent?.frontmatter.model,
+                        agentProvider: agent?.frontmatter.provider,
+                        workflowModel: draft.model,
+                        workflowProvider: draft.provider === "default" ? undefined : draft.provider,
+                        tasks: taskModels.choices,
+                      })
+                    })()}
+                    taskChoices={taskModels.choices}
+                    onToggle={() => setOpenKey((current) => (current === step.key ? null : step.key))}
+                    onChange={(patch) => setStep(step.key, patch)}
+                    onMove={(delta) => moveStep(index, delta)}
+                    onRemove={() => removeStep(step.key)}
+                    onFilesUpdated={setWorkspaceFiles}
                   />
-                  <Label htmlFor={`${step.key}-login`}>This step signs in</Label>
                 </div>
-                {step.login ? (
-                  <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`${step.key}-username`}>Username</Label>
-                      <Input
-                        id={`${step.key}-username`}
-                        autoComplete="off"
-                        value={step.username}
-                        placeholder="Saved separately from the workflow"
-                        onChange={(e) => setStep(step.key, { username: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`${step.key}-password`}>Password</Label>
-                      <Input
-                        id={`${step.key}-password`}
-                        type="password"
-                        autoComplete="new-password"
-                        value={step.password}
-                        placeholder="Not stored in the workflow file"
-                        onChange={(e) => setStep(step.key, { password: e.target.value })}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground sm:col-span-2">
-                      Leave these empty to be asked when the step runs. A saved password stays in secrets, not in the workflow.
-                    </p>
-                  </div>
-                ) : null}
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={`${step.key}-writes`}
-                  checked={step.allowWrites}
-                  onCheckedChange={(v) => setStep(step.key, { allowWrites: v })}
-                />
-                <Label htmlFor={`${step.key}-writes`}>Allow file writes without asking</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch id={`${step.key}-gate`} checked={step.gate} onCheckedChange={(v) => setStep(step.key, { gate: v })} />
-                <Label htmlFor={`${step.key}-gate`}>Jev checks the result</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch id={`${step.key}-review`} checked={step.review} onCheckedChange={(v) => setStep(step.key, { review: v })} />
-                <Label htmlFor={`${step.key}-review`}>This step reviews earlier work</Label>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            </li>
+          ))}
+        </ol>
+        <div className="pl-10">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full border border-dashed text-muted-foreground"
+            disabled={!canAddStep}
+            onClick={() => insertStep(draft.steps.length)}
+          >
+            <Plus className="h-4 w-4" />
+            {canAddStep ? "Add a step at the end" : `Up to ${MAX_WORKFLOW_STEPS} steps`}
+          </Button>
+        </div>
       </section>
 
       <Card>

@@ -27,20 +27,20 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 
-const CHOICE_ICONS: Record<AbilityChoice, LucideIcon> = {
+export const CHOICE_ICONS: Record<AbilityChoice, LucideIcon> = {
   read: Eye,
   write: FilePen,
   full: Terminal,
   custom: SlidersHorizontal,
 }
 
-const RISK_DOT: Record<AbilityRisk, string> = {
+export const RISK_DOT: Record<AbilityRisk, string> = {
   low: "bg-skill",
   medium: "bg-amber-500",
   high: "bg-destructive",
 }
 
-const RISK_TEXT: Record<AbilityRisk, string> = {
+export const RISK_TEXT: Record<AbilityRisk, string> = {
   low: "Safe: it can only look.",
   medium: "Changes files: writes ask you first unless you allow them.",
   high: "Runs commands: every command asks you first.",

@@ -112,7 +112,7 @@ test.describe("workflows", () => {
     await page.getByLabel("Name").fill("review-line")
     await page.getByRole("combobox", { name: "Agent" }).click()
     await page.getByRole("option", { name: "planner" }).click()
-    await page.getByLabel("This step reviews earlier work").click()
+    await page.getByRole("radio", { name: /Review earlier work/ }).click()
     await page.getByRole("button", { name: "Save" }).click()
 
     await expect(page).toHaveURL(/\/workflows\/review-line$/)
@@ -170,7 +170,7 @@ test.describe("workflows", () => {
     await page.getByLabel("Name").fill("review-line")
     await page.getByRole("combobox", { name: "Agent" }).click()
     await page.getByRole("option", { name: "planner" }).click()
-    await page.getByLabel("This step signs in").click()
+    await page.getByRole("radio", { name: /Sign in to a website/ }).click()
     await page.getByLabel("Username").fill("ada")
     await page.getByLabel("Password").fill("secret-pass")
     await page.getByRole("button", { name: "Save" }).click()
@@ -222,6 +222,59 @@ test.describe("workflows", () => {
     await page.getByLabel("Password").fill("secret-pass")
     await page.getByRole("button", { name: "Save and continue" }).click()
     expect(posted).toEqual({ username: "ada", password: "secret-pass" })
+  })
+
+  test("shows closed steps as a flow and adds a step between two", async ({ page }) => {
+    let saved: { steps?: Array<{ id: string; input: string; tools?: string[] }> } | undefined
+    await page.route("**/api/workflows", async (route) => {
+      saved = route.request().postDataJSON() as typeof saved
+      await route.fulfill({ status: 201, json: { success: true, data: { workflow } } })
+    })
+    await page.route("**/api/workflows/review-line", (route) =>
+      route.fulfill({ json: { success: true, data: { workflow, active: false } } })
+    )
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    const first = page.getByRole("button", { name: "Step 1: step-1" })
+    await expect(first).toHaveAttribute("aria-expanded", "true")
+    await expect(page.getByText("The first step gets the task.")).toBeVisible()
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByRole("radio", { name: /Read and write/ }).click()
+    await expect(page.getByLabel("Allow file writes without asking")).toBeVisible()
+
+    await page.getByRole("button", { name: "Add a step at the end" }).click()
+    await expect(first).toHaveAttribute("aria-expanded", "false")
+    await expect(first).toContainText("Read and write")
+    await page.getByRole("radio", { name: /Review earlier work/ }).click()
+    await expect(page.getByText("Gets every earlier result")).toBeVisible()
+
+    await page.getByRole("button", { name: "Add step here" }).click()
+    await expect(page.getByRole("button", { name: "Step 2: step-3" })).toHaveAttribute("aria-expanded", "true")
+    await expect(page.getByRole("button", { name: "Step 3: step-2" })).toContainText("Review")
+
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page).toHaveURL(/\/workflows\/review-line$/)
+    expect(saved?.steps?.map((s) => s.id)).toEqual(["step-1", "step-3", "step-2"])
+    expect(saved?.steps?.[0]?.tools).toEqual(["fs_list", "fs_read", "fs_write"])
+    expect(saved?.steps?.[2]?.input).toBe("all")
+  })
+
+  test("opens the step a save error points at", async ({ page }) => {
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByRole("button", { name: "Add a step at the end" }).click()
+    await page.getByLabel("Step id").fill("Bad Id!")
+    await page.getByRole("button", { name: "Step 1: step-1" }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByText("Step 2 (id): Step ids use kebab-case")).toBeVisible()
+    await expect(page.getByRole("button", { name: /^Step 2:/ })).toHaveAttribute("aria-expanded", "true")
   })
 
   test("blocks saving an invalid workflow", async ({ page }) => {

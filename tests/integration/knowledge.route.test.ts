@@ -40,9 +40,11 @@ describe("GET /api/knowledge", () => {
     await decideProposal(env.workspace, proposal.id, { action: "approve" })
 
     const list = await get()
-    expect((await list.json()).data.concepts).toMatchObject([
+    const listData = (await list.json()).data
+    expect(listData.concepts).toMatchObject([
       { id: "start", title: "Start", trust: "human-reviewed", folder: "" },
     ])
+    expect(listData.links).toEqual([])
     const one = await get("start")
     expect(one.status).toBe(200)
     expect((await one.json()).data.body).toContain("Hello.")

@@ -233,7 +233,19 @@ test.describe("brain", () => {
                 stale: false,
                 status: "stable",
               },
+              {
+                id: "overview/tech-stack",
+                title: "Tech Stack",
+                description: "Tools used by BlackAgents",
+                type: "Reference",
+                trust: "human-reviewed",
+                folder: "overview",
+                tags: [],
+                stale: false,
+                status: "stable",
+              },
             ],
+            links: [{ source: "overview/overview", target: "overview/tech-stack" }],
           },
         },
       })
@@ -247,6 +259,13 @@ test.describe("brain", () => {
     await expect(page.getByText("BlackAgents is local-first.")).toBeVisible()
     await expect(page.getByText("Reviewed by you")).toBeVisible()
     await expect(page.getByText("Imported from Obsidian")).toBeVisible()
+
+    await page.getByRole("button", { name: "Graph" }).click()
+    await expect(page.getByRole("region", { name: "Knowledge graph" })).toBeVisible()
+    await expect(page.getByText("2 concepts · 1 links")).toBeVisible()
+    await expect(page.getByRole("list", { name: "Concepts in graph" })).toContainText("Tech Stack")
+    await page.getByRole("button", { name: "List" }).click()
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible()
   })
 
   test("sends a memory note to the inbox as knowledge", async ({ page }) => {

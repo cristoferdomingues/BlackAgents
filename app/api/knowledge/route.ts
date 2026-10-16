@@ -1,7 +1,7 @@
 import { ok, fail, handle } from "@/lib/api-response"
 import { readConfig } from "@/lib/config"
 import { KnowledgePathError, assertConceptId, listConcepts, readConcept } from "@/lib/knowledge/store"
-import { toKnowledgeConceptView, toKnowledgeListItem } from "@/lib/knowledge/view"
+import { toKnowledgeConceptView, toKnowledgeLibraryView } from "@/lib/knowledge/view"
 
 /** List saved concepts, or open one when `id` is set. */
 export async function GET(req: Request): Promise<Response> {
@@ -10,12 +10,12 @@ export async function GET(req: Request): Promise<Response> {
     const id = new URL(req.url).searchParams.get("id")
     if (!currentPath) {
       if (id) return fail("No workspace selected", 404)
-      return ok({ concepts: [] })
+      return ok({ concepts: [], links: [] })
     }
     const now = new Date()
     if (!id) {
       const concepts = await listConcepts(currentPath)
-      return ok({ concepts: concepts.map((concept) => toKnowledgeListItem(concept, now)) })
+      return ok(toKnowledgeLibraryView(concepts, now))
     }
     if (!id.trim()) return fail("A concept id is required")
     try {

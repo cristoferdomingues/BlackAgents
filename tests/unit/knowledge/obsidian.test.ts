@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { actorLabel, groupKnowledge } from "@/lib/knowledge/explain"
 import { convertObsidianNotes, fileUri } from "@/lib/knowledge/obsidian"
-import { toKnowledgeListItem } from "@/lib/knowledge/view"
+import { toKnowledgeLibraryView, toKnowledgeListItem } from "@/lib/knowledge/view"
 
 const NOW = new Date("2026-10-16T16:05:00Z")
 
@@ -128,5 +128,27 @@ describe("knowledge library helpers", () => {
       stale: false,
     })
     expect(item).not.toHaveProperty("body")
+  })
+
+  it("builds graph links only between saved concepts", () => {
+    const concept = (id: string, body: string) => ({
+      id,
+      body,
+      warnings: [],
+      frontmatter: { type: "Reference", title: id, description: id, extra: {} },
+    })
+    const view = toKnowledgeLibraryView(
+      [
+        concept("architecture/brain", "See [Workflows](./workflows.md) and [Missing](./missing.md)."),
+        concept("architecture/workflows", "Back to [Brain](./brain.md)."),
+      ],
+      NOW
+    )
+
+    expect(view.concepts).toHaveLength(2)
+    expect(view.links).toEqual([
+      { source: "architecture/brain", target: "architecture/workflows" },
+      { source: "architecture/workflows", target: "architecture/brain" },
+    ])
   })
 })

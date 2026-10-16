@@ -1,4 +1,5 @@
 import type { OkfConcept } from "./parse"
+import { linkedConceptIds } from "./links"
 import { isStale, trustTier, type TrustTier } from "./schema"
 
 /** One saved concept, without its body. Safe to list. */
@@ -20,6 +21,16 @@ export interface KnowledgeConceptView extends KnowledgeListItem {
   sources: Array<{ title?: string; resource: string }>
   generatedBy?: string
   file: string
+}
+
+export interface KnowledgeGraphLink {
+  source: string
+  target: string
+}
+
+export interface KnowledgeLibraryView {
+  concepts: KnowledgeListItem[]
+  links: KnowledgeGraphLink[]
 }
 
 function folderOf(id: string): string {
@@ -52,5 +63,27 @@ export function toKnowledgeConceptView(concept: OkfConcept, now: Date): Knowledg
     })),
     generatedBy: concept.frontmatter.generated?.by,
     file: `.black-agents/knowledge/${concept.id}.md`,
+  }
+}
+
+/** Saved concepts and the markdown links between them. */
+export function toKnowledgeLibraryView(concepts: OkfConcept[], now: Date): KnowledgeLibraryView {
+  const ids = new Set(concepts.map((concept) => concept.id))
+  const links: KnowledgeGraphLink[] = []
+  const seen = new Set<string>()
+
+  for (const concept of concepts) {
+    for (const target of linkedConceptIds(concept.id, concept.body)) {
+      if (!ids.has(target) || target === concept.id) continue
+      const key = `${concept.id}\0${target}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      links.push({ source: concept.id, target })
+    }
+  }
+
+  return {
+    concepts: concepts.map((concept) => toKnowledgeListItem(concept, now)),
+    links,
   }
 }

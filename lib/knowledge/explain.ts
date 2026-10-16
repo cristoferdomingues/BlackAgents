@@ -17,6 +17,12 @@ export const KNOWLEDGE_LIBRARY_INTRO =
 export const KNOWLEDGE_LIBRARY_EMPTY =
   "No saved concepts yet. Approve one from the Inbox, or bring a folder in below."
 
+export const KNOWLEDGE_GRAPH_INTRO =
+  "Each dot is a saved concept. A line means one concept links to another. Pulses show the direction of that link."
+
+export const KNOWLEDGE_GRAPH_EMPTY =
+  "No connections yet. Add links between saved concepts to build this graph."
+
 export const OBSIDIAN_IMPORT_INTRO =
   "An Obsidian vault is turned into OKF concepts. Wikilinks become normal links. Nothing is saved until you approve each concept in the Inbox."
 

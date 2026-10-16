@@ -48,3 +48,5 @@
 {"at":"2026-10-16T16:16:00.950Z","event":"applied","proposalId":"3bdfb9f4-7640-45c5-bf74-cb33c0c86660","kind":"new_concept","target":"concept:overview/overview"}
 {"at":"2026-10-16T16:16:01.473Z","event":"applied","proposalId":"f79bdda3-7331-4c60-90e6-382d7d503592","kind":"new_concept","target":"concept:overview/getting-started"}
 {"at":"2026-10-16T16:16:05.855Z","event":"applied","proposalId":"14f40ac9-6f88-4c9e-a35e-93c8ab7e0531","kind":"new_concept","target":"concept:map-of-content"}
+{"at":"2026-10-16T20:42:24.588Z","event":"proposed","proposalId":"bb3ff5f1-0452-44ab-aedf-041ab2fbef2b","kind":"memory_note"}
+{"at":"2026-10-16T20:42:39.358Z","event":"applied","proposalId":"bb3ff5f1-0452-44ab-aedf-041ab2fbef2b","kind":"memory_note"}

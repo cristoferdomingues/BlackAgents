@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Loader2 } from "lucide-react"
+import { List, Loader2, Network } from "lucide-react"
 
 import { apiFetch, ApiError } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -13,7 +13,8 @@ import {
   STATUS_LABEL,
   TRUST_LABEL,
 } from "@/lib/knowledge/explain"
-import type { KnowledgeConceptView, KnowledgeListItem } from "@/lib/knowledge/view"
+import type { KnowledgeConceptView, KnowledgeLibraryView, KnowledgeListItem } from "@/lib/knowledge/view"
+import { KnowledgeGraph } from "@/components/features/brain/knowledge-graph"
 import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,11 +28,14 @@ function errorText(err: unknown, fallback: string): string {
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; concepts: KnowledgeListItem[] }
+  | { kind: "ready"; concepts: KnowledgeListItem[]; links: KnowledgeLibraryView["links"] }
+
+type LibraryMode = "list" | "graph"
 
 /** Browse and read concepts that are already saved in this workspace. */
 export function KnowledgeLibrary(): React.ReactElement {
   const [state, setState] = React.useState<LoadState>({ kind: "loading" })
+  const [mode, setMode] = React.useState<LibraryMode>("list")
   const [query, setQuery] = React.useState("")
   const [selected, setSelected] = React.useState<string | null>(null)
   const [concept, setConcept] = React.useState<KnowledgeConceptView | null>(null)
@@ -41,9 +45,9 @@ export function KnowledgeLibrary(): React.ReactElement {
 
   React.useEffect(() => {
     let cancelled = false
-    apiFetch<{ concepts: KnowledgeListItem[] }>("/api/knowledge")
+    apiFetch<KnowledgeLibraryView>("/api/knowledge")
       .then((data) => {
-        if (!cancelled) setState({ kind: "ready", concepts: data.concepts })
+        if (!cancelled) setState({ kind: "ready", concepts: data.concepts, links: data.links ?? [] })
       })
       .catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: errorText(err, "Could not load knowledge") })
@@ -74,6 +78,7 @@ export function KnowledgeLibrary(): React.ReactElement {
   }
 
   const concepts = state.kind === "ready" ? state.concepts : []
+  const links = state.kind === "ready" ? state.links : []
   const needle = query.trim().toLowerCase()
   const visible = needle
     ? concepts.filter((item) =>
@@ -100,8 +105,47 @@ export function KnowledgeLibrary(): React.ReactElement {
         </p>
       ) : null}
       {state.kind === "ready" && concepts.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <div className="space-y-2">
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {mode === "list" ? "Browse and read saved concepts." : "Explore links between saved concepts."}
+            </p>
+            <div className="flex rounded-md border p-0.5" role="group" aria-label="Knowledge view">
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === "list" ? "secondary" : "ghost"}
+                aria-pressed={mode === "list"}
+                onClick={() => setMode("list")}
+              >
+                <List className="h-4 w-4" />
+                List
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === "graph" ? "secondary" : "ghost"}
+                aria-pressed={mode === "graph"}
+                onClick={() => setMode("graph")}
+              >
+                <Network className="h-4 w-4" />
+                Graph
+              </Button>
+            </div>
+          </div>
+          {mode === "graph" ? (
+            <KnowledgeGraph
+              concepts={concepts}
+              links={links}
+              selected={selected}
+              onOpen={(id) => {
+                setMode("list")
+                void open(id)
+              }}
+            />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+              <div className="space-y-2">
             <Input
               value={query}
               placeholder="Search concepts"
@@ -137,8 +181,8 @@ export function KnowledgeLibrary(): React.ReactElement {
                 ))}
               </div>
             )}
-          </div>
-          <div className="min-w-0 rounded-md border p-4">
+              </div>
+              <div className="min-w-0 rounded-md border p-4">
             {!selected ? (
               <p className="text-sm text-muted-foreground">Choose a concept to read it.</p>
             ) : opening ? (
@@ -194,8 +238,10 @@ export function KnowledgeLibrary(): React.ReactElement {
                 ) : null}
               </article>
             ) : null}
-          </div>
-        </div>
+              </div>
+            </div>
+          )}
+        </>
       ) : null}
     </section>
   )

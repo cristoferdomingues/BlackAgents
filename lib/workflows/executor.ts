@@ -5,7 +5,7 @@ import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
 import { looksLikeAuthFailure } from "@/lib/browser/classify"
 import { parseFileMentions, resolveWorkspaceFiles, type WorkspaceFile } from "@/lib/files"
-import { buildAgentPersonaContext } from "@/lib/llm/context"
+import { buildAgentPersonaContext, loadKnowledgeContext } from "@/lib/llm/context"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import type { ModelLayer } from "@/lib/llm/model-ref"
 import { ProviderError } from "@/lib/llm/types"
@@ -146,6 +146,7 @@ export async function executeRun(
     ])
     const all = withBuiltinArtifacts(workspaceArtifacts)
     const credentialCache = new Map<string, ResolvedLlm>()
+    const knowledge = await loadKnowledgeContext(run.workspaceRoot)
 
     for (const [index, step] of workflow.steps.entries()) {
       const stepRun = run.steps[index]
@@ -183,6 +184,7 @@ export async function executeRun(
         resolved,
       })
       if (brain) sections.push(brain)
+      sections.push(knowledge)
       const configuredFiles = run.stepFiles?.[step.id] ?? step.files ?? []
       const mentionedFiles = [
         ...parseFileMentions(run.task),

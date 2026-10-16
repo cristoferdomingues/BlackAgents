@@ -37,7 +37,7 @@ export async function buildSystemContext(): Promise<string> {
   let registry = "No workspace is selected yet."
   let workflowRegistry = "No workspace is selected yet."
   let filesRegistry = "No workspace is selected yet."
-  let knowledgeRegistry = "No workspace is selected yet."
+  let knowledgeRegistry = `${KNOWLEDGE_CONTEXT_HEADING}\n\nNo workspace is selected yet.`
   if (config.currentPath) {
     const [artifacts, workflows, files, concepts] = await Promise.all([
       scanWorkspace(config.currentPath),
@@ -45,7 +45,7 @@ export async function buildSystemContext(): Promise<string> {
       listWorkspaceFiles(config.currentPath).catch(() => []),
       listConcepts(config.currentPath).catch(() => []),
     ])
-    knowledgeRegistry = formatKnowledgeRegistry(concepts)
+    knowledgeRegistry = buildKnowledgeContext(concepts)
     workflowRegistry =
       workflows.length === 0
         ? "The active workspace has no workflows yet."
@@ -91,10 +91,6 @@ ${standards.content}
 ## Artifacts in the active workspace
 
 ${registry}
-
-## Knowledge in the active workspace
-
-Durable facts such as metrics and definitions. Each line is the id, title, and description. Concept text is not included. When you need one concept, read it with fs_read at .black-agents/knowledge/<id>.md. Do not read the whole knowledge folder.
 
 ${knowledgeRegistry}
 
@@ -226,6 +222,26 @@ Rules for the memory block:
 - Do not write the memory file yourself. The card only sends a proposal to the Inbox.
 
 Emit at most one artifact draft, bundle, workflow, knowledge, or memory block per reply, never more than one.`
+}
+
+export const KNOWLEDGE_CONTEXT_HEADING = "## Knowledge in the active workspace"
+
+const KNOWLEDGE_CONTEXT_HINT =
+  "Durable facts such as metrics and definitions. Each line is the id, title, and description. Concept text is not included. When you need one concept, read it with fs_read at .black-agents/knowledge/<id>.md. Do not read the whole knowledge folder."
+
+/** The knowledge section for a system prompt. Titles and descriptions only, never concept bodies. */
+export function buildKnowledgeContext(concepts: OkfConcept[]): string {
+  return `${KNOWLEDGE_CONTEXT_HEADING}
+
+${KNOWLEDGE_CONTEXT_HINT}
+
+${formatKnowledgeRegistry(concepts)}`
+}
+
+/** Load the knowledge section for one workspace. An unreadable folder becomes an empty list. */
+export async function loadKnowledgeContext(root: string): Promise<string> {
+  const concepts = await listConcepts(root).catch(() => [] as OkfConcept[])
+  return buildKnowledgeContext(concepts)
 }
 
 /** One line per concept. Never the body. */

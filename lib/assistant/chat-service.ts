@@ -14,7 +14,7 @@ import {
 import { readConfig } from "@/lib/config"
 import { loadDecisionClient } from "@/lib/decision/client"
 import { composeFilesPrompt, parseFileMentions, resolveWorkspaceFiles } from "@/lib/files"
-import { buildAgentPersonaContext, buildSystemContext } from "@/lib/llm/context"
+import { buildAgentPersonaContext, buildSystemContext, loadKnowledgeContext } from "@/lib/llm/context"
 import { getVerifiedCredentials, CredentialStateError } from "@/lib/llm/credentials"
 import {
   agentModelLayer,
@@ -192,6 +192,7 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   const sections = [persona ? buildAgentPersonaContext(persona) : await buildSystemContext()]
   if (draft && draft.type !== "agent") sections.push(composeDraftPrompt(draft))
   if (selection.prompt) sections.push(selection.prompt)
+  if (persona && root) sections.push(await loadKnowledgeContext(root))
   if (root) {
     const fileMentions = new Set<string>()
     for (const msg of request.messages) {

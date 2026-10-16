@@ -39,6 +39,12 @@ describe("POST /api/chat agent persona", () => {
       ".cursor/agents/reviewer.md",
       `---\ndescription: Reviews architecture.\n---\nYou are a careful reviewer.\n`
     )
+    const { writeConcept } = await import("@/lib/knowledge/store")
+    await writeConcept(env.workspace, {
+      id: "metrics/revenue",
+      frontmatter: { type: "Metric", title: "Revenue", description: "Recognized revenue.", extra: {} },
+      body: "SECRET-BODY-MARKER that must stay out of context.\n",
+    })
     await setProviderSecret("openai", {
       apiKey: "sk-valid",
       verification: {
@@ -66,6 +72,9 @@ describe("POST /api/chat agent persona", () => {
     expect(system).toContain("Reviews architecture.")
     expect(system).toContain("You are a careful reviewer.")
     expect(system).not.toContain("## Draft protocol")
+    expect(system).toContain("## Knowledge in the active workspace")
+    expect(system).toContain("- metrics/revenue — Revenue — Recognized revenue.")
+    expect(system).not.toContain("SECRET-BODY-MARKER")
   })
 
   it("returns 404 for an agent absent from the active workspace", async () => {

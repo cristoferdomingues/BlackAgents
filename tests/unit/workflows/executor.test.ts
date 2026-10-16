@@ -81,6 +81,12 @@ async function waitFor(check: () => boolean): Promise<void> {
 
 describe("executeRun", () => {
   it("runs steps in order and hands each output to the next", async () => {
+    const { writeConcept } = await import("@/lib/knowledge/store")
+    await writeConcept(env.workspace, {
+      id: "metrics/revenue",
+      frontmatter: { type: "Metric", title: "Revenue", description: "Recognized revenue.", extra: {} },
+      body: "SECRET-BODY-MARKER that must stay out of context.\n",
+    })
     const provider = scriptedProvider([{ content: "PLAN: three parts" }, { content: "Built all parts" }])
     const wf = workflow()
     const run = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
@@ -92,6 +98,8 @@ describe("executeRun", () => {
     expect(second.messages.at(-1)?.content).toContain("PLAN: three parts")
     expect(second.systemContext).toContain("You build.")
     expect(second.systemContext).toContain("prefers tests")
+    expect(second.systemContext).toContain("- metrics/revenue — Revenue — Recognized revenue.")
+    expect(second.systemContext).not.toContain("SECRET-BODY-MARKER")
   })
 
   it("fails when an agent is missing and skips the rest", async () => {

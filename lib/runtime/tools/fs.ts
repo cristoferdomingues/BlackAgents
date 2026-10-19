@@ -84,6 +84,52 @@ function invalid(error: z.ZodError): ToolOutcome {
   return { error: toolArgsError(error) }
 }
 
+const ARTIFACT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const FOLDER_PREVIEW = 40
+
+function artifactFileCandidates(name: string): string[] {
+  return [
+    `.cursor/rules/${name}.mdc`,
+    `.cursor/agents/${name}.md`,
+    `.cursor/commands/${name}.md`,
+    `.cursor/skills/${name}/SKILL.md`,
+    `.black-agents/artifacts/rules/${name}.md`,
+    `.black-agents/artifacts/agents/${name}.md`,
+    `.black-agents/artifacts/commands/${name}.md`,
+    `.black-agents/artifacts/skills/${name}/SKILL.md`,
+  ]
+}
+
+async function folderEntries(root: string, relPath: string): Promise<string[]> {
+  const abs = resolveInWorkspace(root, relPath)
+  return (await listDir(abs))
+    .filter((entry) => !HIDDEN_DIRS.has(entry.name))
+    .slice(0, MAX_LIST_ENTRIES)
+    .map((entry) => (entry.isDirectory ? `${entry.name}/` : entry.name))
+}
+
+function folderReadError(relPath: string, entries: string[]): string {
+  const shown = entries.slice(0, FOLDER_PREVIEW)
+  const hidden = entries.length - shown.length
+  const list = shown.length > 0 ? shown.map((entry) => `- ${entry}`).join("\n") : "(empty)"
+  const more = hidden > 0 ? `\n…and ${hidden} more.` : ""
+  return [
+    `"${relPath}" is a folder, not a file. Its contents are listed here, so do not call fs_list for this same folder:`,
+    list + more,
+    "Read one of these files instead.",
+  ].join("\n")
+}
+
+async function missingPathError(root: string, relPath: string): Promise<string> {
+  if (!ARTIFACT_NAME.test(relPath)) return `Not found: ${relPath}`
+  for (const candidate of artifactFileCandidates(relPath)) {
+    if (await pathExists(resolveInWorkspace(root, candidate))) {
+      return `Not found: ${relPath}. This is an artifact name, not a file path. Its file is ${candidate}. Rules and skills already loaded in this turn are in your context, so read that file only when you need the source itself.`
+    }
+  }
+  return `Not found: ${relPath}. This looks like an artifact name, not a file path. Use a real workspace path such as lib/file.ts.`
+}
+
 export const fsListTool: RuntimeTool = {
   name: "fs_list",
   originalName: "fs_list",
@@ -102,10 +148,7 @@ export const fsListTool: RuntimeTool = {
     if (!parsed.success) return invalid(parsed.error)
     const abs = resolveInWorkspace(ctx.workspaceRoot, parsed.data.path)
     if (!(await pathExists(abs))) return { error: `Not found: ${parsed.data.path}` }
-    const entries = (await listDir(abs))
-      .filter((e) => !HIDDEN_DIRS.has(e.name))
-      .slice(0, MAX_LIST_ENTRIES)
-      .map((e) => (e.isDirectory ? `${e.name}/` : e.name))
+    const entries = await folderEntries(ctx.workspaceRoot, parsed.data.path)
     return { result: { path: parsed.data.path, entries } }
   },
 }
@@ -117,7 +160,7 @@ export const fsReadTool: RuntimeTool = {
   source: "builtin",
   risk: "read",
   description:
-    "Read one UTF-8 text file inside the workspace (first 100 KB). Files only: use fs_list to see a folder. `path` is relative to the workspace root.",
+    "Read one UTF-8 text file inside the workspace (first 100 KB). Pass a file path, never a folder or an artifact name. `path` is relative to the workspace root.",
   parameters: {
     type: "object",
     properties: { path: { type: "string" } },
@@ -131,9 +174,9 @@ export const fsReadTool: RuntimeTool = {
     if (startsWithAny(rel, [".git/"])) return { error: "Reading .git is not allowed" }
     const abs = resolveInWorkspace(ctx.workspaceRoot, rel)
     const stat = await fs.stat(abs).catch(() => null)
-    if (!stat) return { error: `Not found: ${parsed.data.path}` }
+    if (!stat) return { error: await missingPathError(ctx.workspaceRoot, parsed.data.path) }
     if (stat.isDirectory()) {
-      return { error: `"${parsed.data.path}" is a folder. Use fs_list to see its files.` }
+      return { error: folderReadError(parsed.data.path, await folderEntries(ctx.workspaceRoot, rel)) }
     }
     if (!stat.isFile()) return { error: `Not a file: ${parsed.data.path}` }
     const handle = await fs.open(abs, "r")

@@ -95,6 +95,7 @@ export type AgentLoopEvent =
       reason: "per_turn" | "total"
     }
   | { type: "context_compacted"; turn: number; removedMessages: number }
+  | { type: "empty_retry"; turn: number }
   | {
       type: "tool_call"
       id: string

@@ -20,6 +20,8 @@ export const WORKSPACE_TOOLS_GUIDE = `## Working in the workspace
 
 Use only the tools you are given in this turn. With them you can:
 - Explore: fs_find (files by glob, recursive), fs_search (text in files), fs_list, fs_read. Prefer fs_find and fs_search over listing folder by folder.
+- fs_read reads one file. A folder path returns its contents in the error, so do not call fs_list again for that same folder.
+- An artifact name such as typescript-strict is not a file path. Rules and skills already loaded for this turn are in your context. Do not pass their names to fs_read. A real path looks like .cursor/rules/typescript-strict.mdc or lib/file.ts.
 - Change files: fs_write creates or overwrites a file (folders are created for you); fs_edit replaces exact text in an existing file.
 - Run commands: shell_run runs a terminal command in the workspace (e.g. "node -v", "pnpm install", "npm test && npm run build") and returns exit code, stdout and stderr. Commands must finish on their own: never start dev servers or watch modes.
 

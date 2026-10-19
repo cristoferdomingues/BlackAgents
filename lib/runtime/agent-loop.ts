@@ -1,11 +1,12 @@
-import type {
-  ChatMessage,
-  LLMCredentials,
-  LLMGenerateRequest,
-  LLMGenerateResult,
-  LLMProvider,
-  LLMToolDefinition,
-  ToolCall,
+import {
+  ProviderError,
+  type ChatMessage,
+  type LLMCredentials,
+  type LLMGenerateRequest,
+  type LLMGenerateResult,
+  type LLMProvider,
+  type LLMToolDefinition,
+  type ToolCall,
 } from "@/lib/llm/types"
 
 import {
@@ -30,6 +31,9 @@ export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 20
 export const DEFAULT_MAX_TOTAL_TOOL_CALLS = 100
 /** Approx. 50k tokens. Leaves room for provider-specific formatting/output. */
 export const DEFAULT_MAX_CONTEXT_CHARS = 200_000
+/** Sent once when a provider reply has no text and no tool call. */
+export const EMPTY_REPLY_NUDGE =
+  "Your last reply was empty. It had no text and no tool call. Continue now: call the next tool, or give a short answer. Do not repeat the plan."
 
 export interface AgentLoopOptions {
   provider: LLMProvider
@@ -261,11 +265,40 @@ async function generateTurn(
   return result
 }
 
+/** True when the provider answered, but with no text and no tool call. */
+export function isEmptyProviderResponse(err: unknown): err is ProviderError {
+  return err instanceof ProviderError && err.status === 502 && /empty response/i.test(err.message)
+}
+
+/**
+ * Ask once more after an empty reply. A second empty reply still fails the step.
+ * Other provider errors are not retried.
+ */
+async function generateTurnWithEmptyRetry(
+  options: AgentLoopOptions,
+  turn: number,
+  maxTurns: number,
+  messages: ChatMessage[],
+  definitions: LLMToolDefinition[]
+): Promise<{ result: LLMGenerateResult; messages: ChatMessage[] }> {
+  try {
+    const result = await generateTurn(options, turn, maxTurns, messages, definitions)
+    return { result, messages }
+  } catch (err) {
+    if (!isEmptyProviderResponse(err)) throw err
+    options.onEvent?.({ type: "empty_retry", turn })
+    const retried: ChatMessage[] = [...messages, { role: "user", content: EMPTY_REPLY_NUDGE }]
+    const result = await generateTurn(options, turn, maxTurns, retried, definitions)
+    return { result, messages: retried }
+  }
+}
+
 /**
  * The one bounded tool loop used by chat and workflow steps:
  * generate → run tool calls (with approval) → feed results back, at most
  * `maxTurns` times. When the limit is hit, one last call without tools asks
- * the model for a final answer. Provider errors propagate to the caller.
+ * the model for a final answer. An empty reply is asked once more. Other
+ * provider errors propagate to the caller.
  */
 export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoopResult> {
   const maxTurns = Math.min(
@@ -311,7 +344,15 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         removedMessages: compacted.removedMessages,
       })
     }
-    const result = await generateTurn(options, turn, maxTurns, messages, definitions)
+    const generated = await generateTurnWithEmptyRetry(
+      options,
+      turn,
+      maxTurns,
+      messages,
+      definitions
+    )
+    messages = generated.messages
+    const result = generated.result
     turnsUsed = turn + 1
     content = result.content
     if (result.reasoning) options.onEvent?.({ type: "thinking", turn, content: result.reasoning })
@@ -324,24 +365,27 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     const remaining = Math.max(0, maxTotal - toolExecutions.length)
     const selected = selectToolCalls(result.toolCalls, Math.min(maxPerTurn, remaining))
     const hitTotal = selected.calls.length > 0 && selected.calls.length >= remaining
-    const limited =
-      selected.calls.length < result.toolCalls.length ||
-      selected.duplicates > 0 ||
-      remaining === 0 ||
-      hitTotal
-    if (limited) {
+    // The total budget across the whole step is the real safety stop. A
+    // single noisy reply (too many calls, or duplicates) is only trimmed and
+    // reported — the loop still has turns and total budget left, so it goes
+    // on instead of ending the step early.
+    const exhausted = remaining === 0 || hitTotal
+    const trimmed = selected.calls.length < result.toolCalls.length || selected.duplicates > 0
+    if (trimmed || exhausted) {
       options.onEvent?.({
         type: "tool_limit",
         turn,
         requested: result.toolCalls.length,
         accepted: selected.calls.length,
         duplicates: selected.duplicates,
-        reason: hitTotal || remaining === 0 ? "total" : "per_turn",
+        reason: exhausted ? "total" : "per_turn",
       })
-      limitMessage =
-        `A safety limit stopped the tool loop after accepting ${selected.calls.length} of ` +
-        `${result.toolCalls.length} requested calls (${selected.duplicates} duplicates removed). ` +
-        "Give your best final answer now without calling tools, and say what remains."
+      if (exhausted) {
+        limitMessage =
+          `A safety limit stopped the tool loop after accepting ${selected.calls.length} of ` +
+          `${result.toolCalls.length} requested calls (${selected.duplicates} duplicates removed). ` +
+          "Give your best final answer now without calling tools, and say what remains."
+      }
     }
 
     if (selected.calls.length > 0) {
@@ -367,7 +411,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         ),
       })
     }
-    if (limited) break
+    if (exhausted) break
   }
 
   checkAborted(options.signal)
@@ -393,7 +437,15 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       removedMessages: compacted.removedMessages,
     })
   }
-  const final = await generateTurn(options, turnsUsed, maxTurns, finalMessages, definitions)
+  const generated = await generateTurnWithEmptyRetry(
+    options,
+    turnsUsed,
+    maxTurns,
+    finalMessages,
+    definitions
+  )
+  finalMessages = generated.messages
+  const final = generated.result
   if (final.reasoning) {
     options.onEvent?.({ type: "thinking", turn: turnsUsed, content: final.reasoning })
   }

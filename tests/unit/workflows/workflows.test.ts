@@ -186,6 +186,8 @@ describe("handoff", () => {
       retryNote: "Try again",
     })
     expect(text).toContain("step 2 of 2")
+    expect(text).toContain("## Reading files")
+    expect(text).toContain("Do not pass an artifact name to fs_read")
     expect(text).toContain("untrusted data")
     expect(text).toContain('"output": "built"')
     expect(text).toContain("## Retry")

@@ -4,6 +4,7 @@ import { ProviderError } from "@/lib/llm/types"
 import {
   AgentContextLimitError,
   compactToolHistory,
+  EMPTY_REPLY_NUDGE,
   LoopAbortedError,
   runAgentLoop,
   truncateResult,
@@ -203,10 +204,10 @@ describe("runAgentLoop", () => {
     expect(provider.requests[2].tools).toBeDefined()
   })
 
-  it("caps tool calls from one runaway model reply", async () => {
+  it("trims one noisy reply but keeps working — only the total budget ends a step early", async () => {
     const tool = fakeTool("search", "read")
     const calls = Array.from({ length: 30 }, (_, i) => call(`c${i}`, "search", { q: i }))
-    const provider = scriptedProvider([{ toolCalls: calls }, { content: "partial result" }])
+    const provider = scriptedProvider([{ toolCalls: calls }, { content: "final result" }])
     const events: AgentLoopEvent[] = []
     const result = await runAgentLoop(
       options({
@@ -217,7 +218,8 @@ describe("runAgentLoop", () => {
       })
     )
     expect(tool.calls).toHaveLength(3)
-    expect(result).toMatchObject({ content: "partial result", stoppedAtLimit: true, turns: 1 })
+    // The step finished normally on the next turn — a trimmed turn is not a stop.
+    expect(result).toMatchObject({ content: "final result", stoppedAtLimit: false, turns: 2 })
     expect(events.find((event) => event.type === "tool_limit")).toMatchObject({
       type: "tool_limit",
       requested: 30,
@@ -270,7 +272,72 @@ describe("runAgentLoop", () => {
 
   it("propagates provider errors", async () => {
     const provider = scriptedProvider([new ProviderError("bad key", 401)])
-    await expect(runAgentLoop(options({ provider }))).rejects.toBeInstanceOf(ProviderError)
+    const events: AgentLoopEvent[] = []
+    await expect(
+      runAgentLoop(options({ provider, onEvent: (event) => events.push(event) }))
+    ).rejects.toBeInstanceOf(ProviderError)
+    expect(provider.requests).toHaveLength(1)
+    expect(events.some((event) => event.type === "empty_retry")).toBe(false)
+  })
+
+  it("asks once more after an empty reply, then keeps working", async () => {
+    const tool = fakeTool("lookup", "read")
+    const empty = new ProviderError("Provider returned an empty response", 502)
+    const provider = scriptedProvider([
+      empty,
+      { toolCalls: [call("c1", "lookup", { q: 1 })] },
+      new ProviderError("Anthropic returned an empty response", 502),
+      { content: "answer" },
+    ])
+    const events: AgentLoopEvent[] = []
+    const result = await runAgentLoop(
+      options({ provider, tools: [tool], onEvent: (event) => events.push(event) })
+    )
+    expect(result).toMatchObject({ content: "answer", stoppedAtLimit: false })
+    expect(tool.calls).toEqual([{ q: 1 }])
+    expect(provider.requests[1]?.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: EMPTY_REPLY_NUDGE,
+    })
+    expect(provider.requests[3]?.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: EMPTY_REPLY_NUDGE,
+    })
+    expect(events.filter((event) => event.type === "empty_retry")).toEqual([
+      { type: "empty_retry", turn: 0 },
+      { type: "empty_retry", turn: 1 },
+    ])
+  })
+
+  it("fails the step when the retry is empty too", async () => {
+    const provider = scriptedProvider([
+      new ProviderError("Provider returned an empty response", 502),
+      new ProviderError("Provider returned an empty response", 502),
+      { content: "should not run" },
+    ])
+    const events: AgentLoopEvent[] = []
+    await expect(
+      runAgentLoop(options({ provider, onEvent: (event) => events.push(event) }))
+    ).rejects.toThrow(/empty response/)
+    expect(provider.requests).toHaveLength(2)
+    expect(events.filter((event) => event.type === "empty_retry")).toEqual([
+      { type: "empty_retry", turn: 0 },
+    ])
+  })
+
+  it("asks once more when the final safety-limit reply is empty", async () => {
+    const tool = fakeTool("lookup", "read")
+    const provider = scriptedProvider([
+      { toolCalls: [call("c1", "lookup")] },
+      new ProviderError("Provider returned an empty response", 502),
+      { content: "wrapped up" },
+    ])
+    const result = await runAgentLoop(
+      options({ provider, tools: [tool], maxTurns: 1 })
+    )
+    expect(result).toMatchObject({ content: "wrapped up", stoppedAtLimit: true })
+    expect(provider.requests).toHaveLength(3)
+    expect(provider.requests[2]?.messages.at(-1)?.content).toBe(EMPTY_REPLY_NUDGE)
   })
 
   it("stops when the signal is aborted", async () => {

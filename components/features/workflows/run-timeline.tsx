@@ -44,6 +44,7 @@ function eventIcon(type: AuditEvent["type"]): React.ReactNode {
   switch (type) {
     case "llm_request":
     case "llm_response":
+    case "empty_retry":
       return <Bot className="h-3.5 w-3.5" aria-hidden />
     case "tool_call":
     case "tool_result":
@@ -83,6 +84,8 @@ function summarize(event: AuditEvent): string {
       return `Tool safety limit · accepted ${event.accepted} of ${event.requested}`
     case "context_compacted":
       return `Context protected · removed ${event.removedMessages} old messages`
+    case "empty_retry":
+      return "Empty model reply · asking once more"
     case "approval_requested":
       return `Needs approval · ${event.tool}`
     case "approval_resolved":

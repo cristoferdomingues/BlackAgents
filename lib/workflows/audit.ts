@@ -105,6 +105,7 @@ export const auditEventSchema = z.discriminatedUnion("type", [
     type: z.literal("context_compacted"),
     removedMessages: z.number().int().positive(),
   }),
+  auditBase.extend({ type: z.literal("empty_retry") }),
   auditBase.extend({
     type: z.literal("approval_requested"),
     approvalId: z.string(),
@@ -151,7 +152,7 @@ export type AuditEventType = AuditEvent["type"]
 export type AuditFilterGroup = "ai" | "tools" | "approvals" | "errors" | "lifecycle"
 
 const FILTER_GROUPS: Record<AuditFilterGroup, readonly AuditEventType[]> = {
-  ai: ["llm_request", "llm_response"],
+  ai: ["llm_request", "llm_response", "empty_retry"],
   tools: ["tool_call", "tool_result", "tool_limit"],
   approvals: ["approval_requested", "approval_resolved", "login_pause"],
   errors: ["error"],

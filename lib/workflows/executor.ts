@@ -404,6 +404,14 @@ export async function executeRun(
               turn: event.turn,
               removedMessages: event.removedMessages,
             })
+          } else if (event.type === "empty_retry") {
+            audit({
+              type: "empty_retry",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              turn: event.turn,
+            })
           }
           live.notify()
         }

@@ -51,10 +51,11 @@ flowchart LR
 | Tool timeout | 60 s default (shell up to 300 s) |
 | Tool result size | 12 000 chars, then truncated |
 | At a safety limit | one final model call asks for the best answer and remaining work; tool calls in that reply are not executed |
+| Empty provider reply | asked once more with a short continue note; a second empty reply fails the step |
 
 Before every provider request, the loop estimates the full request size. If needed, it removes the oldest complete assistant/tool exchange without splitting protocol pairs or removing the caller's initial messages. If protected input alone is too large, it stops with `AgentContextLimitError`. Provider requests receive the run's `AbortSignal`, so timeout and cancel also stop an in-flight HTTP request.
 
-Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`, `approval_resolved`, `turn_start`, `llm_request`, `llm_response`, `tool_limit`, and `context_compacted`. The chat streams its supported events over SSE (`lib/sse.ts`, `lib/sse-client.ts`). Workflow runs also write the full event set to their audit log.
+Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`, `approval_resolved`, `turn_start`, `llm_request`, `llm_response`, `tool_limit`, `context_compacted`, and `empty_retry`. The chat streams its supported events over SSE (`lib/sse.ts`, `lib/sse-client.ts`). Workflow runs also write the full event set to their audit log.
 
 ## Tool Risk
 
@@ -68,7 +69,7 @@ Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`,
 
 | Tool | Risk | Notes |
 |------|------|-------|
-| `fs_list`, `fs_read` | read | inside `resolveInWorkspace`; `.git/` not readable; read cap 100 KB. `fs_read` is files only: a folder error tells the model to use `fs_list`, while a missing path returns `Not found` |
+| `fs_list`, `fs_read` | read | inside `resolveInWorkspace`; `.git/` not readable; read cap 100 KB. `fs_read` is files only: a folder error includes its contents, and an artifact name such as `typescript-strict` is reported as a name, with its real file path when one exists |
 | `fs_write` | write → exec | writes to `.cursor/`, `.claude/`, `.agents/`, `.black-agents/` escalate to exec; `.git/`, `.black-agents/brain/`, `.black-agents/runs/` are blocked |
 | `shell_run` | exec | `spawn` with `shell: false`, command must match `^[\w./@+-]+$`, 20k output cap |
 | `browser_run_flow` | exec | Desktop only; replays `.black-agents/browser-flows/<name>.json` via the `browser` MCP server — see [Browser Automation](../specs/browser-automation.md) |

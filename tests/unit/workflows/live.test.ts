@@ -106,6 +106,10 @@ describe("applyLoopEventToStep", () => {
     expect(s.toolExecutions[0].tool).toBe("fs_read")
     expect(s.recent?.some((e) => e.text.includes("finished"))).toBe(true)
 
+    applyLoopEventToStep(s, { type: "empty_retry", turn: 2 }, new Date("2026-10-19T12:00:03.000Z"))
+    expect(s.activity?.label).toBe("Asking the model once more…")
+    expect(s.recent?.some((e) => e.text.includes("empty"))).toBe(true)
+
     clearLiveStepFields(s)
     expect(s.activity).toBeUndefined()
     expect(s.recent).toBeUndefined()

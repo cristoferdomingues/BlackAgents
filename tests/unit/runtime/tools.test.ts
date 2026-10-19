@@ -44,10 +44,23 @@ describe("file tools", () => {
     expect(await readFile(path.join(env.workspace, "src/b.ts"), "utf8")).toBe("x")
   })
 
-  it("points to fs_list when asked to read a folder", async () => {
+  it("lists a folder inside the fs_read error", async () => {
     await mkdir(path.join(env.workspace, "lib/llm"), { recursive: true })
-    expect((await fsReadTool.execute({ path: "lib/llm" }, ctx())).error).toBe(
-      '"lib/llm" is a folder. Use fs_list to see its files.'
+    await writeFile(path.join(env.workspace, "lib/llm/types.ts"), "export {}")
+    const error = (await fsReadTool.execute({ path: "lib/llm" }, ctx())).error
+    expect(error).toContain('"lib/llm" is a folder, not a file.')
+    expect(error).toContain("- types.ts")
+    expect(error).toContain("do not call fs_list")
+  })
+
+  it("explains an artifact name instead of treating it as a file path", async () => {
+    await mkdir(path.join(env.workspace, ".cursor/rules"), { recursive: true })
+    await writeFile(path.join(env.workspace, ".cursor/rules/typescript-strict.mdc"), "# strict")
+    expect((await fsReadTool.execute({ path: "typescript-strict" }, ctx())).error).toContain(
+      "Its file is .cursor/rules/typescript-strict.mdc"
+    )
+    expect((await fsReadTool.execute({ path: "missing-rule" }, ctx())).error).toContain(
+      "looks like an artifact name"
     )
   })
 

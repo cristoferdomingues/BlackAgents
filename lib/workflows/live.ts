@@ -142,6 +142,11 @@ export function applyLoopEventToStep(step: StepRun, event: AgentLoopEvent, now =
       step.lastActivityAt = at
       pushRecent(step, `Removed ${event.removedMessages} old messages to keep context safe`, at)
       break
+    case "empty_retry":
+      step.lastActivityAt = at
+      setActivity(step, { kind: "waiting_model", label: "Asking the model once more…", since: at }, at)
+      pushRecent(step, "Model reply was empty. Asking once more.", at)
+      break
     case "tool_call":
       setActivity(
         step,

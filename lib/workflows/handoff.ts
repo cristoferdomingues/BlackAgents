@@ -74,6 +74,9 @@ export function buildStepMessage(params: {
     `## Task\n\n${task || "(no task text was given)"}`,
   ]
   if (step.instructions.trim()) parts.push(`## Your job in this step\n\n${step.instructions.trim()}`)
+  parts.push(
+    "## Reading files\n\nRules and skills already loaded for this step are in your context. Do not pass an artifact name to fs_read. Use a real file path. If fs_read says a path is a folder, its contents are already in that error."
+  )
   if (files && files.length > 0) {
     parts.push(composeFilesPrompt(files, "## Files for this step"))
   }

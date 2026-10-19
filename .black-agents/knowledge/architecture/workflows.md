@@ -106,9 +106,11 @@ The chat can draft a workflow and start one. See [LLM Integration](./llm-integra
 
 | What the user types | What happens |
 |---------------------|--------------|
-| A normal request for a workflow | The model emits one ` ```workflow ` block. `extractWorkflowDraft` (`lib/llm/workflow-draft.ts`) checks it with `workflowSchema`. The card offers **Save** (`POST` or `PUT /api/workflows`) or **Open in builder** |
+| A normal request for a workflow | The model emits one ` ```workflow ` block. `extractWorkflowDraft` (`lib/llm/workflow-draft.ts`) checks it with `workflowSchema`. The card shows each step's effective ability, warns when it cannot do its stated job, and offers **Save**, **Open in builder**, or **Ask Assistant to fix the step tools** |
 | `/<name> <input>` at the start of the message | No model call. A run card appears |
 | `start @<name> <input>`, `start @workflow:<name> <input>`, or `@workflow:<name> <input>` | Same run card |
+
+`checkWorkflowDraft` (`lib/workflows/draft-check.ts`) compares each step's instructions with its effective tools. It catches write work with read-only tools, test/command work without `shell_run`, writes that would ask on every call, and `allowWrites` combined with unrestricted MCP access. The workflow-architect guidance requires explicit `tools`, `mcpServers`, and `allowWrites` on every generated step: read-only for planning/review, read-write for implementation, and full tools for tests or commands. MCP defaults to `[]` unless an outside service is required.
 
 `parseWorkflowInvocation` (`lib/workflows/invocation.ts`) only matches a name that already exists, and only when the message **starts** with the pattern. `/name` in the middle of a sentence still loads an artifact ([turn artifacts](./jev-decision-engine.md)).
 

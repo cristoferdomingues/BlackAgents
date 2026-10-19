@@ -160,6 +160,8 @@ Agents now **act**, not only draft — always with user approval. Used BlackLion
 | File attachments | `lib/chat/attachments.ts` | text, image, PDF on a chat message — [LLM Integration](../architecture/llm-integration.md) |
 | Voice to text | `hooks/use-voice-input.ts`, `POST /api/assistant/transcribe` | mic fills the field; browser speech, then a WAV fallback |
 | Workflows from chat | `lib/llm/workflow-draft.ts`, `lib/workflows/invocation.ts` | draft card, or `/<name> input` / `start @<name>` run card — [Workflows](../architecture/workflows.md) |
+| Stop a reply | `components/features/chat/chat-page.tsx` | aborts model/tool/approval work; keeps partial text or restores the unsent message |
+| Workflow draft safety | `lib/workflows/draft-check.ts` | checks each step has write/command tools and a narrow MCP scope before save |
 
 ### Model routing · shipped (2026-10-11)
 
@@ -199,6 +201,7 @@ Zip import of a bundle is still deferred. Folder import is what shipped.
 - Scheduled runs work only while the app is open (no background service).
 - Approvals live in memory; a restart drops pending ones (runs are marked interrupted).
 - No parallel steps inside one workflow; steps run in order.
+- **Project scopes are planned, not shipped.** The `project-scopes` skill, command, and `implement-project-scopes` workflow define the target: one-level `.black-agents/projects/<id>/` scopes, `project.json` inheritance, scope-first resolution, and a project switcher. The workflow must still implement and review the runtime/API/UI changes.
 
 ## Guiding Principles
 

@@ -110,7 +110,7 @@ The assistant may call tools during a turn, but its **final reply** is steered t
 - Extractors return `null` on a missing block or failed `safeParse`; callers choose a safe fallback (a `502` when no usable draft, or surfacing prose as a single `info` finding) — never a fabricated "valid" result.
 - A draft `body` is **markdown only, no frontmatter** — the platform adds frontmatter on serialize/export.
 - The protocol modules are **isomorphic** (no node imports) so the client and the route parse identically.
-- A workflow draft is checked again with `workflowSchema` before it is saved. Every step's `agent` must already exist; the card blocks **Save** when one is missing. **Open in builder** stores the draft under `black-agents:workflow-draft` in `sessionStorage` and opens `/workflows/new` (or the existing workflow when the name already exists).
+- A workflow draft is checked again with `workflowSchema` before it is saved. Every step's `agent` must already exist; the card blocks **Save** when one is missing. `checkWorkflowDraft` also shows the effective ability and warns about missing write/command tools, per-write approvals, and unrestricted MCP with automatic writes. **Ask Assistant to fix the step tools** sends those exact findings back to the model. **Open in builder** stores the draft under `black-agents:workflow-draft` in `sessionStorage` and opens `/workflows/new` (or the existing workflow when the name already exists).
 - **Link detection** trusts the workspace, not the model: `detectLinks` runs the [reference extractor](./relationship-graph.md) over the real workspace plus a synthetic draft node, so a claimed link only counts if it resolves to an artifact that exists.
 
 ## Files on a message (`lib/chat/attachments.ts`)
@@ -136,6 +136,14 @@ The send button is a microphone while the input is empty. Speech becomes text in
 **Voice model (Custom).** The server picks it, not the browser: the model saved in Settings → AI → **Models by task → Voice** (`settings.models.voice`), else `google/gemini-2.5-flash` when Custom's base URL is OpenRouter. Other custom endpoints with nothing saved get **412** "Choose a voice model in Settings → AI → Models by task". The Voice tab lists only models that take audio and give text (OpenRouter `architecture.input_modalities` / `output_modalities`, via `listModelsWithModalities`). The chat model in the Assistant header is not used for voice.
 
 The key stays server-side. A 401/403 marks the stored key invalid, same as chat.
+
+## Stopping a Reply
+
+While `/api/chat` is streaming, the Send button becomes **Stop the reply**. `chat-page.tsx` owns an `AbortController` and passes its signal to `streamPost`; aborting closes the request, and the route passes `req.signal` through the agent loop to the provider, tool execution, and approval wait.
+
+- If no answer text arrived, the user message and attachments return to the composer.
+- If text arrived, the partial assistant turn stays in history with `stopped: true` and the note **Stopped by you. This reply may be incomplete.**
+- Leaving the page also aborts the active reply.
 
 ## Model Routing
 

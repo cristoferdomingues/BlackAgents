@@ -68,7 +68,7 @@ Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`,
 
 | Tool | Risk | Notes |
 |------|------|-------|
-| `fs_list`, `fs_read` | read | inside `resolveInWorkspace`; `.git/` not readable; read cap 100 KB |
+| `fs_list`, `fs_read` | read | inside `resolveInWorkspace`; `.git/` not readable; read cap 100 KB. `fs_read` is files only: a folder error tells the model to use `fs_list`, while a missing path returns `Not found` |
 | `fs_write` | write → exec | writes to `.cursor/`, `.claude/`, `.agents/`, `.black-agents/` escalate to exec; `.git/`, `.black-agents/brain/`, `.black-agents/runs/` are blocked |
 | `shell_run` | exec | `spawn` with `shell: false`, command must match `^[\w./@+-]+$`, 20k output cap |
 | `browser_run_flow` | exec | Desktop only; replays `.black-agents/browser-flows/<name>.json` via the `browser` MCP server — see [Browser Automation](../specs/browser-automation.md) |
@@ -90,7 +90,7 @@ tools: [fs_list, fs_read, fs_write, browser_run_flow]   # missing = fs_list + fs
 mcpServers: [browser]                                     # missing = every workspace server
 ```
 
-The generic Assistant gets read-only files (plus `fs_write`) and every MCP server. A workflow step can override both. On non-desktop runtimes, tools from the `browser` MCP server are omitted from the toolset.
+The generic Assistant gets read-only files (plus `fs_write`) and every MCP server. A workflow step can override both. In the builder, **Same as agent** omits `mcpServers`, **None** saves `[]`, and **Choose** saves only the named servers. Server trust still maps to read/write/exec risk; `allowWrites` auto-approves write-risk calls, so generated workflows default to no MCP unless a step needs an outside service. On non-desktop runtimes, tools from the `browser` MCP server are omitted from the toolset.
 
 ## How an MCP Server Connects
 

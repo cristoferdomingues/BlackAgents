@@ -80,7 +80,8 @@ export interface LLMProvider {
   verify(credentials: LLMCredentials): Promise<void>
   generate(
     request: LLMGenerateRequest,
-    credentials: LLMCredentials
+    credentials: LLMCredentials,
+    signal?: AbortSignal
   ): Promise<LLMGenerateResult>
 }
 

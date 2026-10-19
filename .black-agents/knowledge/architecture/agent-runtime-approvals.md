@@ -43,12 +43,18 @@ flowchart LR
 
 | Limit | Value |
 |-------|-------|
-| Default / max turns | 8 / 20 (`settings.json` → `assistant.maxToolTurns`) |
+| Default / max turns | 25 / 100 (`settings.json` → `assistant.maxToolTurns`) |
+| Tool calls per model reply | 20; duplicate name + argument calls are removed |
+| Tool calls per loop | 100 |
+| Context estimate | 200 000 chars; oldest complete tool exchanges are removed first |
+| OpenAI-compatible output | 8 192 tokens |
 | Tool timeout | 60 s default (shell up to 300 s) |
 | Tool result size | 12 000 chars, then truncated |
-| At the turn limit | one final call (tools still passed — Anthropic needs them), else "I reached the tool-call limit…" and `stoppedAtLimit: true` |
+| At a safety limit | one final model call asks for the best answer and remaining work; tool calls in that reply are not executed |
 
-Events emitted: `token`, `tool_call`, `tool_result`, `approval_required`, `approval_resolved`. The chat streams them over SSE (`lib/sse.ts`, `lib/sse-client.ts`). The client parses each event with zod (`lib/assistant/chat-events.ts`).
+Before every provider request, the loop estimates the full request size. If needed, it removes the oldest complete assistant/tool exchange without splitting protocol pairs or removing the caller's initial messages. If protected input alone is too large, it stops with `AgentContextLimitError`. Provider requests receive the run's `AbortSignal`, so timeout and cancel also stop an in-flight HTTP request.
+
+Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`, `approval_resolved`, `turn_start`, `llm_request`, `llm_response`, `tool_limit`, and `context_compacted`. The chat streams its supported events over SSE (`lib/sse.ts`, `lib/sse-client.ts`). Workflow runs also write the full event set to their audit log.
 
 ## Tool Risk
 

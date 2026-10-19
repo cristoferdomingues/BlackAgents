@@ -82,7 +82,7 @@ flowchart LR
 - **Send back** (`onReject`): only on a review step. On reject, the named step runs again with the defects quoted as untrusted JSON (`## Review feedback` in `buildStepMessage`), then this review runs again. `maxRounds` is 1–3 (how many fix passes). When the rounds run out, the run **fails**. `StepRun.sentBack` is how many times this review sent the work back. A step with `repair: true` is skipped until a review names it; it cannot also be a review, and some review must point at it.
 - **Live activity** (`lib/workflows/live.ts`): while a step runs, the run snapshot carries `activity` (waiting for the model, running a tool, or waiting for approval), `turn` / `maxTurns`, `lastActivityAt`, and the last few `recent` lines. Tool traces are pushed as each call finishes. Saves are throttled to about once a second. No activity for 90 seconds shows a stuck warning on the run page.
 - **Audit** (`lib/workflows/audit.ts`): every model exchange, tool call, approval, login pause, retry, gate, send-back, and error is appended as one JSON line. Secrets are redacted before write. Payloads are capped. The full prompt stays in the audit file, not in the SSE snapshot.
-- **Limits**: step and run timeouts (`AbortSignal.timeout`), user cancel.
+- **Limits**: step and run timeouts (`AbortSignal.timeout`), user cancel, at most 20 tool calls from one model reply and 100 per step. Duplicate calls in one reply are ignored. OpenAI-compatible output is capped at 8 192 tokens. Before each request, old complete tool exchanges are removed when the estimated context exceeds 200 000 characters; the timeline records `tool_limit` and `context_compacted` events.
 - **LLM choice** (`llm.ts`): resolved for each step in this order: step → agent frontmatter → workflow → Assistant default → first verified provider. A layer may use `model: "task:vision"` (or `fast` / `reasoning`) to follow Settings → AI → Models by task. Credentials are cached by the final provider + model.
 - **Fail fast**: manual and scheduled runs check every step before queueing. A missing task model or unverified provider returns/records a clear error.
 - Run statuses: `queued`, `running`, `waiting_approval`, `succeeded`, `failed`, `cancelled`.
@@ -121,7 +121,7 @@ The `@` menu lists workflows as their own group and inserts `@workflow:<name>`.
 |------|--------------|
 | `/workflows` | list (steps, trigger, last run, Run button) + **Waiting for your approval** panel |
 | `/workflows/new`, `/workflows/[name]` | builder: steps (agent, instructions, input, tools, writes, turn limit, Jev gate, review send-back, fix-only step, per-step model/task kind, reorder), trigger, workflow provider/model, limits, self-assessment, run history, delete. A chat draft in `sessionStorage` (`black-agents:workflow-draft`) prefills a new builder, or an edit of the same name |
-| `/workflows/runs/[id]` | **Steps** tab: live status, connection (Live / Reconnecting), elapsed time, turn counter, current action, stuck warning, approvals, outputs, files changed, tool traces, cancel, feedback. **Timeline** tab: audit events with filters (AI, tools, approvals, errors, lifecycle) and JSON export |
+| `/workflows/runs/[id]` | **Steps** tab: live status, connection (Live / Reconnecting), elapsed time, turn counter, current action, stuck warning, approvals, outputs, files changed, tool traces, cancel, feedback. **Timeline** tab: audit events in pages of 50, with filters (AI, tools, approvals, errors, lifecycle) and JSON export |
 
 ## Related
 

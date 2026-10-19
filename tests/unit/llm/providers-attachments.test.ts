@@ -4,6 +4,7 @@ import { toChatMessage } from "@/lib/assistant/chat-service"
 import { anthropicProvider, toAnthropicUserContent } from "@/lib/llm/providers/anthropic"
 import {
   openAIProvider,
+  safeProviderError,
   splitThinkBlocks,
   toOpenAIMessages,
   toOpenAIUserContent,
@@ -95,6 +96,36 @@ describe("provider reasoning", () => {
     stubJson({ choices: [{ message: { content: "Hi", reasoning: 3 } }] })
     const result = await openAIProvider.generate({ model: "m", messages: [] }, { apiKey: "k" })
     expect(result.reasoning).toBeUndefined()
+  })
+
+  it("caps output tokens and forwards the abort signal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: "Hi" } }] }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const controller = new AbortController()
+    await openAIProvider.generate(
+      { model: "m", messages: [] },
+      { apiKey: "k" },
+      controller.signal
+    )
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(init.signal).toBe(controller.signal)
+    expect(JSON.parse(String(init.body))).toMatchObject({ max_tokens: 8192 })
+  })
+
+  it("classifies safe provider errors without exposing the raw body", () => {
+    expect(
+      safeProviderError({ error: { message: "Maximum context length exceeded: private detail" } }, 400)
+    ).toBe("Provider rejected the request because its context or token limit was exceeded (400)")
+    expect(
+      safeProviderError({ error: { message: "Tool use is unsupported by this model" } }, 400)
+    ).toBe("Provider rejected the tool-call request; check that the model supports tools (400)")
+    expect(safeProviderError({ error: { message: "account private detail" } }, 400)).toBe(
+      "Provider request failed (400)"
+    )
   })
 
   it("still fails when only reasoning comes back", async () => {

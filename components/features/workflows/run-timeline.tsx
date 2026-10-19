@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { AUDIT_PAGE_SIZE_DEFAULT } from "@/lib/workflows/audit-page"
 import type { AuditEvent, AuditFilterGroup } from "@/lib/workflows/audit"
 import { isTerminal, type WorkflowRun } from "@/lib/workflows/schema"
 import { Badge } from "@/components/ui/badge"
@@ -26,7 +27,9 @@ import { formatTime } from "./run-status"
 type TimelineState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; events: AuditEvent[] }
+  | { kind: "ready"; events: AuditEvent[]; total: number; offset: number }
+
+const PAGE_SIZE = AUDIT_PAGE_SIZE_DEFAULT
 
 const GROUP_OPTIONS: Array<{ id: AuditFilterGroup | "all"; label: string }> = [
   { id: "all", label: "All" },
@@ -44,6 +47,7 @@ function eventIcon(type: AuditEvent["type"]): React.ReactNode {
       return <Bot className="h-3.5 w-3.5" aria-hidden />
     case "tool_call":
     case "tool_result":
+    case "tool_limit":
       return <Wrench className="h-3.5 w-3.5" aria-hidden />
     case "approval_requested":
     case "approval_resolved":
@@ -75,6 +79,10 @@ function summarize(event: AuditEvent): string {
       return `Tool call · ${event.tool}`
     case "tool_result":
       return event.error ? `Tool failed · ${event.tool}` : `Tool done · ${event.tool}`
+    case "tool_limit":
+      return `Tool safety limit · accepted ${event.accepted} of ${event.requested}`
+    case "context_compacted":
+      return `Context protected · removed ${event.removedMessages} old messages`
     case "approval_requested":
       return `Needs approval · ${event.tool}`
     case "approval_resolved":
@@ -132,26 +140,56 @@ function detailText(event: AuditEvent): string | null {
 export function RunTimeline({ run, refreshKey }: { run: WorkflowRun; refreshKey: number }) {
   const [group, setGroup] = React.useState<AuditFilterGroup | "all">("all")
   const [stepId, setStepId] = React.useState<string>("all")
+  const [page, setPage] = React.useState(0)
+  const [loading, setLoading] = React.useState(true)
   const [state, setState] = React.useState<TimelineState>({ kind: "loading" })
   const [open, setOpen] = React.useState<Set<number>>(new Set())
+  const requestId = React.useRef(0)
+
+  function changeGroup(next: AuditFilterGroup | "all"): void {
+    setGroup(next)
+    setPage(0)
+    setOpen(new Set())
+  }
+
+  function changeStep(next: string): void {
+    setStepId(next)
+    setPage(0)
+    setOpen(new Set())
+  }
 
   const load = React.useCallback(async () => {
+    const id = ++requestId.current
+    setLoading(true)
     try {
       const params = new URLSearchParams()
       if (group !== "all") params.set("group", group)
       if (stepId !== "all") params.set("stepId", stepId)
-      const qs = params.toString()
-      const data = await apiFetch<{ events: AuditEvent[] }>(
-        `/api/runs/${encodeURIComponent(run.id)}/audit${qs ? `?${qs}` : ""}`
-      )
-      setState({ kind: "ready", events: data.events })
+      params.set("offset", String(page * PAGE_SIZE))
+      params.set("limit", String(PAGE_SIZE))
+      const data = await apiFetch<{
+        events: AuditEvent[]
+        total?: number
+        offset?: number
+      }>(`/api/runs/${encodeURIComponent(run.id)}/audit?${params.toString()}`)
+      if (id !== requestId.current) return
+      const total = data.total ?? data.events.length
+      const offset = data.offset ?? page * PAGE_SIZE
+      if (total > 0 && offset >= total) {
+        setPage(Math.floor((total - 1) / PAGE_SIZE))
+        return
+      }
+      setState({ kind: "ready", events: data.events, total, offset })
     } catch (err) {
+      if (id !== requestId.current) return
       setState({
         kind: "error",
         message: err instanceof Error ? err.message : "Could not load the audit log",
       })
+    } finally {
+      if (id === requestId.current) setLoading(false)
     }
-  }, [run.id, group, stepId])
+  }, [run.id, group, stepId, page])
 
   React.useEffect(() => {
     void load()
@@ -176,8 +214,8 @@ export function RunTimeline({ run, refreshKey }: { run: WorkflowRun; refreshKey:
 
   return (
     <div className="space-y-3" data-testid="run-timeline">
-      <p className="text-sm text-muted-foreground">
-        Every model call and tool use for this run. Secrets are hidden.
+        <p className="text-sm text-muted-foreground">
+        Every model call and tool use for this run. Secrets are hidden. Logs are shown {PAGE_SIZE} at a time.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +224,7 @@ export function RunTimeline({ run, refreshKey }: { run: WorkflowRun; refreshKey:
             key={opt.id}
             size="sm"
             variant={group === opt.id ? "default" : "outline"}
-            onClick={() => setGroup(opt.id)}
+            onClick={() => changeGroup(opt.id)}
           >
             {opt.label}
           </Button>
@@ -194,7 +232,7 @@ export function RunTimeline({ run, refreshKey }: { run: WorkflowRun; refreshKey:
         <select
           className="h-8 rounded-md border bg-background px-2 text-sm"
           value={stepId}
-          onChange={(e) => setStepId(e.target.value)}
+          onChange={(e) => changeStep(e.target.value)}
           aria-label="Filter by step"
         >
           <option value="all">All steps</option>
@@ -286,6 +324,42 @@ export function RunTimeline({ run, refreshKey }: { run: WorkflowRun; refreshKey:
             )
           })}
         </ol>
+      ) : null}
+      {state.kind === "ready" && state.total > PAGE_SIZE ? (
+        <nav className="flex flex-wrap items-center justify-between gap-2" aria-label="Audit log pages">
+          <p className="text-sm text-muted-foreground">
+            Showing {state.offset + 1}–{state.offset + state.events.length} of{" "}
+            {state.total.toLocaleString()}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setOpen(new Set())
+                setPage((current) => Math.max(0, current - 1))
+              }}
+              disabled={loading || state.offset === 0}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {Math.floor(state.offset / PAGE_SIZE) + 1} of{" "}
+              {Math.ceil(state.total / PAGE_SIZE)}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setOpen(new Set())
+                setPage((current) => current + 1)
+              }}
+              disabled={loading || state.offset + state.events.length >= state.total}
+            >
+              Next
+            </Button>
+          </div>
+        </nav>
       ) : null}
     </div>
   )

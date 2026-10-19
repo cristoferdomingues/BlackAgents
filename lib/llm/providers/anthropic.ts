@@ -83,7 +83,8 @@ export const anthropicProvider: LLMProvider = {
   },
   async generate(
     request: LLMGenerateRequest,
-    credentials: LLMCredentials
+    credentials: LLMCredentials,
+    signal?: AbortSignal
   ): Promise<LLMGenerateResult> {
     const messages = request.messages
       .filter((m) => m.role !== "system")
@@ -143,6 +144,7 @@ export const anthropicProvider: LLMProvider = {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(bodyPayload),
+      signal,
     })
 
     const json = (await res.json().catch(() => null)) as AnthropicMessage | null

@@ -95,6 +95,10 @@ interface OpenAICompletion {
     prompt_tokens?: number
     completion_tokens?: number
   }
+  error?: {
+    message?: unknown
+    code?: unknown
+  }
 }
 
 const THINK_BLOCK = /<think>([\s\S]*?)(?:<\/think>|$)/gi
@@ -113,7 +117,8 @@ export function splitThinkBlocks(content: string): { content: string; reasoning:
 export async function openAICompatibleGenerate(
   baseUrl: string,
   request: LLMGenerateRequest,
-  apiKey: string
+  apiKey: string,
+  signal?: AbortSignal
 ): Promise<LLMGenerateResult> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -124,6 +129,9 @@ export async function openAICompatibleGenerate(
     model: request.model,
     messages: toOpenAIMessages(request),
     temperature: request.temperature ?? 0.4,
+    // Prevent compatible providers from using an extreme model default
+    // (one OpenRouter response produced 131k tokens and 2,994 tool calls).
+    max_tokens: 8_192,
   }
 
   if (request.tools && request.tools.length > 0) {
@@ -141,14 +149,12 @@ export async function openAICompatibleGenerate(
     method: "POST",
     headers,
     body: JSON.stringify(bodyPayload),
+    signal,
   })
 
   const json = (await res.json().catch(() => null)) as OpenAICompletion | null
   if (!res.ok) {
-    throw new ProviderError(
-      `Provider request failed (${res.status})`,
-      res.status
-    )
+    throw new ProviderError(safeProviderError(json, res.status), res.status)
   }
 
   const choice = json?.choices?.[0]
@@ -196,6 +202,21 @@ export async function openAICompatibleGenerate(
   }
 }
 
+/** Turn common upstream 400s into useful text without exposing its raw body. */
+export function safeProviderError(json: OpenAICompletion | null, status: number): string {
+  const raw = typeof json?.error?.message === "string" ? json.error.message.toLowerCase() : ""
+  if (/context|token|maximum.*length|too long/.test(raw)) {
+    return `Provider rejected the request because its context or token limit was exceeded (${status})`
+  }
+  if (/tool|function/.test(raw)) {
+    return `Provider rejected the tool-call request; check that the model supports tools (${status})`
+  }
+  if (/parameter|unsupported|invalid.*request/.test(raw)) {
+    return `Provider rejected an unsupported request parameter (${status})`
+  }
+  return `Provider request failed (${status})`
+}
+
 export const openAIProvider: LLMProvider = {
   id: "openai",
   label: "OpenAI",
@@ -207,11 +228,12 @@ export const openAIProvider: LLMProvider = {
       "OpenAI"
     )
   },
-  generate(request: LLMGenerateRequest, credentials: LLMCredentials) {
+  generate(request: LLMGenerateRequest, credentials: LLMCredentials, signal?: AbortSignal) {
     return openAICompatibleGenerate(
       "https://api.openai.com/v1",
       request,
-      credentials.apiKey
+      credentials.apiKey,
+      signal
     )
   },
 }

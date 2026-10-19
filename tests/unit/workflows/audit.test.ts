@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
   appendAuditEvent,
+  auditPageQuerySchema,
   collectSecretValues,
   deleteAuditEvents,
+  pageAuditEvents,
   readAuditEvents,
   sanitizeAuditEvent,
   type AuditEvent,
@@ -38,6 +40,21 @@ function baseRun(id: string, createdAt: string): WorkflowRun {
     pendingApproval: null,
   }
 }
+
+describe("audit pages", () => {
+  it("returns one slice and the full count", () => {
+    const page = pageAuditEvents(["a", "b", "c"], 1, 1)
+    expect(page).toEqual({ events: ["b"], total: 3, offset: 1, limit: 1 })
+    expect(pageAuditEvents(["a"], 5, 2)).toEqual({ events: [], total: 1, offset: 5, limit: 2 })
+  })
+
+  it("rejects a page that is too large or negative", () => {
+    expect(auditPageQuerySchema.safeParse({ offset: 0, limit: 50 }).success).toBe(true)
+    expect(auditPageQuerySchema.safeParse({ limit: 0 }).success).toBe(false)
+    expect(auditPageQuerySchema.safeParse({ limit: 101 }).success).toBe(false)
+    expect(auditPageQuerySchema.safeParse({ offset: -1 }).success).toBe(false)
+  })
+})
 
 describe("sanitizeAuditEvent", () => {
   it("redacts secret values and truncates long text", () => {

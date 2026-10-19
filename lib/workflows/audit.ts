@@ -13,6 +13,14 @@ import { RUNS_DIR } from "./store"
 
 export const AUDIT_PAYLOAD_MAX_CHARS = 20_000
 
+export {
+  AUDIT_PAGE_SIZE_DEFAULT,
+  AUDIT_PAGE_SIZE_MAX,
+  auditPageQuerySchema,
+  pageAuditEvents,
+  type AuditPage,
+} from "./audit-page"
+
 const tokenUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
@@ -87,6 +95,17 @@ export const auditEventSchema = z.discriminatedUnion("type", [
     durationMs: z.number().nonnegative(),
   }),
   auditBase.extend({
+    type: z.literal("tool_limit"),
+    requested: z.number().int().nonnegative(),
+    accepted: z.number().int().nonnegative(),
+    duplicates: z.number().int().nonnegative(),
+    reason: z.enum(["per_turn", "total"]),
+  }),
+  auditBase.extend({
+    type: z.literal("context_compacted"),
+    removedMessages: z.number().int().positive(),
+  }),
+  auditBase.extend({
     type: z.literal("approval_requested"),
     approvalId: z.string(),
     tool: z.string(),
@@ -133,10 +152,10 @@ export type AuditFilterGroup = "ai" | "tools" | "approvals" | "errors" | "lifecy
 
 const FILTER_GROUPS: Record<AuditFilterGroup, readonly AuditEventType[]> = {
   ai: ["llm_request", "llm_response"],
-  tools: ["tool_call", "tool_result"],
+  tools: ["tool_call", "tool_result", "tool_limit"],
   approvals: ["approval_requested", "approval_resolved", "login_pause"],
   errors: ["error"],
-  lifecycle: ["run_started", "step_started", "step_finished", "run_finished", "retry", "gate", "review_sent_back"],
+  lifecycle: ["run_started", "step_started", "step_finished", "run_finished", "retry", "gate", "review_sent_back", "context_compacted"],
 }
 
 export function auditTypesForGroup(group: AuditFilterGroup): readonly AuditEventType[] {

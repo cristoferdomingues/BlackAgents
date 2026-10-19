@@ -1,7 +1,9 @@
 import { fail, handle, ok } from "@/lib/api-response"
 import { readConfig } from "@/lib/config"
 import {
+  auditPageQuerySchema,
   auditTypesForGroup,
+  pageAuditEvents,
   readAuditEvents,
   readAuditJsonl,
   type AuditFilterGroup,
@@ -48,7 +50,14 @@ export async function GET(req: Request, ctx: RouteContext) {
       types = typeParam.split(",").map((t) => t.trim()) as AuditEventType[]
     }
 
+    const pageQuery = auditPageQuerySchema.safeParse({
+      ...(url.searchParams.has("offset") ? { offset: url.searchParams.get("offset") } : {}),
+      ...(url.searchParams.has("limit") ? { limit: url.searchParams.get("limit") } : {}),
+    })
+    if (!pageQuery.success) return fail("Invalid page", 400)
+
     const events = await readAuditEvents(currentPath, id, { stepId, types })
-    return ok({ events, runId: id })
+    const page = pageAuditEvents(events, pageQuery.data.offset, pageQuery.data.limit)
+    return ok({ ...page, runId: id })
   })
 }

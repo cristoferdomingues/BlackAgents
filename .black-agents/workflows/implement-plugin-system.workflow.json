@@ -16,8 +16,9 @@
       "files": [],
       "allowWrites": false,
       "maxTurns": 60,
-      "gate": false,
+      "gate": true,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -30,6 +31,7 @@
       "maxTurns": 40,
       "gate": false,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -42,6 +44,7 @@
       "maxTurns": 40,
       "gate": false,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -54,6 +57,7 @@
       "maxTurns": 50,
       "gate": false,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -66,6 +70,7 @@
       "maxTurns": 50,
       "gate": true,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -78,6 +83,7 @@
       "maxTurns": 60,
       "gate": true,
       "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -103,7 +109,11 @@
       "maxTurns": 40,
       "gate": true,
       "review": true,
-      "onReject": { "step": "fix-review", "maxRounds": 2 },
+      "onReject": {
+        "step": "fix-review",
+        "maxRounds": 2
+      },
+      "repair": false,
       "login": false
     }
   ],

@@ -29,7 +29,8 @@ export const customProvider: LLMProvider = {
   },
   generate(
     request: LLMGenerateRequest,
-    credentials: LLMCredentials
+    credentials: LLMCredentials,
+    signal?: AbortSignal
   ): Promise<LLMGenerateResult> {
     if (!credentials.baseUrl) {
       throw new ProviderError(
@@ -40,7 +41,8 @@ export const customProvider: LLMProvider = {
     return openAICompatibleGenerate(
       credentials.baseUrl,
       request,
-      credentials.apiKey
+      credentials.apiKey,
+      signal
     )
   },
 }

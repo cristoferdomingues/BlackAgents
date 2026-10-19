@@ -383,6 +383,27 @@ export async function executeRun(
               error: event.trace.error,
               durationMs: event.trace.durationMs ?? 0,
             })
+          } else if (event.type === "tool_limit") {
+            audit({
+              type: "tool_limit",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              turn: event.turn,
+              requested: event.requested,
+              accepted: event.accepted,
+              duplicates: event.duplicates,
+              reason: event.reason,
+            })
+          } else if (event.type === "context_compacted") {
+            audit({
+              type: "context_compacted",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              turn: event.turn,
+              removedMessages: event.removedMessages,
+            })
           }
           live.notify()
         }

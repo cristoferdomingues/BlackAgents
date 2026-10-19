@@ -85,6 +85,15 @@ export type AgentLoopEvent =
   | { type: "thinking"; turn: number; content: string }
   | { type: "token"; turn: number; content: string }
   | {
+      type: "tool_limit"
+      turn: number
+      requested: number
+      accepted: number
+      duplicates: number
+      reason: "per_turn" | "total"
+    }
+  | { type: "context_compacted"; turn: number; removedMessages: number }
+  | {
       type: "tool_call"
       id: string
       tool: string

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 
 import { ProviderError } from "@/lib/llm/types"
 import {
+  AgentContextLimitError,
+  compactToolHistory,
   LoopAbortedError,
   runAgentLoop,
   truncateResult,
@@ -186,6 +188,71 @@ describe("runAgentLoop", () => {
     expect(provider.requests[2].tools).toBeDefined()
   })
 
+  it("caps tool calls from one runaway model reply", async () => {
+    const tool = fakeTool("search", "read")
+    const calls = Array.from({ length: 30 }, (_, i) => call(`c${i}`, "search", { q: i }))
+    const provider = scriptedProvider([{ toolCalls: calls }, { content: "partial result" }])
+    const events: AgentLoopEvent[] = []
+    const result = await runAgentLoop(
+      options({
+        provider,
+        tools: [tool],
+        maxToolCallsPerTurn: 3,
+        onEvent: (event) => events.push(event),
+      })
+    )
+    expect(tool.calls).toHaveLength(3)
+    expect(result).toMatchObject({ content: "partial result", stoppedAtLimit: true, turns: 1 })
+    expect(events.find((event) => event.type === "tool_limit")).toMatchObject({
+      type: "tool_limit",
+      requested: 30,
+      accepted: 3,
+      duplicates: 0,
+      reason: "per_turn",
+    })
+  })
+
+  it("removes duplicate calls in the same model reply", async () => {
+    const tool = fakeTool("search", "read")
+    const calls = Array.from({ length: 30 }, (_, i) => call(`c${i}`, "search", { q: "same" }))
+    const provider = scriptedProvider([{ toolCalls: calls }, { content: "done" }])
+    const events: AgentLoopEvent[] = []
+    await runAgentLoop(
+      options({ provider, tools: [tool], onEvent: (event) => events.push(event) })
+    )
+    expect(tool.calls).toHaveLength(1)
+    expect(events.find((event) => event.type === "tool_limit")).toMatchObject({
+      accepted: 1,
+      duplicates: 29,
+    })
+  })
+
+  it("caps total calls across turns", async () => {
+    const tool = fakeTool("search", "read")
+    const provider = scriptedProvider([
+      { toolCalls: Array.from({ length: 3 }, (_, i) => call(`a${i}`, "search", { q: `a${i}` })) },
+      { toolCalls: Array.from({ length: 3 }, (_, i) => call(`b${i}`, "search", { q: `b${i}` })) },
+      { content: "stopped safely" },
+    ])
+    const events: AgentLoopEvent[] = []
+    const result = await runAgentLoop(
+      options({
+        provider,
+        tools: [tool],
+        maxToolCallsPerTurn: 3,
+        maxTotalToolCalls: 5,
+        onEvent: (event) => events.push(event),
+      })
+    )
+    expect(tool.calls).toHaveLength(5)
+    expect(result.content).toBe("stopped safely")
+    expect(events.find((event) => event.type === "tool_limit")).toMatchObject({
+      reason: "total",
+      requested: 3,
+      accepted: 2,
+    })
+  })
+
   it("propagates provider errors", async () => {
     const provider = scriptedProvider([new ProviderError("bad key", 401)])
     await expect(runAgentLoop(options({ provider }))).rejects.toBeInstanceOf(ProviderError)
@@ -205,6 +272,34 @@ describe("runAgentLoop", () => {
     const provider = scriptedProvider([{ toolCalls: [call("a", "slow")] }, { content: "ok" }])
     const result = await runAgentLoop(options({ provider, tools: [slow], toolTimeoutMs: 20 }))
     expect(result.toolExecutions[0].error).toMatch(/timed out/)
+  })
+})
+
+describe("compactToolHistory", () => {
+  it("removes old complete tool exchanges but keeps initial messages", () => {
+    const messages = [
+      { role: "user" as const, content: "task" },
+      { role: "assistant" as const, content: "", tool_calls: [call("a", "read")] },
+      { role: "tool" as const, content: "x".repeat(100), tool_call_id: "a", name: "read" },
+      { role: "assistant" as const, content: "", tool_calls: [call("b", "read")] },
+      { role: "tool" as const, content: "ok", tool_call_id: "b", name: "read" },
+    ]
+    const compacted = compactToolHistory(messages, 1, undefined, [], 250)
+    expect(compacted.messages[0]).toMatchObject({ role: "user", content: "task" })
+    expect(compacted.removedMessages).toBe(2)
+    expect(compacted.messages.some((m) => m.tool_call_id === "b")).toBe(true)
+  })
+
+  it("fails clearly when the protected prompt alone is too large", () => {
+    expect(() =>
+      compactToolHistory(
+        [{ role: "user", content: "x".repeat(100) }],
+        1,
+        "system",
+        [],
+        20
+      )
+    ).toThrow(AgentContextLimitError)
   })
 })
 

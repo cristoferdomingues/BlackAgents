@@ -89,11 +89,26 @@ describe("GET /api/runs/[id]/audit", () => {
       args: { path: "a.md" },
     })
 
-    const all = await json<{ events: Array<{ type: string }> }>(
-      await AUDIT(new Request("http://t/api/runs/run-1/audit"), byId("run-1"))
-    )
+    const all = await json<{
+      events: Array<{ type: string }>
+      total: number
+      offset: number
+      limit: number
+    }>(await AUDIT(new Request("http://t/api/runs/run-1/audit"), byId("run-1")))
     expect(all.status).toBe(200)
     expect(all.body.data?.events).toHaveLength(3)
+    expect(all.body.data).toMatchObject({ total: 3, offset: 0, limit: 50 })
+
+    const page = await json<{ events: Array<{ type: string }>; total: number }>(
+      await AUDIT(new Request("http://t/api/runs/run-1/audit?offset=1&limit=1"), byId("run-1"))
+    )
+    expect(page.body.data?.total).toBe(3)
+    expect(page.body.data?.events.map((event) => event.type)).toEqual(["llm_response"])
+
+    const badPage = await json(
+      await AUDIT(new Request("http://t/api/runs/run-1/audit?limit=0"), byId("run-1"))
+    )
+    expect(badPage.status).toBe(400)
 
     const ai = await json<{ events: Array<{ type: string }> }>(
       await AUDIT(new Request("http://t/api/runs/run-1/audit?group=ai"), byId("run-1"))

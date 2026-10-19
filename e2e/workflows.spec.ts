@@ -540,7 +540,10 @@ test.describe("workflows", () => {
           maxTurns: 25,
           lastActivityAt: staleAt,
           activity: { kind: "waiting_model", label: "Waiting for model…", since: staleAt },
-          recent: [{ at: staleAt, text: "Turn 4 / 25" }],
+          recent: [
+            { at: staleAt, text: "Turn 4 / 25" },
+            { at: staleAt, text: "Tool safety limit: accepted 20 of 2994 calls" },
+          ],
         },
       ],
     })
@@ -584,6 +587,17 @@ test.describe("workflows", () => {
                 content: "Working…",
                 durationMs: 1200,
               },
+              {
+                type: "tool_limit",
+                ts: "2026-10-19T12:00:11.000Z",
+                stepId: "plan",
+                attempt: 1,
+                turn: 3,
+                requested: 2994,
+                accepted: 20,
+                duplicates: 2924,
+                reason: "per_turn",
+              },
             ],
           },
         },
@@ -595,10 +609,53 @@ test.describe("workflows", () => {
     await expect(page.getByTestId("step-turn")).toContainText("Turn 4 / 25")
     await expect(page.getByTestId("step-action")).toContainText("Waiting for model")
     await expect(page.getByTestId("step-stale")).toContainText("No activity for")
+    await expect(page.getByText("Tool safety limit: accepted 20 of 2994 calls")).toBeVisible()
 
     await page.getByRole("tab", { name: "Timeline" }).click()
     await expect(page.getByTestId("run-timeline")).toBeVisible()
     await expect(page.getByText("Run started · review-line")).toBeVisible()
     await expect(page.getByText("Model reply", { exact: false })).toBeVisible()
+    await expect(page.getByText("Tool safety limit · accepted 20 of 2994")).toBeVisible()
+    await expect(page.getByRole("navigation", { name: "Audit log pages" })).toHaveCount(0)
+  })
+
+  test("pages a long audit log", async ({ page }) => {
+    await page.route("**/api/runs/run-1/events", (route) => fulfillSse(route, [["run", run()]]))
+    await page.route("**/api/runs/run-1/audit**", (route) => {
+      const url = new URL(route.request().url())
+      const offset = Number(url.searchParams.get("offset") ?? 0)
+      const limit = Number(url.searchParams.get("limit") ?? 50)
+      const total = 51
+      const count = Math.max(0, Math.min(limit, total - offset))
+      const events = Array.from({ length: count }, (_, index) => ({
+        type: "tool_call",
+        ts: "2026-10-19T12:00:00.000Z",
+        stepId: "plan",
+        id: `call-${offset + index}`,
+        tool: `tool-${offset + index}`,
+        server: "builtin",
+        risk: "read",
+        args: {},
+      }))
+      return route.fulfill({
+        json: { success: true, data: { runId: "run-1", events, total, offset, limit } },
+      })
+    })
+
+    await page.goto("/workflows/runs/run-1")
+    await page.getByRole("tab", { name: "Timeline" }).click()
+    const timeline = page.getByTestId("run-timeline")
+    await expect(timeline.getByText("Showing 1–50 of 51")).toBeVisible()
+    await expect(timeline.getByText("Tool call · tool-0")).toBeVisible()
+    await expect(timeline.getByText("Tool call · tool-50")).toHaveCount(0)
+
+    await timeline.getByRole("button", { name: "Next", exact: true }).click()
+    await expect(timeline.getByText("Showing 51–51 of 51")).toBeVisible()
+    await expect(timeline.getByText("Tool call · tool-50")).toBeVisible()
+    await expect(timeline.getByText("Tool call · tool-0")).toHaveCount(0)
+    await expect(timeline.getByRole("button", { name: "Next", exact: true })).toBeDisabled()
+
+    await timeline.getByRole("button", { name: "Previous", exact: true }).click()
+    await expect(timeline.getByText("Showing 1–50 of 51")).toBeVisible()
   })
 })

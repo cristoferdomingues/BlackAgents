@@ -129,6 +129,19 @@ export function applyLoopEventToStep(step: StepRun, event: AgentLoopEvent, now =
     case "token":
       step.lastActivityAt = at
       break
+    case "tool_limit":
+      step.lastActivityAt = at
+      step.activity = { kind: "idle", label: "Tool safety limit reached", since: at }
+      pushRecent(
+        step,
+        `Tool safety limit: accepted ${event.accepted} of ${event.requested} calls`,
+        at
+      )
+      break
+    case "context_compacted":
+      step.lastActivityAt = at
+      pushRecent(step, `Removed ${event.removedMessages} old messages to keep context safe`, at)
+      break
     case "tool_call":
       setActivity(
         step,

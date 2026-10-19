@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils"
 import type { Artifact } from "@/lib/artifacts/types"
 import type { WorkspaceFile } from "@/lib/files/schema"
 import type { BuiltinToolName } from "@/lib/runtime/tool-names"
-import { MAX_STEP_FILES, MAX_STEP_TURNS, DEFAULT_STEP_TURNS, type WorkflowStep } from "@/lib/workflows/schema"
+import {
+  DEFAULT_STEP_TURNS,
+  MAX_REVIEW_ROUNDS,
+  MAX_STEP_FILES,
+  MAX_STEP_TURNS,
+  type WorkflowStep,
+} from "@/lib/workflows/schema"
 import {
   agentBuiltinTools,
   inputForKind,
@@ -49,6 +55,10 @@ export interface StepDraft {
   maxTurns: number
   gate: boolean
   review: boolean
+  repair: boolean
+  sendBack: boolean
+  sendBackStep: string
+  sendBackRounds: number
   login: boolean
   username: string
   password: string
@@ -77,6 +87,7 @@ export function StepCard({
   workspaceFiles,
   modelSummary,
   taskChoices,
+  otherSteps,
   onToggle,
   onChange,
   onMove,
@@ -91,6 +102,7 @@ export function StepCard({
   workspaceFiles: WorkspaceFile[]
   modelSummary: string
   taskChoices: TaskChoiceMap
+  otherSteps: Array<{ id: string }>
   onToggle: () => void
   onChange: (patch: Partial<StepDraft>) => void
   onMove: (delta: number) => void
@@ -109,10 +121,17 @@ export function StepCard({
     gate: step.gate,
     allowWrites: step.allowWrites,
     files: step.files.length,
+    repair: step.repair,
+    sendBack: step.review && step.sendBack,
   })
 
   function pickKind(next: StepKind): void {
-    onChange({ ...stepKindFlags(next), input: inputForKind(next, step.input) })
+    onChange({
+      ...stepKindFlags(next),
+      input: inputForKind(next, step.input),
+      repair: next === "work" ? step.repair : false,
+      sendBack: next === "review" ? step.sendBack : false,
+    })
   }
 
   return (
@@ -366,6 +385,68 @@ export function StepCard({
                 checked={step.allowWrites}
                 onChange={(v) => onChange({ allowWrites: v })}
               />
+            ) : null}
+            {kind === "work" ? (
+              <SwitchRow
+                id={`${step.key}-repair`}
+                label="Only run this step to fix a rejection"
+                hint="The line skips this step until a review sends the work here."
+                checked={step.repair}
+                onChange={(v) => onChange({ repair: v })}
+              />
+            ) : null}
+            {kind === "review" ? (
+              <div className="space-y-3">
+                <SwitchRow
+                  id={`${step.key}-send-back`}
+                  label="Send the work back if rejected"
+                  hint="On reject, the chosen step runs again with the defects, then this review runs once more."
+                  checked={step.sendBack}
+                  onChange={(v) => onChange({ sendBack: v })}
+                />
+                {step.sendBack ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`${step.key}-send-back-step`}>Fix step</Label>
+                      <Select
+                        value={step.sendBackStep}
+                        onValueChange={(v) => onChange({ sendBackStep: v })}
+                      >
+                        <SelectTrigger id={`${step.key}-send-back-step`}>
+                          <SelectValue placeholder="Choose a step" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {otherSteps.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`${step.key}-send-back-rounds`}>
+                        Fix rounds (1–{MAX_REVIEW_ROUNDS})
+                      </Label>
+                      <Input
+                        id={`${step.key}-send-back-rounds`}
+                        type="number"
+                        min={1}
+                        max={MAX_REVIEW_ROUNDS}
+                        value={step.sendBackRounds}
+                        onChange={(e) =>
+                          onChange({
+                            sendBackRounds: Math.min(
+                              MAX_REVIEW_ROUNDS,
+                              Math.max(1, numberValue(e.target.value, step.sendBackRounds))
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             <SwitchRow
               id={`${step.key}-gate`}

@@ -95,6 +95,10 @@ function emptyStep(id: string, agent = "", key = nextKey()): StepDraft {
     maxTurns: DEFAULT_STEP_TURNS,
     gate: false,
     review: false,
+    repair: false,
+    sendBack: false,
+    sendBackStep: "",
+    sendBackRounds: 2,
     login: false,
     username: "",
     password: "",
@@ -133,6 +137,10 @@ function toDraft(wf: Workflow): Draft {
         maxTurns: s.maxTurns,
         gate: s.gate,
         review: s.review,
+        repair: s.repair,
+        sendBack: Boolean(s.onReject),
+        sendBackStep: s.onReject?.step ?? "",
+        sendBackRounds: s.onReject?.maxRounds ?? 2,
         login: s.login,
         username: "",
         password: "",
@@ -148,6 +156,13 @@ function toInput(d: Draft): { body: unknown; error: string | null; stepKey?: str
   for (const s of d.steps) {
     const issue = stepModelIssue(s.modelChoice, s.model, s.id.trim() || s.id)
     if (issue) return { body: null, error: issue, stepKey: s.key }
+    if (s.review && s.sendBack && !s.sendBackStep.trim()) {
+      return {
+        body: null,
+        error: `Step "${s.id.trim() || s.id}": choose the step that fixes a rejection`,
+        stepKey: s.key,
+      }
+    }
     steps.push({
       id: s.id.trim(),
       agent: s.agent,
@@ -160,6 +175,11 @@ function toInput(d: Draft): { body: unknown; error: string | null; stepKey?: str
       maxTurns: s.maxTurns,
       gate: s.gate,
       review: s.review,
+      repair: s.review && s.sendBack ? false : s.repair,
+      onReject:
+        s.review && s.sendBack
+          ? { step: s.sendBackStep.trim(), maxRounds: s.sendBackRounds }
+          : undefined,
       login: s.login,
       ...stepModelFields(s.modelChoice, s.model),
     })
@@ -535,6 +555,9 @@ export function WorkflowBuilder({ name }: { name?: string }) {
                       })
                     })()}
                     taskChoices={taskModels.choices}
+                    otherSteps={draft.steps
+                      .filter((item) => item.key !== step.key && item.id.trim())
+                      .map((item) => ({ id: item.id.trim() }))}
                     onToggle={() => setOpenKey((current) => (current === step.key ? null : step.key))}
                     onChange={(patch) => setStep(step.key, patch)}
                     onMove={(delta) => moveStep(index, delta)}

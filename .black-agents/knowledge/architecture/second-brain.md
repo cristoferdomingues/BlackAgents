@@ -14,8 +14,8 @@ sources:
     title: Second Brain
     last_modified: '2026-10-15T00:00:00Z'
 generated:
-  by: 'process:obsidian-to-okf'
-  at: '2026-10-16T16:05:00Z'
+  by: 'agent:cursor'
+  at: '2026-10-19T13:47:00Z'
 status: draft
 verified:
   - by: 'human:local'
@@ -42,7 +42,7 @@ Notes are one line each: `- [YYYY-MM-DD] text`. You can edit the files by hand.
 
 - **Feedback**: thumbs up/down + comment under chat replies and finished runs (`POST /api/brain/feedback`).
 - **Self**: a workflow with `selfAssess: true` sends each finished step after the run.
-- **Review**: in a `selfAssess` workflow, a step with `review: true` that ends with `VERDICT: reject` sends thumbs-down feedback (its reasons as the comment) to each agent whose work it received. It is explicit feedback, so it works without Jev, and it goes before the self signals (3/run cap). The draft prompt prefers fixing that agent's skills or rules.
+- **Review**: in a `selfAssess` workflow, a step with `review: true` that ends with `VERDICT: reject` sends thumbs-down feedback (its reasons as the comment) to each agent whose work it received. It is explicit feedback, so it works without Jev, and it goes before the self signals (3/run cap). The draft prompt prefers fixing that agent's skills or rules. This is separate from `onReject`, which re-runs a fix step in the same run ([Workflows](./workflows.md)).
 
 ## From Signal to Proposal (`lib/brain/learn.ts` → `processSignal`)
 

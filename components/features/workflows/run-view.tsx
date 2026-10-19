@@ -236,6 +236,9 @@ export function RunView({ id }: { id: string }) {
                             {step.gate.by === "jev" ? `Jev: ${step.gate.decision}` : "Gate: continue"}
                           </Badge>
                         ) : null}
+                        {step.sentBack ? (
+                          <Badge variant="outline">Sent back {step.sentBack}</Badge>
+                        ) : null}
                         {step.verdict ? (
                           <Badge variant={step.verdict === "reject" ? "destructive" : "secondary"}>
                             {step.verdict === "reject" ? "Review: rejected" : "Review: approved"}

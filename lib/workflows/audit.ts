@@ -100,6 +100,13 @@ export const auditEventSchema = z.discriminatedUnion("type", [
   auditBase.extend({ type: z.literal("login_pause"), reason: z.string() }),
   auditBase.extend({ type: z.literal("retry"), reason: z.string() }),
   auditBase.extend({
+    type: z.literal("review_sent_back"),
+    targetStep: z.string(),
+    round: z.number().int().positive(),
+    maxRounds: z.number().int().positive(),
+    reasons: z.string(),
+  }),
+  auditBase.extend({
     type: z.literal("gate"),
     decision: z.enum(["continue", "retry", "stop"]),
     by: z.enum(["jev", "default"]),
@@ -129,7 +136,7 @@ const FILTER_GROUPS: Record<AuditFilterGroup, readonly AuditEventType[]> = {
   tools: ["tool_call", "tool_result"],
   approvals: ["approval_requested", "approval_resolved", "login_pause"],
   errors: ["error"],
-  lifecycle: ["run_started", "step_started", "step_finished", "run_finished", "retry", "gate"],
+  lifecycle: ["run_started", "step_started", "step_finished", "run_finished", "retry", "gate", "review_sent_back"],
 }
 
 export function auditTypesForGroup(group: AuditFilterGroup): readonly AuditEventType[] {
@@ -230,6 +237,8 @@ export function sanitizeAuditEvent(event: AuditEvent, secrets: Record<string, st
       return { ...event, reason: redactText(event.reason, secrets) }
     case "retry":
       return { ...event, reason: redactText(event.reason, secrets) }
+    case "review_sent_back":
+      return { ...event, reasons: redactText(event.reasons, secrets) }
     case "step_finished":
       return { ...event, error: event.error ? redactText(event.error, secrets) : undefined }
     case "run_finished":

@@ -1,6 +1,6 @@
 export type ReviewVerdict = "approve" | "reject"
 
-const VERDICT_LINE = /^\s*\**\s*verdict\s*\**\s*:\s*\**\s*(approve|approved|reject|rejected)\b/i
+const VERDICT_LINE = /^\s*\**\s*verdict\s*\**\s*:\s*\**\s*(approve|approved|pass|reject|rejected|fail|failed)\b/i
 
 export const REVIEW_INSTRUCTION =
   "## Review\n\nYou review the work in the handoff. If it is not good enough, list each reason clearly so the author can fix it. End your reply with exactly one line: `VERDICT: approve` or `VERDICT: reject`."
@@ -10,7 +10,10 @@ export function parseReviewVerdict(output: string): ReviewVerdict | null {
   const lines = output.split("\n")
   for (let i = lines.length - 1; i >= 0; i--) {
     const match = lines[i].match(VERDICT_LINE)
-    if (match) return match[1].toLowerCase().startsWith("approve") ? "approve" : "reject"
+    if (match) {
+      const word = match[1].toLowerCase()
+      return word === "approve" || word === "approved" || word === "pass" ? "approve" : "reject"
+    }
   }
   return null
 }

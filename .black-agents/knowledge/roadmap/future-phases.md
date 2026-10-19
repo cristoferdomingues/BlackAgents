@@ -12,8 +12,8 @@ sources:
     title: Future Phases
     last_modified: '2026-10-15T00:00:00Z'
 generated:
-  by: 'process:obsidian-to-okf'
-  at: '2026-10-16T16:05:00Z'
+  by: 'agent:cursor'
+  at: '2026-10-19T13:47:00Z'
 status: draft
 verified:
   - by: 'human:local'
@@ -148,7 +148,7 @@ Agents now **act**, not only draft — always with user approval. Used BlackLion
 | Skill suggest + trigger check | `lib/decision/skill-suggest.ts` | which skill fits, and whether a description is too wide — [Skills](../artifacts/skills.md) |
 | MCP for agents | `lib/runtime/tools/mcp.ts`, `lib/mcp/policy.ts`, `lib/mcp/transport.ts` | `server__tool` + trust levels; stdio, HTTP POST, or SSE; optional headers — [Agent Runtime & Approvals](../architecture/agent-runtime-approvals.md) |
 | Bundles | `lib/llm/bundle.ts` | 1 agent + ≤ 3 skills + ≤ 3 rules, standards-checked |
-| Workflows | `lib/workflows/` | local agent teams, scheduler — [Workflows](../architecture/workflows.md) |
+| Workflows | `lib/workflows/` | local agent teams, scheduler, live step activity, audit log, review send-back — [Workflows](../architecture/workflows.md) |
 | Second Brain | `lib/brain/` | feedback → proposals → approved memory — [Second Brain](../architecture/second-brain.md) |
 
 ### Assistant files, voice, and workflows · shipped (2026-10-11)

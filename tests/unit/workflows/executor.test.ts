@@ -142,6 +142,69 @@ describe("executeRun", () => {
     expect(run.report).toContain("Stopped early")
   })
 
+  it("sends a rejected review back to the fix step, then accepts the next review", async () => {
+    const provider = scriptedProvider([
+      { content: "first build" },
+      { content: "Missing tests.\nVERDICT: reject" },
+      { content: "added tests" },
+      { content: "Looks good.\nVERDICT: approve" },
+    ])
+    const wf = workflow({
+      steps: [
+        { id: "build", agent: "builder" },
+        { id: "fix", agent: "builder", repair: true },
+        { id: "check", agent: "planner", review: true, input: "all", onReject: { step: "fix", maxRounds: 2 } },
+      ],
+    })
+    const run = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("succeeded")
+    expect(run.steps.map((s) => s.status)).toEqual(["succeeded", "succeeded", "succeeded"])
+    expect(run.steps[1].output).toBe("added tests")
+    expect(run.steps[2]).toMatchObject({ verdict: "approve", sentBack: 1 })
+    const fixPrompt = provider.requests[2].messages.at(-1)?.content ?? ""
+    expect(fixPrompt).toContain("Missing tests.")
+    expect(fixPrompt).toContain("## Review feedback")
+  })
+
+  it("fails the run when the review still rejects after the fix rounds", async () => {
+    const provider = scriptedProvider([
+      { content: "first build" },
+      { content: "Still broken.\nVERDICT: reject" },
+      { content: "tried" },
+      { content: "Still broken.\nVERDICT: reject" },
+    ])
+    const wf = workflow({
+      steps: [
+        { id: "build", agent: "builder" },
+        { id: "fix", agent: "builder", repair: true },
+        { id: "check", agent: "planner", review: true, onReject: { step: "fix", maxRounds: 1 } },
+      ],
+    })
+    const run = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("failed")
+    expect(run.error).toContain("1 fix round")
+    expect(run.steps[2].verdict).toBe("reject")
+  })
+
+  it("skips a fix step when the review approves the first time", async () => {
+    const provider = scriptedProvider([
+      { content: "first build" },
+      { content: "Good.\nVERDICT: approve" },
+    ])
+    const wf = workflow({
+      steps: [
+        { id: "build", agent: "builder" },
+        { id: "fix", agent: "builder", repair: true },
+        { id: "check", agent: "planner", review: true, onReject: { step: "fix", maxRounds: 2 } },
+      ],
+    })
+    const run = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("succeeded")
+    expect(run.steps[1].status).toBe("skipped")
+    expect(run.steps[2].verdict).toBe("approve")
+    expect(provider.requests).toHaveLength(2)
+  })
+
   it("records a review step's verdict only on review steps", async () => {
     const provider = scriptedProvider([{ content: "code\nVERDICT: approve" }, { content: "No tests.\nVERDICT: reject" }])
     const wf = workflow({ steps: [{ id: "build", agent: "planner" }, { id: "review", agent: "builder", review: true }] })

@@ -36,7 +36,7 @@ import {
   clearLiveStepFields,
   createThrottledUpdate,
 } from "./live"
-import { parseReviewVerdict } from "./review"
+import { parseReviewVerdict, reviewReasons } from "./review"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
 export const REPORT_MAX_CHARS = 2_000
@@ -183,8 +183,21 @@ export async function executeRun(
     const credentialCache = new Map<string, ResolvedLlm>()
     const knowledge = await loadKnowledgeContext(run.workspaceRoot)
 
-    for (const [index, step] of workflow.steps.entries()) {
+    const reviewFeedback = new Map<string, string>()
+    const sentBack = new Map<string, number>()
+    let forceRepairId: string | null = null
+    let index = 0
+    while (index < workflow.steps.length) {
+      const step = workflow.steps[index]
       const stepRun = run.steps[index]
+      if (step.repair && forceRepairId !== step.id) {
+        stepRun.status = "skipped"
+        stepRun.finishedAt = new Date().toISOString()
+        await update()
+        index++
+        continue
+      }
+      if (forceRepairId === step.id) forceRepairId = null
       const agent = all.find((a) => a.type === "agent" && a.name === step.agent)
       if (!agent) throw new StepFailure(`Agent "${step.agent}" was not found`)
 
@@ -392,6 +405,7 @@ export async function executeRun(
                   files: stepWorkspaceFiles,
                   retryNote,
                   loginNote,
+                  reviewFeedback: reviewFeedback.get(step.id),
                 }),
               },
             ],
@@ -543,11 +557,44 @@ export async function executeRun(
         status: "succeeded",
       })
 
+      reviewFeedback.delete(step.id)
+
+      if (step.review && stepRun.verdict === "reject" && step.onReject) {
+        const used = sentBack.get(step.id) ?? 0
+        const targetIndex = workflow.steps.findIndex((s) => s.id === step.onReject?.step)
+        if (used < step.onReject.maxRounds && targetIndex >= 0) {
+          const round = used + 1
+          sentBack.set(step.id, round)
+          stepRun.sentBack = round
+          const reasons = reviewReasons(stepRun.output ?? "")
+          reviewFeedback.set(step.onReject.step, reasons || stepRun.output || "The review rejected the work.")
+          forceRepairId = step.onReject.step
+          for (let i = targetIndex; i < index; i++) resetStepForRerun(run.steps[i])
+          audit({
+            type: "review_sent_back",
+            ts: auditNow(),
+            stepId: step.id,
+            attempt: stepRun.attempts,
+            targetStep: step.onReject.step,
+            round,
+            maxRounds: step.onReject.maxRounds,
+            reasons: reasons || "The review rejected the work.",
+          })
+          await update()
+          index = targetIndex
+          continue
+        }
+        throw new StepFailure(
+          `Step "${step.id}" rejected the work after ${used} fix round${used === 1 ? "" : "s"}.`
+        )
+      }
+
       if (gate?.decision === "stop") {
         return await finish("succeeded", {
           report: clipReport(`Stopped early after "${step.id}".\n\n${stepRun.output ?? ""}`),
         })
       }
+      index++
     }
 
     const last = run.steps[run.steps.length - 1]
@@ -556,6 +603,20 @@ export async function executeRun(
     if (cancelSignal.aborted) return finish("cancelled", { error: "Cancelled by the user" })
     return finish("failed", { error: errorText(err) })
   }
+}
+
+function resetStepForRerun(step: StepRun): void {
+  step.status = "pending"
+  step.attempts = 0
+  step.output = undefined
+  step.error = undefined
+  step.verdict = undefined
+  step.gate = undefined
+  step.toolExecutions = []
+  step.filesChanged = []
+  step.startedAt = undefined
+  step.finishedAt = undefined
+  clearLiveStepFields(step)
 }
 
 function toolLoginError(traces: ToolExecutionTrace[]): string | null {

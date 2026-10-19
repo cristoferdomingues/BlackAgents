@@ -23,6 +23,8 @@ export const MAX_RUN_TIMEOUT_MINUTES = 1_440
 export const DEFAULT_RUN_TIMEOUT_MINUTES = 180
 export const MAX_GATE_RETRIES = 2
 export const MAX_STEP_FILES = 10
+/** How many times a review may send the work back to be fixed. */
+export const MAX_REVIEW_ROUNDS = 3
 
 const stepIdSchema = z
   .string()
@@ -52,6 +54,18 @@ export const workflowStepSchema = z.object({
    * `VERDICT: reject`. With `selfAssess`, a reject is feedback for the reviewed agents.
    */
   review: z.boolean().default(false),
+  /**
+   * When this review rejects, run `step` again (with the defects) and then
+   * review once more, up to `maxRounds` times.
+   */
+  onReject: z
+    .object({
+      step: stepIdSchema,
+      maxRounds: z.number().int().min(1).max(MAX_REVIEW_ROUNDS).default(2),
+    })
+    .optional(),
+  /** Skip this step until a review sends the work here. */
+  repair: z.boolean().default(false),
   /**
    * This step signs in to a website. The username and password are stored as
    * secrets (`browser.<workflow>.<step>.username` / `.password`), never in this file.
@@ -95,11 +109,52 @@ export const workflowSchema = z
   })
   .superRefine((wf, ctx) => {
     const ids = new Set<string>()
+    const namedByReview = new Set<string>()
     wf.steps.forEach((step, index) => {
       if (ids.has(step.id)) {
         ctx.addIssue({ code: "custom", path: ["steps", index, "id"], message: `Duplicate step id "${step.id}"` })
       }
       ids.add(step.id)
+      if (step.repair && step.review) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "repair"],
+          message: `Step "${step.id}" cannot both review and only run as a fix`,
+        })
+      }
+      if (step.onReject && !step.review) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "onReject"],
+          message: `Step "${step.id}": only a review step can send work back`,
+        })
+      }
+      if (step.onReject) {
+        if (step.onReject.step === step.id) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["steps", index, "onReject", "step"],
+            message: `Step "${step.id}" cannot send work back to itself`,
+          })
+        } else {
+          const target = wf.steps.find((s) => s.id === step.onReject?.step)
+          if (!target) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["steps", index, "onReject", "step"],
+              message: `Step "${step.id}": send-back step "${step.onReject.step}" was not found`,
+            })
+          } else if (target.review) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["steps", index, "onReject", "step"],
+              message: `Step "${step.id}": send work back to a work step, not another review`,
+            })
+          } else {
+            namedByReview.add(target.id)
+          }
+        }
+      }
       const inspected = inspectModelRef(step.model, step.provider)
       if (inspected.error) {
         ctx.addIssue({
@@ -112,6 +167,15 @@ export const workflowSchema = z
           code: "custom",
           path: ["steps", index, "provider"],
           message: `Step "${step.id}": ${inspected.warning}`,
+        })
+      }
+    })
+    wf.steps.forEach((step, index) => {
+      if (step.repair && !namedByReview.has(step.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "repair"],
+          message: `Step "${step.id}" only runs as a fix, but no review sends work to it`,
         })
       }
     })
@@ -186,6 +250,8 @@ export interface StepRun {
   gate?: StepGateResult
   /** Review steps only; missing when the reviewer gave no `VERDICT:` line. */
   verdict?: ReviewVerdict
+  /** How many times this review sent the work back to be fixed. */
+  sentBack?: number
   startedAt?: string
   finishedAt?: string
   /** Provider that actually ran this step. Missing on runs saved before model routing. */

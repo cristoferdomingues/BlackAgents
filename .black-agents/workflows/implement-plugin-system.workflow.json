@@ -81,15 +81,29 @@
       "login": false
     },
     {
+      "id": "fix-review",
+      "agent": "feature-developer",
+      "instructions": "The release review rejected the work. Fix every defect in the review feedback. Stay inside the plugin-system skill and the project rules. Do not add new scope. Re-run the checks that failed when you can.",
+      "input": "all",
+      "files": [],
+      "allowWrites": false,
+      "maxTurns": 60,
+      "gate": false,
+      "review": false,
+      "repair": true,
+      "login": false
+    },
+    {
       "id": "release-review",
       "agent": "release-reviewer",
-      "instructions": "Act as the final pre-production gate. Restate the task's acceptance criteria as a checklist, then verify each one with concrete evidence (file/line citations or prior-step outputs) — criteria without evidence are FAILs. Inspect the work against the typescript-strict, api-response-format, testing-required, design-system, and llm-security rules and the plugin-system, nextjs-app-patterns, and testing-patterns skills. Check the specific seams: workspace-confined filesystem access, no plugin artifacts in /sync drift or IDE export, no secrets or executable code in bundles, response envelopes on every route, no silent artifact shadowing, meaningful (non-vacuous) tests with error paths covered, and loading/empty/error UI states present. End the report with exactly one line: VERDICT: PASS or VERDICT: FAIL followed by numbered, reproducible defects each with a definition of done. You are read-only: never fix, edit, or re-run anything yourself.",
+      "instructions": "Act as the final pre-production gate. Restate the task's acceptance criteria as a checklist, then verify each one with concrete evidence (file/line citations or prior-step outputs) — criteria without evidence are FAILs. Inspect the work against the typescript-strict, api-response-format, testing-required, design-system, and llm-security rules and the plugin-system, nextjs-app-patterns, and testing-patterns skills. Check the specific seams: workspace-confined filesystem access, no plugin artifacts in /sync drift or IDE export, no secrets or executable code in bundles, response envelopes on every route, no silent artifact shadowing, meaningful (non-vacuous) tests with error paths covered, and loading/empty/error UI states present. End the report with exactly one line: VERDICT: approve or VERDICT: reject followed by numbered, reproducible defects each with a definition of done. You are read-only: never fix, edit, or re-run anything yourself.",
       "input": "all",
       "files": [],
       "allowWrites": false,
       "maxTurns": 40,
       "gate": true,
       "review": true,
+      "onReject": { "step": "fix-review", "maxRounds": 2 },
       "login": false
     }
   ],

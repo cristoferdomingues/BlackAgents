@@ -83,6 +83,8 @@ function summarize(event: AuditEvent): string {
       return "Waiting for login"
     case "retry":
       return "Retrying step"
+    case "review_sent_back":
+      return `Sent back to ${event.targetStep} (round ${event.round} of ${event.maxRounds})`
     case "gate":
       return `Gate · ${event.decision}`
     case "step_finished":
@@ -119,6 +121,8 @@ function detailText(event: AuditEvent): string | null {
       return event.error ?? event.result ?? null
     case "run_started":
       return event.task
+    case "review_sent_back":
+      return event.reasons
     default:
       return null
   }

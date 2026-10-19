@@ -12,8 +12,8 @@ sources:
     title: API Reference
     last_modified: '2026-10-15T00:00:00Z'
 generated:
-  by: 'process:obsidian-to-okf'
-  at: '2026-10-16T16:05:00Z'
+  by: 'agent:cursor'
+  at: '2026-10-19T13:47:00Z'
 status: draft
 verified:
   - by: 'human:local'
@@ -241,7 +241,9 @@ Both need a workspace and Jev. **400** bad body, **412** no workspace or Jev off
 | POST | `/api/workflows/[name]/runs` | Body `{ task? }` → `{ run }` (201, queued) |
 | GET | `/api/runs/[id]` | `{ run }` |
 | DELETE | `/api/runs/[id]` | Cancel; 409 if finished or not active |
-| GET | `/api/runs/[id]/events` | **SSE** live run updates |
+| GET | `/api/runs/[id]/events` | **SSE** `run` snapshots until the run finishes, plus a `ping` every 15s (`{ serverTime }`) |
+| GET | `/api/runs/[id]/audit` | `{ events, runId }`. Query: `stepId`, `group` (`ai` \| `tools` \| `approvals` \| `errors` \| `lifecycle`), or `type`. `format=jsonl` downloads the raw log |
+| POST | `/api/runs/[id]/login` | Body `{ username, password }` or `{ alreadyLoggedIn: true }` resumes a step that is waiting for a login |
 
 See [Workflows](../architecture/workflows.md).
 

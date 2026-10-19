@@ -127,10 +127,14 @@ export function stepFacts(params: {
   gate: boolean
   allowWrites: boolean
   files: number
+  repair?: boolean
+  sendBack?: boolean
 }): string[] {
   const facts: string[] = []
   if (params.kind === "review") facts.push("Review")
   if (params.kind === "login") facts.push("Signs in")
+  if (params.repair) facts.push("Fixes a rejection")
+  if (params.sendBack) facts.push("Sends back if rejected")
   if (params.ability) facts.push(params.ability.label)
   if (params.ability?.canWrite && params.allowWrites) facts.push("Writes without asking")
   if (params.gate) facts.push("Jev checks")

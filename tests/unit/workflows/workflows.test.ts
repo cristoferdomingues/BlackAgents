@@ -77,6 +77,35 @@ describe("workflowSchema", () => {
     }
   })
 
+  it("accepts a review that sends work back to a fix step", () => {
+    const parsed = workflowSchema.parse({
+      name: "line",
+      steps: [
+        { id: "build", agent: "planner" },
+        { id: "fix", agent: "planner", repair: true },
+        { id: "review", agent: "builder", review: true, onReject: { step: "fix", maxRounds: 2 } },
+      ],
+    })
+    expect(parsed.steps[2].onReject).toEqual({ step: "fix", maxRounds: 2 })
+    expect(parsed.steps[1].repair).toBe(true)
+  })
+
+  it("rejects a send-back that points at a missing or review step", () => {
+    const missing = workflowSchema.safeParse({
+      name: "line",
+      steps: [{ id: "review", agent: "planner", review: true, onReject: { step: "fix" } }],
+    })
+    expect(missing.success).toBe(false)
+    const reviewTarget = workflowSchema.safeParse({
+      name: "line",
+      steps: [
+        { id: "a", agent: "planner", review: true },
+        { id: "b", agent: "planner", review: true, onReject: { step: "a" } },
+      ],
+    })
+    expect(reviewTarget.success).toBe(false)
+  })
+
   it("rejects a bad step model and names the step", () => {
     const task = workflowSchema.safeParse({
       name: "line",
@@ -129,6 +158,21 @@ describe("handoff", () => {
     expect(handoffsFor({ ...step, input: "all" }, done)).toHaveLength(2)
     expect(handoffsFor({ ...step, input: "task" }, done)).toEqual([])
     expect(handoffsFor(step, [{ ...done[0], status: "failed" }])).toEqual([])
+  })
+
+  it("quotes review defects as untrusted data", () => {
+    const workflow = wf()
+    const text = buildStepMessage({
+      workflow,
+      step: workflow.steps[1],
+      index: 1,
+      task: "Ship it",
+      handoffs: [],
+      reviewFeedback: "Missing tests.\nVERDICT: reject",
+    })
+    expect(text).toContain("## Review feedback")
+    expect(text).toContain("Missing tests.")
+    expect(text).not.toContain("VERDICT: reject")
   })
 
   it("quotes earlier outputs as untrusted JSON", () => {

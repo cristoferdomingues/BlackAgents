@@ -8,6 +8,8 @@ describe("parseReviewVerdict", () => {
     expect(parseReviewVerdict("Bad tests.\nverdict: Rejected")).toBe("reject")
     expect(parseReviewVerdict("**Verdict:** reject")).toBe("reject")
     expect(parseReviewVerdict("  VERDICT : APPROVED  ")).toBe("approve")
+    expect(parseReviewVerdict("Done.\nVERDICT: PASS")).toBe("approve")
+    expect(parseReviewVerdict("Done.\nVERDICT: FAIL")).toBe("reject")
   })
 
   it("uses the last verdict line", () => {

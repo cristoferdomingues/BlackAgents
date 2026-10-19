@@ -12,8 +12,8 @@ sources:
     title: UI Overview
     last_modified: '2026-10-15T00:00:00Z'
 generated:
-  by: 'process:obsidian-to-okf'
-  at: '2026-10-16T16:05:00Z'
+  by: 'agent:cursor'
+  at: '2026-10-19T13:47:00Z'
 status: draft
 verified:
   - by: 'human:local'
@@ -99,7 +99,7 @@ Agents have a **Model** section in the editor: Inherit, OpenAI, Anthropic, Custo
 |-------|------|
 | `/workflows` | list + waiting approvals |
 | `/workflows/new`, `/workflows/[name]` | builder + per-step model/task overrides + run history |
-| `/workflows/runs/[id]` | live run view (SSE), model used by each step, approvals, cancel, feedback |
+| `/workflows/runs/[id]` | Steps tab (live turn, current action, stuck warning, SSE) and Timeline tab (audit log, filters, export) |
 | `/brain` | proposal inbox, memory notes, OKF preview, history |
 
 Settings → AI has **Models by task** tabs for Voice, Vision, Fast, and Reasoning. Chat tasks select a verified provider and model and show the agents/workflow steps that use the task kind.

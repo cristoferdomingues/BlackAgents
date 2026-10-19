@@ -15,6 +15,12 @@ import path from "node:path"
 export interface AppConfig {
   /** Absolute path of the currently active workspace. */
   currentPath?: string
+  /**
+   * Active project scope id inside the workspace (a folder under
+   * `.black-agents/projects/`). Cleared whenever the active workspace
+   * changes — a project only exists within one workspace.
+   */
+  activeProject?: string
   /** All saved workspace paths (insertion order, de-duplicated). */
   workspaces: string[]
 }
@@ -22,6 +28,7 @@ export interface AppConfig {
 /** Shape of older config files, kept for one-time migration. */
 interface LegacyConfig {
   currentPath?: string
+  activeProject?: string
   recents?: string[]
   workspaces?: string[]
 }
@@ -69,7 +76,7 @@ export async function readConfig(): Promise<AppConfig> {
       parsed.currentPath && workspaces.includes(parsed.currentPath)
         ? parsed.currentPath
         : workspaces[0]
-    return { currentPath, workspaces }
+    return { currentPath, activeProject: parsed.activeProject, workspaces }
   } catch {
     return { ...DEFAULT_CONFIG }
   }
@@ -84,8 +91,11 @@ export async function writeConfig(config: AppConfig): Promise<void> {
 export async function addWorkspace(absPath: string): Promise<AppConfig> {
   const config = await readConfig()
   const workspaces = unique([...config.workspaces, absPath])
+  const currentPath = config.currentPath ?? absPath
   const next: AppConfig = {
-    currentPath: config.currentPath ?? absPath,
+    currentPath,
+    // Only reset the project when this actually switches the active workspace.
+    activeProject: currentPath === config.currentPath ? config.activeProject : undefined,
     workspaces,
   }
   await writeConfig(next)
@@ -96,7 +106,24 @@ export async function addWorkspace(absPath: string): Promise<AppConfig> {
 export async function setActiveWorkspace(absPath: string): Promise<AppConfig> {
   const config = await readConfig()
   const workspaces = unique([...config.workspaces, absPath])
-  const next: AppConfig = { currentPath: absPath, workspaces }
+  // A project id is only meaningful inside the workspace that owns it, so it
+  // resets when the active workspace changes (stays when re-selecting the same).
+  const next: AppConfig = {
+    currentPath: absPath,
+    activeProject: config.currentPath === absPath ? config.activeProject : undefined,
+    workspaces,
+  }
+  await writeConfig(next)
+  return next
+}
+
+/**
+ * Persist the active project scope (undefined = workspace mode).
+ * The caller validates the id (it must load as a project scope).
+ */
+export async function setActiveProject(id: string | undefined): Promise<AppConfig> {
+  const config = await readConfig()
+  const next: AppConfig = { ...config, activeProject: id }
   await writeConfig(next)
   return next
 }
@@ -107,7 +134,10 @@ export async function removeWorkspace(absPath: string): Promise<AppConfig> {
   const workspaces = config.workspaces.filter((p) => p !== absPath)
   const currentPath =
     config.currentPath === absPath ? workspaces[0] : config.currentPath
-  const next: AppConfig = { currentPath, workspaces }
+  // Never keep a project id whose workspace (its only home) is gone.
+  const activeProject =
+    config.currentPath === absPath ? undefined : config.activeProject
+  const next: AppConfig = { currentPath, activeProject, workspaces }
   await writeConfig(next)
   return next
 }

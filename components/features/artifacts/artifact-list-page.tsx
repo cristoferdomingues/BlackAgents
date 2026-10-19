@@ -28,7 +28,7 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
   const meta = metaForType(type)
   const Icon = meta.icon
   const router = useRouter()
-  const { workspace, byType, loading, loadingArtifacts } = useWorkspace()
+  const { workspace, byType, loading, loadingArtifacts, project } = useWorkspace()
   const [query, setQuery] = React.useState("")
   const providerReadiness = useProviderReadiness(type === "agent")
   const showChatAction = type === "agent"
@@ -61,6 +61,11 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
               {meta.labelPlural}
             </h1>
             <p className="text-sm text-muted-foreground">{meta.description}</p>
+            {project ? (
+              <p className="text-xs text-muted-foreground">
+                In project <span className="font-medium text-foreground">{project.name}</span>. New items are saved in this project.
+              </p>
+            ) : null}
           </div>
         </div>
         <Button asChild>
@@ -132,7 +137,7 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
                     <span className="line-clamp-1">{artifact.description}</span>
                   </TableCell>
                   <TableCell>
-                    <ArtifactBadges artifact={artifact} />
+                    <ArtifactBadges artifact={artifact} activeProject={project?.id ?? null} />
                   </TableCell>
                   {showChatAction ? (
                     <TableCell className="text-right">

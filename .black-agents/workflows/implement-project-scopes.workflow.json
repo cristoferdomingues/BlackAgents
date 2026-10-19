@@ -2,8 +2,6 @@
   "name": "implement-project-scopes",
   "description": "Implements BlackAgents project scopes — one-level sub-scopes with a project.json inheritance whitelist — across domain, loaders, API/UI, tests, and a gated release review that sends failures back for repair.",
   "task": "Implement project scopes in the BlackAgents source following the `project-scopes` skill: one-level sub-scopes under .black-agents/projects/<id>/ with a project.json whitelist (inherits tokens: mcp, skills, rules, commands, agents, workflows, knowledge), scope-first fail-closed resolution, merge-order MCP config, activeProject persistence, a project switcher UI with origin badges, and full test coverage. All file changes happen in the BlackAgents code source folder.",
-  "provider": "custom",
-  "model": "deepseek/deepseek-v4.1-flash",
   "trigger": {
     "type": "manual"
   },

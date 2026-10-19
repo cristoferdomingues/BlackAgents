@@ -52,14 +52,15 @@ export interface SerializedArtifact {
 
 export function serializeArtifact(
   input: ArtifactInput,
-  existingFrontmatter?: Record<string, unknown>
+  existingFrontmatter?: Record<string, unknown>,
+  scope?: string
 ): SerializedArtifact {
   const data = frontmatterFor(input, existingFrontmatter)
   const body = input.body.trim()
   const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
   return {
-    relPath: sourceRelPath(input.type, input.name),
-    deletePath: sourceDeletePath(input.type, input.name),
+    relPath: sourceRelPath(input.type, input.name, scope),
+    deletePath: sourceDeletePath(input.type, input.name, scope),
     content,
   }
 }

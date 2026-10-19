@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { apiFetch, ApiError } from "@/lib/api"
 import type { TryDraft } from "@/components/features/editor/try-chat-panel"
+import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Button } from "@/components/ui/button"
 
 const PREVIEW_DEBOUNCE_MS = 400
@@ -26,11 +27,13 @@ export function FilePreview({
   const [state, setState] = React.useState<PreviewState>({ status: "loading" })
   const [copied, setCopied] = React.useState(false)
   const key = JSON.stringify({ input: draft, originalName })
+  const { scoped } = useWorkspace()
+  const previewUrl = scoped("/api/artifacts/preview")
 
   React.useEffect(() => {
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      apiFetch<{ relPath: string; content: string; exports?: string[] }>("/api/artifacts/preview", {
+      apiFetch<{ relPath: string; content: string; exports?: string[] }>(previewUrl, {
         method: "POST",
         body: key,
         signal: controller.signal,
@@ -48,7 +51,7 @@ export function FilePreview({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [key])
+  }, [key, previewUrl])
 
   async function copy(content: string): Promise<void> {
     try {

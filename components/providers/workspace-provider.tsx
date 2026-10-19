@@ -4,12 +4,20 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import type { InvalidProject, ProjectScope } from "@/lib/artifacts/projects"
+import { withScope } from "@/lib/artifacts/projects-explain"
 import type { WorkspaceTemplate } from "@/lib/artifacts/schemas"
 import type { Artifact, ArtifactType, Workspace } from "@/lib/artifacts/types"
 
 interface WorkspaceState {
   active: Workspace | null
   workspaces: Workspace[]
+}
+
+interface ProjectsState {
+  projects: ProjectScope[]
+  invalid: InvalidProject[]
+  activeProject: string | null
 }
 
 interface WorkspaceContextValue {
@@ -35,6 +43,18 @@ interface WorkspaceContextValue {
   removeWorkspace: (path: string) => Promise<boolean>
   refresh: () => Promise<void>
   byType: (type: ArtifactType) => Artifact[]
+  /** Valid projects of the active workspace. */
+  projects: ProjectScope[]
+  /** Project folders that failed to load (fail closed), with the reason. */
+  invalidProjects: InvalidProject[]
+  /** The active project, or null in whole-workspace mode. */
+  project: ProjectScope | null
+  /** Activate a project id, or null for the whole workspace. */
+  setActiveProject: (id: string | null) => Promise<boolean>
+  /** Reload the project list (after create, edit, or delete). */
+  refreshProjects: () => Promise<void>
+  /** Add `?scope=` for the active project to an artifact API URL. */
+  scoped: (url: string) => string
 }
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null)
@@ -46,18 +66,40 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true)
   const [loadingArtifacts, setLoadingArtifacts] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [projectsState, setProjectsState] = React.useState<ProjectsState>({
+    projects: [],
+    invalid: [],
+    activeProject: null,
+  })
+  const activeProjectRef = React.useRef<string | null>(null)
 
-  const loadArtifacts = React.useCallback(async () => {
+  const loadArtifacts = React.useCallback(async (projectId?: string | null) => {
+    const scope = projectId === undefined ? activeProjectRef.current : projectId
     setLoadingArtifacts(true)
     setError(null)
     try {
-      const data = await apiFetch<Artifact[]>("/api/artifacts")
+      const data = await apiFetch<Artifact[]>(withScope("/api/artifacts", scope))
       setArtifacts(data)
     } catch (err) {
       setArtifacts([])
       setError(err instanceof Error ? err.message : "Failed to load artifacts")
     } finally {
       setLoadingArtifacts(false)
+    }
+  }, [])
+
+  /** Load projects; an active id that no longer loads falls back to the whole workspace. */
+  const loadProjects = React.useCallback(async (): Promise<ProjectScope | null> => {
+    try {
+      const state = await apiFetch<ProjectsState>("/api/projects")
+      const active = state.projects.find((p) => p.id === state.activeProject) ?? null
+      activeProjectRef.current = active?.id ?? null
+      setProjectsState({ ...state, activeProject: active?.id ?? null })
+      return active
+    } catch {
+      activeProjectRef.current = null
+      setProjectsState({ projects: [], invalid: [], activeProject: null })
+      return null
     }
   }, [])
 
@@ -68,11 +110,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(state.active)
       setWorkspaces(state.workspaces)
       if (activeChanged) {
-        if (state.active) await loadArtifacts()
-        else setArtifacts([])
+        if (state.active) {
+          const project = await loadProjects()
+          await loadArtifacts(project?.id ?? null)
+        } else {
+          activeProjectRef.current = null
+          setProjectsState({ projects: [], invalid: [], activeProject: null })
+          setArtifacts([])
+        }
       }
     },
-    [workspace?.path, loadArtifacts]
+    [workspace?.path, loadArtifacts, loadProjects]
   )
 
   const bootstrap = React.useCallback(async () => {
@@ -81,13 +129,41 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const state = await apiFetch<WorkspaceState>("/api/workspace")
       setWorkspace(state.active)
       setWorkspaces(state.workspaces)
-      if (state.active) await loadArtifacts()
+      if (state.active) {
+        const project = await loadProjects()
+        await loadArtifacts(project?.id ?? null)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load workspace")
     } finally {
       setLoading(false)
     }
-  }, [loadArtifacts])
+  }, [loadArtifacts, loadProjects])
+
+  const setActiveProject = React.useCallback(
+    async (id: string | null) => {
+      try {
+        await apiFetch<{ activeProject: string | null }>("/api/projects/active", {
+          method: "PUT",
+          body: JSON.stringify({ id }),
+        })
+        const project = await loadProjects()
+        await loadArtifacts(project?.id ?? null)
+        toast.success(project ? `Opened project ${project.name}` : "Showing the whole workspace")
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not switch project")
+        return false
+      }
+    },
+    [loadArtifacts, loadProjects]
+  )
+
+  const refreshProjects = React.useCallback(async () => {
+    const before = activeProjectRef.current
+    const project = await loadProjects()
+    if ((project?.id ?? null) !== before) await loadArtifacts(project?.id ?? null)
+  }, [loadArtifacts, loadProjects])
 
   React.useEffect(() => {
     void bootstrap()
@@ -163,6 +239,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [artifacts]
   )
 
+  const refresh = React.useCallback(() => loadArtifacts(), [loadArtifacts])
+
+  const project =
+    projectsState.projects.find((p) => p.id === projectsState.activeProject) ?? null
+
+  const scoped = React.useCallback(
+    (url: string) => withScope(url, projectsState.activeProject),
+    [projectsState.activeProject]
+  )
+
   const value: WorkspaceContextValue = {
     workspace,
     workspaces,
@@ -174,8 +260,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     createWorkspace,
     setActive,
     removeWorkspace,
-    refresh: loadArtifacts,
+    refresh,
     byType,
+    projects: projectsState.projects,
+    invalidProjects: projectsState.invalid,
+    project,
+    setActiveProject,
+    refreshProjects,
+    scoped,
   }
 
   return (

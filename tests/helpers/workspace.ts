@@ -50,6 +50,19 @@ export async function seedArtifact(
   await writeFile(abs, content, "utf8")
 }
 
+/** Write a project scope manifest into the workspace (creates the folder). */
+export async function seedProject(
+  workspace: string,
+  id: string,
+  manifest: Record<string, unknown> = {}
+): Promise<void> {
+  await seedArtifact(
+    workspace,
+    `.black-agents/projects/${id}/project.json`,
+    `${JSON.stringify({ id, inherits: [], ...manifest }, null, 2)}\n`
+  )
+}
+
 /** Build a Request suitable for calling a route handler directly. */
 export function jsonRequest(
   url: string,

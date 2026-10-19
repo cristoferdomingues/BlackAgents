@@ -38,6 +38,7 @@ import { useWorkspace } from "@/components/providers/workspace-provider"
 import { AiSettingsCard } from "@/components/features/settings/ai-settings-card"
 import { BrowserAutomationCard } from "@/components/features/settings/browser-automation-card"
 import { McpServersPanel } from "@/components/features/settings/mcp-servers-panel"
+import { ProjectsPanel } from "@/components/features/settings/projects-panel"
 import { TaskModelsCard } from "@/components/features/settings/task-models-card"
 import { Button } from "@/components/ui/button"
 import {
@@ -557,6 +558,8 @@ export function SettingsPage({ initialTab = "create" }: { initialTab?: string })
           )}
         </CardContent>
       </Card>
+
+      <ProjectsPanel />
     </div>
   )
 }

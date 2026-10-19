@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ChevronDown,
   Eye,
+  Info,
   Loader2,
   MessageCircle,
   MoreHorizontal,
@@ -26,6 +27,7 @@ import { apiFetch, ApiError } from "@/lib/api"
 import { metaForType } from "@/lib/artifacts/constants"
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { applyMentions } from "@/lib/artifacts/mentions"
+import { INHERITED_READ_ONLY } from "@/lib/artifacts/projects-explain"
 import { ABILITY_LEVELS, abilityChoiceOf } from "@/lib/artifacts/abilities"
 import {
   editorChecks,
@@ -172,7 +174,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
   const meta = metaForType(type)
   const Icon = meta.icon
   const router = useRouter()
-  const { workspace, loading: wsLoading, refresh, artifacts } = useWorkspace()
+  const { workspace, loading: wsLoading, refresh, artifacts, project, scoped } = useWorkspace()
   const isEdit = Boolean(name)
   const assistant = useAssistantProvider()
 
@@ -202,6 +204,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
   const [validateOpen, setValidateOpen] = React.useState(false)
   const [youtubeSources, setYoutubeSources] = React.useState<YouTubeDraftSource[]>([])
   const [tryOpen, setTryOpen] = React.useState(false)
+  const [inherited, setInherited] = React.useState(false)
   const platformRef = React.useRef<Platform>("cursor")
 
   const schema = React.useMemo(() => createFormSchema(isEdit, type), [isEdit, type])
@@ -396,10 +399,11 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
     if (!isEdit || !workspace) return
     let active = true
     setLoading(true)
-    apiFetch<Artifact>(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`)
+    apiFetch<Artifact>(scoped(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`))
       .then((artifact) => {
         if (!active) return
         platformRef.current = artifact.platform
+        setInherited(Boolean(project) && artifact.scope?.project !== project?.id)
         const fm = artifact.frontmatter
         const modelFields = modelFormFromFrontmatter(fm.model, fm.provider)
         const loaded: FormValues = {
@@ -443,7 +447,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
       active = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, name, type, workspace])
+  }, [isEdit, name, type, workspace, project?.id])
 
   const onInvalid = React.useCallback((errors: Record<string, { message?: string }>) => {
     const first = Object.values(errors).find((e) => Boolean(e?.message))
@@ -470,12 +474,12 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
       }
       try {
         if (isEdit) {
-          await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, {
+          await apiFetch(scoped(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`), {
             method: "PUT",
             body: JSON.stringify(payload),
           })
         } else {
-          await apiFetch("/api/artifacts", { method: "POST", body: JSON.stringify(payload) })
+          await apiFetch(scoped("/api/artifacts"), { method: "POST", body: JSON.stringify(payload) })
         }
         await refresh()
         form.reset(submitted)
@@ -489,7 +493,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
         setSaving(false)
       }
     },
-    [form, isEdit, meta.label, meta.route, name, refresh, router, type]
+    [form, isEdit, meta.label, meta.route, name, refresh, router, scoped, type]
   )
 
   const triggerSubmit = React.useCallback(() => {
@@ -560,7 +564,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
   async function onDelete(): Promise<void> {
     setDeleting(true)
     try {
-      await apiFetch(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`, { method: "DELETE" })
+      await apiFetch(scoped(`/api/artifacts/${type}/${encodeURIComponent(name ?? "")}`), { method: "DELETE" })
       await refresh()
       toast.success(`${meta.label} "${name}" deleted`)
       router.push(`/${meta.route}`)
@@ -626,6 +630,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
             <h1 className="truncate text-lg font-semibold">{isEdit ? name : `New ${meta.label}`}</h1>
             <p className="truncate text-xs text-muted-foreground">
               {isEdit ? `${meta.label} · ${meta.route}` : "Not saved yet"}
+              {project ? ` · ${inherited ? "inherited from the workspace" : `project ${project.name}`}` : ""}
             </p>
           </div>
         </div>
@@ -688,6 +693,15 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
       </header>
 
       <div className="relative flex-1 overflow-y-auto">
+        {inherited ? (
+          <p
+            role="note"
+            className="mx-auto mt-4 flex max-w-6xl gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm"
+          >
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+            <span>{INHERITED_READ_ONLY}</span>
+          </p>
+        ) : null}
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 p-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-10">
             <EditorSection

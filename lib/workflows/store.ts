@@ -9,6 +9,7 @@ import {
   resolveInWorkspace,
   writeText,
 } from "@/lib/fs-service"
+import { inheritsScopeToken, projectDirRelPath } from "@/lib/artifacts/projects"
 
 import { deleteAuditEvents } from "./audit"
 import { isWorkflowRun, workflowSchema, type Workflow, type WorkflowRun } from "./schema"
@@ -16,6 +17,11 @@ import { isWorkflowRun, workflowSchema, type Workflow, type WorkflowRun } from "
 /**
  * Workflow definitions are shareable (`.black-agents/workflows/`); run files
  * are local history (`.black-agents/runs/`, git-ignored).
+ *
+ * A project scope may own workflows at
+ * `.black-agents/projects/<id>/workflows/`. Resolution is scope-first: the
+ * project file wins on name, and workspace workflows are only visible when the
+ * `workflows` token is whitelisted in `project.json` (fail closed).
  */
 
 export const WORKFLOWS_DIR = ".black-agents/workflows"
@@ -27,8 +33,13 @@ const GITIGNORE_LINES = ["runs/", "brain/inbox/"]
 
 export class WorkflowNotFoundError extends Error {}
 
-function workflowPath(root: string, name: string): string {
-  return resolveInWorkspace(root, `${WORKFLOWS_DIR}/${name}${WORKFLOW_EXT}`)
+/** Workflows folder for a scope (project folder id, or the workspace). */
+export function workflowsDirRelPath(scope?: string): string {
+  return scope ? `${projectDirRelPath(scope)}/workflows` : WORKFLOWS_DIR
+}
+
+function workflowPath(root: string, name: string, scope?: string): string {
+  return resolveInWorkspace(root, `${workflowsDirRelPath(scope)}/${name}${WORKFLOW_EXT}`)
 }
 
 function runPath(root: string, id: string): string {
@@ -46,19 +57,20 @@ export async function ensureLocalStateIgnored(root: string): Promise<void> {
   await writeText(abs, `${prefix}${missing.join("\n")}\n`)
 }
 
-export async function listWorkflows(root: string): Promise<Workflow[]> {
-  const dir = resolveInWorkspace(root, WORKFLOWS_DIR)
+/** Read every workflow under a workflows folder, sorted by name. */
+async function listWorkflowFiles(root: string, dirRelPath: string): Promise<Workflow[]> {
   const out: Workflow[] = []
-  for (const entry of await listDir(dir)) {
+  for (const entry of await listDir(resolveInWorkspace(root, dirRelPath))) {
     if (entry.isDirectory || !entry.name.endsWith(WORKFLOW_EXT)) continue
-    const wf = await readWorkflow(root, entry.name.slice(0, -WORKFLOW_EXT.length))
+    const name = entry.name.slice(0, -WORKFLOW_EXT.length)
+    const abs = resolveInWorkspace(root, `${dirRelPath}/${name}${WORKFLOW_EXT}`)
+    const wf = await readWorkflowFile(abs, name)
     if (wf) out.push(wf)
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name))
+  return out
 }
 
-export async function readWorkflow(root: string, name: string): Promise<Workflow | null> {
-  const abs = workflowPath(root, name)
+async function readWorkflowFile(abs: string, name: string): Promise<Workflow | null> {
   if (!(await pathExists(abs))) return null
   try {
     const parsed = workflowSchema.safeParse(JSON.parse(await readText(abs)) as unknown)
@@ -68,18 +80,75 @@ export async function readWorkflow(root: string, name: string): Promise<Workflow
   }
 }
 
-export async function saveWorkflow(root: string, workflow: Workflow): Promise<void> {
-  await writeText(workflowPath(root, workflow.name), `${JSON.stringify(workflow, null, 2)}\n`)
+/** Workflows visible in a scope. Project files first; workspace files only when whitelisted. */
+export async function listWorkflows(root: string, scope?: string): Promise<Workflow[]> {
+  if (!scope) {
+    return (await listWorkflowFiles(root, WORKFLOWS_DIR)).sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  // A project's own files are always visible (same rule as project artifacts);
+  // the token only gates the *parent's* folder. Fail closed when it is absent.
+  const byName = new Map<string, Workflow>()
+  for (const wf of await listWorkflowFiles(root, workflowsDirRelPath(scope))) {
+    byName.set(wf.name, wf)
+  }
+  if (!(await inheritsScopeToken(root, scope, "workflows"))) {
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
+  for (const wf of await listWorkflowFiles(root, WORKFLOWS_DIR)) {
+    if (!byName.has(wf.name)) byName.set(wf.name, wf)
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export async function deleteWorkflow(root: string, name: string): Promise<boolean> {
-  const abs = workflowPath(root, name)
+export async function readWorkflow(
+  root: string,
+  name: string,
+  scope?: string
+): Promise<Workflow | null> {
+  if (!scope) return readWorkflowFile(workflowPath(root, name), name)
+
+  const local = await readWorkflowFile(workflowPath(root, name, scope), name)
+  if (local) return local
+  if (!(await inheritsScopeToken(root, scope, "workflows"))) return null
+  return readWorkflowFile(workflowPath(root, name), name)
+}
+
+/** Save a workflow into a scope: the project folder when scoped, else the workspace. */
+export async function saveWorkflow(
+  root: string,
+  workflow: Workflow,
+  scope?: string
+): Promise<void> {
+  await writeText(
+    workflowPath(root, workflow.name, scope),
+    `${JSON.stringify(workflow, null, 2)}\n`
+  )
+}
+
+/**
+ * Delete a workflow from a scope. A project scope only ever removes its own
+ * files — inherited workspace workflows are read-only from a child scope.
+ */
+export async function deleteWorkflow(
+  root: string,
+  name: string,
+  scope?: string
+): Promise<boolean> {
+  const abs = workflowPath(root, name, scope)
   if (!(await pathExists(abs))) return false
   await removePath(abs)
   return true
 }
 
-export async function workflowExists(root: string, name: string): Promise<boolean> {
+export async function workflowExists(
+  root: string,
+  name: string,
+  scope?: string
+): Promise<boolean> {
+  if (await pathExists(workflowPath(root, name, scope))) return true
+  if (!scope) return false
+  if (!(await inheritsScopeToken(root, scope, "workflows"))) return false
   return pathExists(workflowPath(root, name))
 }
 

@@ -15,7 +15,9 @@ import {
   typeLayout,
   type TypeLayout,
 } from "./layout"
-import { SOURCE_LAYOUT } from "./source"
+import { sourceLayout } from "./source"
+import { loadProjectScope } from "./projects"
+import type { ScopeToken } from "./schemas"
 import type {
   Artifact,
   ArtifactFrontmatter,
@@ -154,12 +156,19 @@ async function scanLayout(
   return out
 }
 
-/** Artifacts in `.black-agents/artifacts/`, the source of truth. */
-export async function scanSource(root: string): Promise<Artifact[]> {
+/** Artifacts in a scope's source tree (`.black-agents/.../artifacts/`). */
+export async function scanSource(root: string, scope?: string): Promise<Artifact[]> {
+  const layout = sourceLayout(scope)
   const out: Artifact[] = []
   for (const type of TYPES) {
-    const found = await scanLayout(root, DEFAULT_PLATFORM, type, SOURCE_LAYOUT[type])
-    out.push(...found.map((artifact) => ({ ...artifact, managed: true })))
+    const found = await scanLayout(root, DEFAULT_PLATFORM, type, layout[type])
+    out.push(
+      ...found.map((artifact) => ({
+        ...artifact,
+        managed: true,
+        ...(scope ? { scope: { project: scope } } : {}),
+      }))
+    )
   }
   return out
 }
@@ -173,16 +182,8 @@ export async function scanPlatform(root: string, platform: Platform): Promise<Ar
   return out
 }
 
-/**
- * Every artifact in the workspace, deduped by type+name. The source folder
- * wins; then IDE folders in ACTIVE_PLATFORMS order (Cursor first).
- */
-export async function scanWorkspace(root: string): Promise<Artifact[]> {
-  const collected: Artifact[] = await scanSource(root)
-  for (const platform of ACTIVE_PLATFORMS) {
-    collected.push(...(await scanPlatform(root, platform)))
-  }
-
+/** First occurrence of `type:name` wins (used with project entries first). */
+export function dedupeByTypeId(collected: Artifact[]): Artifact[] {
   const seen = new Map<string, Artifact>()
   for (const artifact of collected) {
     const key = `${artifact.type}:${artifact.name}`
@@ -193,13 +194,68 @@ export async function scanWorkspace(root: string): Promise<Artifact[]> {
   )
 }
 
+const TOKEN_BY_TYPE: Record<ArtifactType, ScopeToken> = {
+  agent: "agents",
+  command: "commands",
+  rule: "rules",
+  skill: "skills",
+}
+
+/**
+ * Every artifact visible in a scope, deduped by type+name, project entry first.
+ *
+ * - No scope: today's behavior — the workspace source wins, then IDE folders.
+ * - With a scope: scope-first and fail-closed. The project source is always
+ *   scanned; the workspace source and IDE folders only contribute types whose
+ *   token is whitelisted in `project.json` (`inherits`). An invalid or missing
+ *   manifest inherits nothing.
+ */
+export async function scanWorkspace(root: string, scope?: string): Promise<Artifact[]> {
+  if (!scope) {
+    const collected: Artifact[] = await scanSource(root)
+    for (const platform of ACTIVE_PLATFORMS) {
+      collected.push(...(await scanPlatform(root, platform)))
+    }
+    return dedupeByTypeId(collected)
+  }
+
+  const loaded = await loadProjectScope(root, scope)
+  const inherits: ScopeToken[] = loaded.ok ? loaded.project.inherits : []
+  const allow = (type: ArtifactType): boolean => inherits.includes(TOKEN_BY_TYPE[type])
+
+  const collected: Artifact[] = []
+  collected.push(...(await scanSource(root, scope)))
+  collected.push(...(await scanSource(root)).filter((a) => allow(a.type)))
+  for (const platform of ACTIVE_PLATFORMS) {
+    collected.push(...(await scanPlatform(root, platform)).filter((a) => allow(a.type)))
+  }
+  return dedupeByTypeId(collected)
+}
+
 export async function findArtifact(
   root: string,
   type: ArtifactType,
-  name: string
+  name: string,
+  scope?: string
 ): Promise<Artifact | null> {
-  const all = await scanWorkspace(root)
+  const all = await scanWorkspace(root, scope)
   return all.find((a) => a.type === type && a.name === name) ?? null
+}
+
+/**
+ * The artifact as stored in the given scope's own source tree (not an
+ * inherited copy). Null when the scope does not own that artifact.
+ */
+export async function findScopedSourceArtifact(
+  root: string,
+  type: ArtifactType,
+  name: string,
+  scope?: string
+): Promise<Artifact | null> {
+  const local = (await scanSource(root, scope)).find(
+    (a) => a.type === type && a.name === name
+  )
+  return local ?? null
 }
 
 /** True if the platform marker directory exists in the workspace. */

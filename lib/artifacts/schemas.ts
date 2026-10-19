@@ -120,3 +120,58 @@ export const workspaceInputSchema = z.object({
   template: workspaceTemplateSchema.optional().default("blank"),
 })
 export type WorkspaceInput = z.infer<typeof workspaceInputSchema>
+
+/**
+ * Project scopes — one-level sub-scopes under `.black-agents/projects/<id>/`.
+ * See the `project-scopes` skill: the manifest whitelist is the ONLY way a
+ * project gains access to parent workspace services (fail closed).
+ */
+
+/** Closed set of inheritable workspace services. Everything else never inherits. */
+export const scopeTokenSchema = z.enum([
+  "mcp",
+  "skills",
+  "rules",
+  "commands",
+  "agents",
+  "workflows",
+  "knowledge",
+])
+export type ScopeToken = z.infer<typeof scopeTokenSchema>
+
+/** One-level folder id: kebab-case, single segment, no traversal. */
+export const projectIdSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    "Project id must be a kebab-case folder name"
+  )
+
+export const projectManifestSchema = z.object({
+  /** Must equal the containing folder name (checked by the loader). */
+  id: projectIdSchema,
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(300).optional(),
+  /** Whitelisted workspace tokens to inherit. Absent/empty = inherit nothing. */
+  inherits: z.array(scopeTokenSchema).default([]),
+  createdAt: z.string().trim().min(1).optional(),
+})
+export type ProjectManifest = z.infer<typeof projectManifestSchema>
+
+/** Payload for POST/PATCH /api/projects (createdAt is server-owned). */
+export const projectInputSchema = z.object({
+  id: projectIdSchema,
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(300).optional(),
+  inherits: z.array(scopeTokenSchema).default([]),
+})
+export type ProjectInput = z.infer<typeof projectInputSchema>
+
+/** PATCH /api/projects/[id]: id stays fixed (it is the folder name). */
+export const projectUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(300).optional(),
+  inherits: z.array(scopeTokenSchema).optional(),
+})
+export type ProjectUpdate = z.infer<typeof projectUpdateSchema>

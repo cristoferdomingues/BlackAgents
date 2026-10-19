@@ -12,7 +12,7 @@ import {
   writeText,
 } from "../fs-service"
 import { ACTIVE_PLATFORMS, DEFAULT_PLATFORM, PLATFORM_LAYOUTS, artifactDeletePath } from "./layout"
-import { findArtifact, scanPlatform, scanSource, scanWorkspace } from "./parser"
+import { findArtifact, findScopedSourceArtifact, scanPlatform, scanSource, scanWorkspace } from "./parser"
 import { platformSchema, type ArtifactInput } from "./schemas"
 import { serializeArtifact } from "./serializer"
 import { sourceDeletePath, sourceRelPath } from "./source"
@@ -111,54 +111,107 @@ function ideDeletePath(artifact: Artifact): string {
   return artifact.type === "skill" ? path.posix.dirname(artifact.relativePath) : artifact.relativePath
 }
 
-async function finishSave(root: string, type: ArtifactType, name: string): Promise<Artifact> {
-  const saved = (await scanSource(root)).find((a) => a.type === type && a.name === name)
+async function finishSave(
+  root: string,
+  type: ArtifactType,
+  name: string,
+  scope?: string
+): Promise<Artifact> {
+  const saved = (await scanSource(root, scope)).find((a) => a.type === type && a.name === name)
   if (!saved) throw new ArtifactStoreError(`The ${type} "${name}" was not saved`, 500)
+  // Project artifacts stay inside the project tree; IDE folders stay workspace-level.
+  if (scope) return saved
   const { targets } = await readExportTargets(root)
   await exportArtifact(root, saved, targets)
   return saved
 }
 
-export async function createArtifact(root: string, input: ArtifactInput): Promise<Artifact> {
-  if (await findArtifact(root, input.type, input.name)) {
+/**
+ * Save an artifact into a scope's source tree. Without a scope that is the
+ * workspace source (then exported to IDE folders); with `scope` it is the
+ * project tree and nothing is exported. Creating over an *inherited* name is
+ * allowed on purpose: project-local entries win on collision.
+ */
+export async function createArtifact(
+  root: string,
+  input: ArtifactInput,
+  scope?: string
+): Promise<Artifact> {
+  const exists = scope
+    ? await findScopedSourceArtifact(root, input.type, input.name, scope)
+    : await findArtifact(root, input.type, input.name)
+  if (exists) {
     throw new ArtifactStoreError(`A ${input.type} named "${input.name}" already exists`, 409)
   }
-  const { relPath, content } = serializeArtifact(input)
+  const { relPath, content } = serializeArtifact(input, undefined, scope)
   await writeText(resolveInWorkspace(root, relPath), content)
-  return finishSave(root, input.type, input.name)
+  return finishSave(root, input.type, input.name, scope)
 }
 
 /**
  * Save over an existing artifact (optionally renaming it). An IDE-only artifact
  * moves into the source folder, supporting files included.
+ *
+ * In a project scope only project-local artifacts can change; inherited
+ * workspace copies are read-only (403) so a child can never mutate its parent.
  */
 export async function updateArtifact(
   root: string,
   originalName: string,
-  input: ArtifactInput
+  input: ArtifactInput,
+  scope?: string
 ): Promise<Artifact> {
-  const existing = await findArtifact(root, input.type, originalName)
+  const existing = await findArtifact(root, input.type, originalName, scope)
   if (!existing) throw new ArtifactStoreError(`Not found: ${input.type}/${originalName}`, 404)
+  if (scope && existing.scope?.project !== scope) {
+    throw new ArtifactStoreError(
+      `Inherited ${input.type} "${originalName}" is read-only in project "${scope}" — create a project copy to change it`,
+      403
+    )
+  }
   const renamed = input.name !== originalName
-  if (renamed && (await findArtifact(root, input.type, input.name))) {
-    throw new ArtifactStoreError(`A ${input.type} named "${input.name}" already exists`, 409)
+  if (renamed) {
+    const clash = scope
+      ? await findScopedSourceArtifact(root, input.type, input.name, scope)
+      : await findArtifact(root, input.type, input.name)
+    if (clash) {
+      throw new ArtifactStoreError(`A ${input.type} named "${input.name}" already exists`, 409)
+    }
   }
 
-  const { relPath, content } = serializeArtifact(input, existing.frontmatter)
+  const { relPath, content } = serializeArtifact(input, existing.frontmatter, scope)
   await copySupportingFiles(root, existing, relPath)
   await writeText(resolveInWorkspace(root, relPath), content)
 
   if (renamed) {
-    if (existing.managed) await removePath(resolveInWorkspace(root, sourceDeletePath(input.type, originalName)))
-    await removeEverywhere(root, input.type, originalName)
+    if (existing.managed) {
+      await removePath(resolveInWorkspace(root, sourceDeletePath(input.type, originalName, scope)))
+    }
+    // IDE copies only ever belong to the workspace scope.
+    if (!scope) await removeEverywhere(root, input.type, originalName)
   }
-  return finishSave(root, input.type, input.name)
+  return finishSave(root, input.type, input.name, scope)
 }
 
 /** Delete the artifact from the source and from every IDE folder. */
-export async function deleteArtifact(root: string, type: ArtifactType, name: string): Promise<void> {
-  const existing = await findArtifact(root, type, name)
+export async function deleteArtifact(
+  root: string,
+  type: ArtifactType,
+  name: string,
+  scope?: string
+): Promise<void> {
+  const existing = await findArtifact(root, type, name, scope)
   if (!existing) throw new ArtifactStoreError(`Not found: ${type}/${name}`, 404)
+  if (scope) {
+    if (existing.scope?.project !== scope) {
+      throw new ArtifactStoreError(
+        `Inherited ${type} "${name}" cannot be deleted from project "${scope}"`,
+        403
+      )
+    }
+    await removePath(resolveInWorkspace(root, sourceDeletePath(type, name, scope)))
+    return
+  }
   if (existing.managed) {
     await removePath(resolveInWorkspace(root, sourceDeletePath(type, name)))
     await removeEverywhere(root, type, name)

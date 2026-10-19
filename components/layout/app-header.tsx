@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST } from "@/lib/artifacts/constants"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { useSidebar } from "@/components/layout/sidebar-provider"
+import { ProjectSwitcher } from "@/components/layout/project-switcher"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
 import {
@@ -107,6 +108,14 @@ export function AppHeader() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        ) : null}
+        {workspace ? (
+          <>
+            <span className="text-muted-foreground" aria-hidden>
+              /
+            </span>
+            <ProjectSwitcher />
+          </>
         ) : (
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">

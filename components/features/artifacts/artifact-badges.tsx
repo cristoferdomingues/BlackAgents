@@ -1,12 +1,36 @@
 import type { ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { artifactOrigin, ORIGIN_BADGE } from "@/lib/artifacts/projects-explain"
 import type { Artifact } from "@/lib/artifacts/types"
 
 /** Render the type-specific frontmatter flags as small badges. */
-export function ArtifactBadges({ artifact }: { artifact: Artifact }) {
+export function ArtifactBadges({
+  artifact,
+  activeProject = null,
+}: {
+  artifact: Artifact
+  /** When a project is active, show whether the item is the project's own or inherited. */
+  activeProject?: string | null
+}) {
   const fm = artifact.frontmatter
   const badges: ReactNode[] = []
+
+  const origin = artifactOrigin(artifact, activeProject)
+  if (origin !== "workspace") {
+    const badge = ORIGIN_BADGE[origin]
+    badges.push(
+      <Tooltip key="origin">
+        <TooltipTrigger asChild>
+          <Badge variant={origin === "project" ? "default" : "outline"} tabIndex={0}>
+            {badge.label}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>{badge.help}</TooltipContent>
+      </Tooltip>
+    )
+  }
 
   if (artifact.type === "agent" && fm.parallel) {
     badges.push(

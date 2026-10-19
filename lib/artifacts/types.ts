@@ -42,14 +42,25 @@ export interface Artifact {
    * False or missing: it was only found in an IDE folder (`platform`).
    */
   managed?: boolean
+  /**
+   * Project scope this artifact came from: the folder id under
+   * `.black-agents/projects/`. Absent = workspace (global) scope.
+   * Injected by the scanner from the scan root, never authored in frontmatter,
+   * and never exported into IDE folders.
+   */
+  scope?: { project: string }
 }
 
 /** A directed cross-reference detected between two artifacts. */
 export interface ArtifactReference {
   from: ArtifactType
   fromName: string
+  /** Project scope of the referencing artifact; absent = workspace scope. */
+  fromScope?: string
   to: ArtifactType
   toName: string
+  /** Project scope the target resolved in; absent = workspace scope. */
+  toScope?: string
   /** How the link was detected (used for debugging / display). */
   kind: "command-agent" | "agent-rule" | "agent-skill" | "rule-rule" | "rule-skill"
 }
@@ -60,6 +71,8 @@ export interface GraphNode {
   id: string
   name: string
   type: GraphNodeType
+  /** Project scope of the artifact; absent = workspace scope. */
+  scope?: string
   /** Number of connected edges, used to size the node. */
   degree: number
 }

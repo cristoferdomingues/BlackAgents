@@ -122,6 +122,8 @@ const MANAGED_KEYS = new Set([
   "trigger",
   "tools",
   "mcpServers",
+  // BlackAgents-only bookkeeping: never leak scope into IDE frontmatter.
+  "scope",
 ])
 
 /** Mapped keys plus the keys BlackAgents does not manage (e.g. Cursor's `readonly`), unchanged. */

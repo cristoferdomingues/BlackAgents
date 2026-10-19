@@ -35,7 +35,7 @@ export function BundleCard({
   onFixIssues: (request: string) => void
   fixDisabled?: boolean
 }) {
-  const { artifacts, refresh } = useWorkspace()
+  const { artifacts, refresh, project, scoped } = useWorkspace()
   const [items, setItems] = React.useState<BundleItem[]>(bundle.items)
   const [saving, setSaving] = React.useState(false)
   const [created, setCreated] = React.useState<string[]>([])
@@ -62,24 +62,27 @@ export function BundleCard({
       extra: item.extra,
     }
     const exists = artifacts.some(
-      (artifact) => artifact.type === item.type && artifact.name === item.name
+      (artifact) =>
+        artifact.type === item.type &&
+        artifact.name === item.name &&
+        artifact.scope?.project === project?.id
     )
     if (exists) {
       await apiFetch<Artifact>(
-        `/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`,
+        scoped(`/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`),
         { method: "PUT", body: JSON.stringify(payload) }
       )
       return
     }
     try {
-      await apiFetch<Artifact>("/api/artifacts", {
+      await apiFetch<Artifact>(scoped("/api/artifacts"), {
         method: "POST",
         body: JSON.stringify(payload),
       })
     } catch (err) {
       if (!(err instanceof ApiError) || !err.message.includes("already exists")) throw err
       await apiFetch<Artifact>(
-        `/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`,
+        scoped(`/api/artifacts/${item.type}/${encodeURIComponent(item.name)}`),
         { method: "PUT", body: JSON.stringify(payload) }
       )
     }

@@ -1,5 +1,6 @@
 import path from "node:path"
 
+import { inheritsScopeToken } from "../artifacts/projects"
 import { pathExists, readText, resolveInWorkspace, walkFiles, writeText } from "../fs-service"
 import { renderConceptFile } from "./export"
 import { parseConceptContent, type OkfConcept } from "./parse"
@@ -9,6 +10,11 @@ import type { OkfConceptFrontmatter } from "./schema"
  * Workspace knowledge lives only in `.black-agents/knowledge/`. The concept id
  * is the file path inside that folder, without `.md`. Writes belong to the
  * Brain approval flow; nothing else should call `writeConcept`.
+ *
+ * Knowledge is never *stored* in a project, but a project can be whitelisted
+ * to see the workspace registry (`inherits: ["knowledge"]`). Without the token
+ * the registry resolves to nothing (fail closed); with it, concepts are
+ * read-only — only the Inbox approval flow may mark them verified.
  */
 
 export const KNOWLEDGE_DIR = ".black-agents/knowledge"
@@ -60,8 +66,18 @@ export interface KnowledgeStoreInspection {
   issues: KnowledgeFileIssue[]
 }
 
-/** Read every concept and report invalid Markdown files instead of hiding them. */
-export async function inspectKnowledgeStore(workspaceRoot: string): Promise<KnowledgeStoreInspection> {
+/**
+ * Read every concept and report invalid Markdown files instead of hiding them.
+ * With `scope`, the registry is only visible when the `knowledge` token is
+ * whitelisted in the project's `project.json` (fail closed otherwise).
+ */
+export async function inspectKnowledgeStore(
+  workspaceRoot: string,
+  scope?: string
+): Promise<KnowledgeStoreInspection> {
+  if (scope && !(await inheritsScopeToken(workspaceRoot, scope, "knowledge"))) {
+    return { concepts: [], issues: [] }
+  }
   const dir = resolveInWorkspace(workspaceRoot, KNOWLEDGE_DIR)
   if (!(await pathExists(dir))) return { concepts: [], issues: [] }
   const concepts: OkfConcept[] = []
@@ -89,11 +105,21 @@ export async function inspectKnowledgeStore(workspaceRoot: string): Promise<Know
   return { concepts, issues }
 }
 
-export async function listConcepts(workspaceRoot: string): Promise<OkfConcept[]> {
-  return (await inspectKnowledgeStore(workspaceRoot)).concepts
+export async function listConcepts(
+  workspaceRoot: string,
+  scope?: string
+): Promise<OkfConcept[]> {
+  return (await inspectKnowledgeStore(workspaceRoot, scope)).concepts
 }
 
-export async function readConcept(workspaceRoot: string, id: string): Promise<OkfConcept | null> {
+export async function readConcept(
+  workspaceRoot: string,
+  id: string,
+  scope?: string
+): Promise<OkfConcept | null> {
+  if (scope && !(await inheritsScopeToken(workspaceRoot, scope, "knowledge"))) {
+    return null
+  }
   const abs = resolveInWorkspace(workspaceRoot, conceptRelPath(id))
   if (!(await pathExists(abs))) return null
   const parsed = parseConceptContent(id, await readText(abs))

@@ -36,6 +36,14 @@ export async function stubWorkspace(page: Page, artifacts: StubArtifact[] = []):
   await page.route("**/api/mcp", (route) =>
     route.fulfill({ json: { success: true, data: { servers: [], totalTools: 0 } } })
   )
+  await page.route("**/api/projects", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        json: { success: true, data: { projects: [], invalid: [], activeProject: null } },
+      })
+    }
+    return route.fallback()
+  })
 }
 
 export async function stubVerifiedProvider(page: Page): Promise<void> {

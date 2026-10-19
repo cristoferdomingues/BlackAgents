@@ -32,7 +32,7 @@ const STEPS = ["Type", "Details", "Body", "Review"] as const
 
 export function Wizard({ initialType }: { initialType?: ArtifactType }) {
   const router = useRouter()
-  const { workspace, loading: wsLoading, refresh, artifacts } = useWorkspace()
+  const { workspace, loading: wsLoading, refresh, artifacts, scoped } = useWorkspace()
 
   const mentions = React.useMemo<MentionItem[]>(
     () =>
@@ -79,7 +79,7 @@ export function Wizard({ initialType }: { initialType?: ArtifactType }) {
     if (!type) return
     setCreating(true)
     try {
-      await apiFetch("/api/artifacts", {
+      await apiFetch(scoped("/api/artifacts"), {
         method: "POST",
         body: JSON.stringify({
           type,

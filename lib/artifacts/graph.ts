@@ -27,6 +27,10 @@ export interface GraphConcept {
  *
  * Names are resolved against the actual artifact registry, so a token only
  * becomes an edge when a matching artifact of the expected type exists.
+ *
+ * Resolution is scope-first: a project artifact matches its own project's
+ * entry, then a workspace entry. A workspace artifact only matches workspace
+ * entries, and projects never see each other.
  */
 
 const TOKEN = "[a-z0-9][a-z0-9-]*"
@@ -36,15 +40,43 @@ const BACKTICK_SKILL_RE = new RegExp("`(" + TOKEN + ")`\\s+skill\\b", "gi")
 const RELATED_RULES_RE = /related rules:\s*([^\n]+)/gi
 const SEE_ALSO_RE = /see also:\s*([^\n]+)/gi
 
-function buildRegistry(artifacts: Artifact[]): Record<ArtifactType, Set<string>> {
-  const registry: Record<ArtifactType, Set<string>> = {
-    agent: new Set(),
-    command: new Set(),
-    rule: new Set(),
-    skill: new Set(),
+/** Graph node id. Workspace ids stay `type:name`; project ids add `@project`. */
+export function nodeRefId(type: ArtifactType, name: string, scope?: string): string {
+  const id = artifactId(type, name)
+  return scope ? `${id}@${scope}` : id
+}
+
+type Registry = Record<ArtifactType, Map<string, Array<string | undefined>>>
+
+function buildRegistry(artifacts: Artifact[]): Registry {
+  const registry: Registry = {
+    agent: new Map(),
+    command: new Map(),
+    rule: new Map(),
+    skill: new Map(),
   }
-  for (const a of artifacts) registry[a.type].add(a.name)
+  for (const a of artifacts) {
+    const scopes = registry[a.type].get(a.name) ?? []
+    scopes.push(a.scope?.project)
+    registry[a.type].set(a.name, scopes)
+  }
   return registry
+}
+
+/**
+ * Scope the name resolves in, or `null` when it is not visible from `fromScope`.
+ * Returns `undefined` for a workspace match.
+ */
+function resolveScope(
+  registry: Registry,
+  type: ArtifactType,
+  name: string,
+  fromScope: string | undefined
+): string | undefined | null {
+  const scopes = registry[type].get(name)
+  if (!scopes) return null
+  if (fromScope && scopes.includes(fromScope)) return fromScope
+  return scopes.includes(undefined) ? undefined : null
 }
 
 function matchAll(re: RegExp, text: string): string[] {
@@ -78,16 +110,20 @@ export function extractReferences(
     targetType: ArtifactType,
     toName: string
   ) {
-    if (!registry[targetType].has(toName)) return
-    if (from.type === targetType && from.name === toName) return
-    const key = `${from.type}:${from.name}->${targetType}:${toName}`
+    const fromScope = from.scope?.project
+    const toScope = resolveScope(registry, targetType, toName, fromScope)
+    if (toScope === null) return
+    if (from.type === targetType && from.name === toName && fromScope === toScope) return
+    const key = `${nodeRefId(from.type, from.name, fromScope)}->${nodeRefId(targetType, toName, toScope)}`
     if (seen.has(key)) return
     seen.add(key)
     refs.push({
       from: from.type,
       fromName: from.name,
+      ...(fromScope ? { fromScope } : {}),
       to: targetType,
       toName,
+      ...(toScope ? { toScope } : {}),
       kind: kindFor(from.type, targetType),
     })
   }
@@ -134,8 +170,9 @@ export function buildGraph(artifacts: Artifact[], concepts: GraphConcept[] = [])
 
   const nodes: Record<string, GraphNode> = {}
   for (const a of artifacts) {
-    const id = artifactId(a.type, a.name)
-    nodes[id] = { id, name: a.name, type: a.type, degree: 0 }
+    const scope = a.scope?.project
+    const id = nodeRefId(a.type, a.name, scope)
+    nodes[id] = { id, name: a.name, type: a.type, ...(scope ? { scope } : {}), degree: 0 }
   }
   for (const concept of concepts) {
     const id = `concept:${concept.id}`
@@ -156,27 +193,33 @@ export function buildGraph(artifacts: Artifact[], concepts: GraphConcept[] = [])
   }
 
   for (const ref of references) {
-    connect(artifactId(ref.from, ref.fromName), artifactId(ref.to, ref.toName), ref.kind)
+    connect(
+      nodeRefId(ref.from, ref.fromName, ref.fromScope),
+      nodeRefId(ref.to, ref.toName, ref.toScope),
+      ref.kind
+    )
   }
 
+  const conceptLinks: Array<[RegExp, ArtifactType]> = [
+    [BOLD_RE, "agent"],
+    [BACKTICK_RULE_RE, "rule"],
+    [BACKTICK_SKILL_RE, "skill"],
+  ]
   for (const concept of concepts) {
     const source = `concept:${concept.id}`
     for (const target of linkedConceptIds(concept.id, concept.body)) {
       if (conceptIds.has(target)) connect(source, `concept:${target}`, "concept-concept")
     }
-    for (const token of matchAll(BOLD_RE, concept.body)) {
-      if (registry.agent.has(token)) connect(source, artifactId("agent", token), "concept-artifact")
-    }
-    for (const token of matchAll(BACKTICK_RULE_RE, concept.body)) {
-      if (registry.rule.has(token)) connect(source, artifactId("rule", token), "concept-artifact")
-    }
-    for (const token of matchAll(BACKTICK_SKILL_RE, concept.body)) {
-      if (registry.skill.has(token)) connect(source, artifactId("skill", token), "concept-artifact")
+    for (const [re, type] of conceptLinks) {
+      for (const token of matchAll(re, concept.body)) {
+        const scope = resolveScope(registry, type, token, undefined)
+        if (scope !== null) connect(source, nodeRefId(type, token, scope), "concept-artifact")
+      }
     }
   }
 
   for (const artifact of artifacts) {
-    const source = artifactId(artifact.type, artifact.name)
+    const source = nodeRefId(artifact.type, artifact.name, artifact.scope?.project)
     for (const target of linkedConceptIds("", artifact.body)) {
       if (conceptIds.has(target)) connect(source, `concept:${target}`, "artifact-concept")
     }

@@ -49,14 +49,47 @@ describe("runAgentLoop", () => {
     expect(result.toolExecutions[0]).toMatchObject({ tool: "lookup", result: { echo: { q: 1 } } })
     const second = provider.requests[1]
     expect(second.messages.at(-1)).toMatchObject({ role: "tool", tool_call_id: "c1" })
-    expect(events.map((e) => e.type)).toEqual(["tool_call", "tool_result", "token"])
+    expect(events.map((e) => e.type)).toEqual([
+      "turn_start",
+      "llm_request",
+      "llm_response",
+      "tool_call",
+      "tool_result",
+      "turn_start",
+      "llm_request",
+      "llm_response",
+      "token",
+    ])
+  })
+
+  it("emits turn and llm events around each model call", async () => {
+    const provider = scriptedProvider([{ content: "answer", reasoning: "plan" }])
+    const events: AgentLoopEvent[] = []
+    const exchanges: Array<{ turn: number; content: string }> = []
+    await runAgentLoop(
+      options({
+        provider,
+        onEvent: (e) => events.push(e),
+        onLlmExchange: (ex) => exchanges.push({ turn: ex.turn, content: ex.content }),
+      })
+    )
+    expect(events.map((e) => e.type)).toEqual([
+      "turn_start",
+      "llm_request",
+      "llm_response",
+      "thinking",
+      "token",
+    ])
+    expect(events[0]).toMatchObject({ type: "turn_start", turn: 0, maxTurns: 25 })
+    expect(events[2]).toMatchObject({ type: "llm_response", turn: 0, toolCallCount: 0 })
+    expect(exchanges).toEqual([{ turn: 0, content: "answer" }])
   })
 
   it("emits the model's reasoning before its reply", async () => {
     const provider = scriptedProvider([{ content: "answer", reasoning: "plan" }])
     const events: AgentLoopEvent[] = []
     await runAgentLoop(options({ provider, onEvent: (e) => events.push(e) }))
-    expect(events).toEqual([
+    expect(events.filter((e) => e.type === "thinking" || e.type === "token")).toEqual([
       { type: "thinking", turn: 0, content: "plan" },
       { type: "token", turn: 0, content: "answer" },
     ])

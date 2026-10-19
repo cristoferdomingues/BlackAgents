@@ -1,3 +1,4 @@
+import type { ChatMessage, TokenUsage, ToolCall } from "@/lib/llm/types"
 import type { ToolExecutionTrace } from "@/lib/mcp/types"
 
 /**
@@ -72,6 +73,15 @@ export interface ApprovalDecision {
 }
 
 export type AgentLoopEvent =
+  | { type: "turn_start"; turn: number; maxTurns: number }
+  | { type: "llm_request"; turn: number; messageCount: number }
+  | {
+      type: "llm_response"
+      turn: number
+      durationMs: number
+      toolCallCount: number
+      usage?: TokenUsage
+    }
   | { type: "thinking"; turn: number; content: string }
   | { type: "token"; turn: number; content: string }
   | {
@@ -85,5 +95,18 @@ export type AgentLoopEvent =
   | { type: "approval_required"; approval: ApprovalRequest }
   | { type: "approval_resolved"; id: string; approved: boolean }
   | { type: "tool_result"; trace: ToolExecutionTrace }
+
+/** Full model exchange for audit logs only (not sent on the live chat SSE). */
+export interface LlmExchange {
+  turn: number
+  model: string
+  systemContext?: string
+  messages: ChatMessage[]
+  content: string
+  reasoning?: string
+  toolCalls?: ToolCall[]
+  durationMs: number
+  usage?: TokenUsage
+}
 
 export type { ToolExecutionTrace }

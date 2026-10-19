@@ -1,6 +1,8 @@
 import type {
   ChatMessage,
   LLMCredentials,
+  LLMGenerateRequest,
+  LLMGenerateResult,
   LLMProvider,
   LLMToolDefinition,
 } from "@/lib/llm/types"
@@ -14,6 +16,7 @@ import {
 import type {
   AgentLoopEvent,
   ApprovalDecision,
+  LlmExchange,
   RuntimeTool,
   ToolExecutionTrace,
 } from "./types"
@@ -38,6 +41,8 @@ export interface AgentLoopOptions {
   /** Ask the user about a call that needs approval. */
   approve: (tool: RuntimeTool, args: Record<string, unknown>) => Promise<ApprovalDecision>
   onEvent?: (event: AgentLoopEvent) => void
+  /** Full prompt/reply for audit logs; not sent on the chat SSE. */
+  onLlmExchange?: (exchange: LlmExchange) => void
   signal?: AbortSignal
 }
 
@@ -153,6 +158,46 @@ async function runTool(
   }
 }
 
+async function generateTurn(
+  options: AgentLoopOptions,
+  turn: number,
+  maxTurns: number,
+  messages: ChatMessage[],
+  definitions: LLMToolDefinition[]
+): Promise<LLMGenerateResult> {
+  options.onEvent?.({ type: "turn_start", turn, maxTurns })
+  options.onEvent?.({ type: "llm_request", turn, messageCount: messages.length })
+  const request: LLMGenerateRequest = {
+    model: options.model,
+    messages,
+    temperature: options.temperature,
+    systemContext: options.systemContext,
+    tools: definitions.length > 0 ? definitions : undefined,
+  }
+  const started = Date.now()
+  const result = await options.provider.generate(request, options.credentials)
+  const durationMs = Date.now() - started
+  options.onEvent?.({
+    type: "llm_response",
+    turn,
+    durationMs,
+    toolCallCount: result.toolCalls?.length ?? 0,
+    ...(result.usage ? { usage: result.usage } : {}),
+  })
+  options.onLlmExchange?.({
+    turn,
+    model: options.model,
+    systemContext: options.systemContext,
+    messages: structuredClone(messages),
+    content: result.content,
+    reasoning: result.reasoning,
+    toolCalls: result.toolCalls,
+    durationMs,
+    usage: result.usage,
+  })
+  return result
+}
+
 /**
  * The one bounded tool loop used by chat and workflow steps:
  * generate → run tool calls (with approval) → feed results back, at most
@@ -172,16 +217,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
   for (let turn = 0; turn < maxTurns; turn++) {
     checkAborted(options.signal)
-    const result = await options.provider.generate(
-      {
-        model: options.model,
-        messages,
-        temperature: options.temperature,
-        systemContext: options.systemContext,
-        tools: definitions.length > 0 ? definitions : undefined,
-      },
-      options.credentials
-    )
+    const result = await generateTurn(options, turn, maxTurns, messages, definitions)
     content = result.content
     if (result.reasoning) options.onEvent?.({ type: "thinking", turn, content: result.reasoning })
     if (content) options.onEvent?.({ type: "token", turn, content })
@@ -214,25 +250,15 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   }
 
   checkAborted(options.signal)
-  const final = await options.provider.generate(
+  const finalMessages: ChatMessage[] = [
+    ...messages,
     {
-      model: options.model,
-      messages: [
-        ...messages,
-        {
-          role: "user",
-          content:
-            "The tool-call limit for this turn was reached. Give your best final answer now, without calling tools, and say what is still left to do.",
-        },
-      ],
-      temperature: options.temperature,
-      systemContext: options.systemContext,
-      // Anthropic rejects tool history without tool definitions; any new
-      // calls in this reply are ignored.
-      tools: definitions.length > 0 ? definitions : undefined,
+      role: "user",
+      content:
+        "The tool-call limit for this turn was reached. Give your best final answer now, without calling tools, and say what is still left to do.",
     },
-    options.credentials
-  )
+  ]
+  const final = await generateTurn(options, maxTurns, maxTurns, finalMessages, definitions)
   if (final.reasoning) {
     options.onEvent?.({ type: "thinking", turn: maxTurns, content: final.reasoning })
   }

@@ -91,6 +91,10 @@ interface OpenAICompletion {
       tool_calls?: OpenAIToolCall[]
     }
   }>
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+  }
 }
 
 const THINK_BLOCK = /<think>([\s\S]*?)(?:<\/think>|$)/gi
@@ -177,7 +181,19 @@ export async function openAICompatibleGenerate(
     throw new ProviderError("Provider returned an empty response", 502)
   }
 
-  return { content, model: request.model, toolCalls, ...(reasoning ? { reasoning } : {}) }
+  const usage =
+    typeof json?.usage?.prompt_tokens === "number" &&
+    typeof json?.usage?.completion_tokens === "number"
+      ? { inputTokens: json.usage.prompt_tokens, outputTokens: json.usage.completion_tokens }
+      : undefined
+
+  return {
+    content,
+    model: request.model,
+    toolCalls,
+    ...(reasoning ? { reasoning } : {}),
+    ...(usage ? { usage } : {}),
+  }
 }
 
 export const openAIProvider: LLMProvider = {

@@ -46,6 +46,12 @@ export interface LLMGenerateRequest {
   tools?: LLMToolDefinition[]
 }
 
+/** Token counts when the provider reports them. */
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface LLMGenerateResult {
   content: string
   model: string
@@ -53,6 +59,8 @@ export interface LLMGenerateResult {
   reasoning?: string
   toolCalls?: ToolCall[]
   toolExecutions?: ToolExecutionTrace[]
+  /** Present when the upstream API returns usage. */
+  usage?: TokenUsage
 }
 
 export interface LLMCredentials {

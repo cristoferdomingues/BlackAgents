@@ -13,16 +13,29 @@ import { readAiSettings } from "@/lib/settings"
 import { getBrowserSecrets } from "@/lib/secrets"
 import { loadAutoAcceptedFlows } from "@/lib/browser"
 import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
-import { runAgentLoop } from "@/lib/runtime/agent-loop"
+import { runAgentLoop, truncateResult } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover } from "@/lib/runtime/ask-user"
 import { browserFillLoginTool } from "@/lib/runtime/tools/browser-fill-login"
 import { agentToolScope, type ToolScope } from "@/lib/runtime/tools"
-import type { RuntimeTool, ToolExecutionTrace } from "@/lib/runtime/types"
+import type { AgentLoopEvent, RuntimeTool, ToolExecutionTrace } from "@/lib/runtime/types"
 
+import {
+  appendAuditEvent,
+  auditNow,
+  llmRequestEvent,
+  llmResponseEvent,
+  toolCallEvent,
+  type AuditEvent,
+} from "./audit"
 import { buildStepMessage, filesChangedBy, handoffsFor } from "./handoff"
 import { alreadyLoggedInNote, loginSecretIds, loginStepNote } from "./login"
 import { requestLogin, type LoginDecision } from "./login-wait"
 import { stepModelLayers, stepResolveOptions, type ResolveLlmOptions, type ResolvedLlm } from "./llm"
+import {
+  applyLoopEventToStep,
+  clearLiveStepFields,
+  createThrottledUpdate,
+} from "./live"
 import { parseReviewVerdict } from "./review"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
@@ -63,6 +76,7 @@ export function newRun(params: {
     trigger: params.trigger,
     task: params.task,
     ...(params.stepFiles && Object.keys(params.stepFiles).length > 0 ? { stepFiles: params.stepFiles } : {}),
+    limits: { ...params.workflow.limits },
     createdAt: (params.now ?? new Date()).toISOString(),
     steps: params.workflow.steps.map((s) => ({
       id: s.id,
@@ -113,6 +127,13 @@ export async function executeRun(
     await deps.save(run)
     deps.emit(run)
   }
+  const auditWrites: Promise<void>[] = []
+  const audit = (event: AuditEvent): void => {
+    auditWrites.push(appendAuditEvent(run.workspaceRoot, run.id, event))
+  }
+  const flushAudit = async (): Promise<void> => {
+    await Promise.all(auditWrites.splice(0, auditWrites.length))
+  }
   const finish = async (status: WorkflowRun["status"], fields: Partial<WorkflowRun>): Promise<WorkflowRun> => {
     run.status = status
     run.finishedAt = new Date().toISOString()
@@ -128,15 +149,29 @@ export async function executeRun(
       ) {
         step.status = step.status === "pending" ? "skipped" : "failed"
         step.finishedAt ??= run.finishedAt
+        clearLiveStepFields(step)
       }
     }
     await update()
+    audit({
+      type: "run_finished",
+      ts: auditNow(),
+      status: status === "succeeded" || status === "failed" || status === "cancelled" ? status : "failed",
+      error: fields.error ?? run.error,
+    })
+    await flushAudit()
     return run
   }
 
   run.status = "running"
   run.startedAt = new Date().toISOString()
   await update()
+  audit({
+    type: "run_started",
+    ts: auditNow(),
+    workflow: run.workflow,
+    task: run.task,
+  })
 
   try {
     const [settings, workspaceArtifacts, resolved] = await Promise.all([
@@ -207,6 +242,12 @@ export async function executeRun(
       const loginIds = loginSecretIds(workflow.name, step.id)
 
       if (step.login && !(await loginSecretsReady(loginIds.username, loginIds.password))) {
+        audit({
+          type: "login_pause",
+          ts: auditNow(),
+          stepId: step.id,
+          reason: "This step needs a username and password before it can sign in.",
+        })
         const decision = await pauseForLogin({
           run,
           stepRun,
@@ -224,17 +265,37 @@ export async function executeRun(
         if (decision.action === "already") loginNote = alreadyLoggedInNote()
       }
 
+      audit({
+        type: "step_started",
+        ts: auditNow(),
+        stepId: step.id,
+        agent: step.agent,
+        model: llm.model,
+        provider: llm.provider.id,
+      })
+
       for (;;) {
         stepRun.attempts++
         stepRun.status = "running"
         stepRun.startedAt = new Date().toISOString()
         stepRun.error = undefined
+        stepRun.toolExecutions = []
+        stepRun.maxTurns = step.maxTurns
+        stepRun.turn = undefined
+        stepRun.recent = []
+        stepRun.lastActivityAt = stepRun.startedAt
+        stepRun.activity = {
+          kind: "waiting_model",
+          label: "Starting…",
+          since: stepRun.startedAt,
+        }
         await update()
 
         const stepSignal = AbortSignal.any([
           runSignal,
           AbortSignal.timeout(workflow.limits.stepTimeoutMinutes * 60_000),
         ])
+        const live = createThrottledUpdate(update)
         const approve = createRegistryApprover({
           scope: { kind: "run", runId: run.id, stepId: step.id, workflow: workflow.name },
           signal: stepSignal,
@@ -242,15 +303,76 @@ export async function executeRun(
             run.status = "waiting_approval"
             stepRun.status = "waiting_approval"
             run.pendingApproval = request
+            applyLoopEventToStep(stepRun, { type: "approval_required", approval: request })
+            audit({
+              type: "approval_requested",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              approvalId: request.id,
+              tool: request.tool,
+              summary: request.summary,
+            })
+            await live.flush()
             await update()
           },
-          onResolved: async () => {
+          onResolved: async (request, decision) => {
             run.status = "running"
             stepRun.status = "running"
             run.pendingApproval = null
+            applyLoopEventToStep(stepRun, {
+              type: "approval_resolved",
+              id: request.id,
+              approved: decision.approved,
+            })
+            audit({
+              type: "approval_resolved",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              approvalId: request.id,
+              approved: decision.approved,
+            })
+            await live.flush()
             await update()
           },
         })
+
+        const onEvent = (event: AgentLoopEvent): void => {
+          applyLoopEventToStep(stepRun, event)
+          if (event.type === "tool_call") {
+            audit(
+              toolCallEvent({
+                stepId: step.id,
+                attempt: stepRun.attempts,
+                turn: stepRun.turn,
+                id: event.id,
+                tool: event.tool,
+                server: event.server,
+                risk: event.risk,
+                args: event.args,
+              })
+            )
+          } else if (event.type === "tool_result") {
+            audit({
+              type: "tool_result",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              turn: stepRun.turn,
+              id: event.trace.id,
+              tool: event.trace.tool,
+              server: event.trace.server,
+              result:
+                event.trace.result !== undefined
+                  ? truncateResult(event.trace.result)
+                  : undefined,
+              error: event.trace.error,
+              durationMs: event.trace.durationMs ?? 0,
+            })
+          }
+          live.notify()
+        }
 
         let content: string
         try {
@@ -279,12 +401,51 @@ export async function executeRun(
             workspaceRoot: run.workspaceRoot,
             policy,
             approve,
+            onEvent,
+            onLlmExchange: (exchange) => {
+              audit(
+                llmRequestEvent({
+                  stepId: step.id,
+                  attempt: stepRun.attempts,
+                  turn: exchange.turn,
+                  model: exchange.model,
+                  provider: llm.provider.id,
+                  systemContext: exchange.systemContext,
+                  messages: exchange.messages,
+                })
+              )
+              audit(
+                llmResponseEvent({
+                  stepId: step.id,
+                  attempt: stepRun.attempts,
+                  turn: exchange.turn,
+                  model: exchange.model,
+                  provider: llm.provider.id,
+                  content: exchange.content,
+                  reasoning: exchange.reasoning,
+                  toolCalls: exchange.toolCalls,
+                  durationMs: exchange.durationMs,
+                  usage: exchange.usage,
+                })
+              )
+            },
             signal: stepSignal,
           })
           content = result.content
-          stepRun.toolExecutions.push(...result.toolExecutions)
-          const loginError = toolLoginError(result.toolExecutions)
+          // Tool traces were pushed live via onEvent; keep a final sync if empty.
+          if (stepRun.toolExecutions.length === 0 && result.toolExecutions.length > 0) {
+            stepRun.toolExecutions.push(...result.toolExecutions)
+          }
+          await live.flush()
+          const loginError = toolLoginError(stepRun.toolExecutions)
           if (loginError && !loginPauseUsed) {
+            audit({
+              type: "login_pause",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              reason: loginError,
+            })
             const decision = await pauseForLogin({
               run,
               stepRun,
@@ -311,9 +472,11 @@ export async function executeRun(
             stepRun.status = "failed"
             stepRun.error = loginError
             stepRun.finishedAt = new Date().toISOString()
+            clearLiveStepFields(stepRun)
             throw new StepFailure(`Step "${step.id}" failed: ${loginError}`)
           }
         } catch (err) {
+          await live.flush()
           if (err instanceof StepFailure) throw err
           if (cancelSignal.aborted) throw err
           if (err instanceof ProviderError) await markInvalidOnAuthFailure(llm.provider, err, llm.secret)
@@ -325,6 +488,14 @@ export async function executeRun(
           stepRun.status = "failed"
           stepRun.error = reason
           stepRun.finishedAt = new Date().toISOString()
+          clearLiveStepFields(stepRun)
+          audit({
+            type: "error",
+            ts: auditNow(),
+            stepId: step.id,
+            attempt: stepRun.attempts,
+            message: reason,
+          })
           throw new StepFailure(`Step "${step.id}" failed: ${reason}`)
         }
 
@@ -335,8 +506,26 @@ export async function executeRun(
           ? await decideGate({ resolved, workflow, run, step: stepRun, instructions: step.instructions, isLast: index === workflow.steps.length - 1 })
           : undefined
         stepRun.gate = gate
+        if (gate) {
+          audit({
+            type: "gate",
+            ts: auditNow(),
+            stepId: step.id,
+            attempt: stepRun.attempts,
+            decision: gate.decision,
+            by: gate.by,
+            confidence: gate.confidence,
+          })
+        }
         if (gate?.decision === "retry" && stepRun.attempts <= workflow.limits.maxRetries) {
           retryNote = "A reviewer judged your last answer incomplete or off-task. Try again and finish the job."
+          audit({
+            type: "retry",
+            ts: auditNow(),
+            stepId: step.id,
+            attempt: stepRun.attempts,
+            reason: retryNote,
+          })
           continue
         }
         break
@@ -344,7 +533,15 @@ export async function executeRun(
 
       stepRun.status = "succeeded"
       stepRun.finishedAt = new Date().toISOString()
+      clearLiveStepFields(stepRun)
       await update()
+      audit({
+        type: "step_finished",
+        ts: auditNow(),
+        stepId: step.id,
+        attempt: stepRun.attempts,
+        status: "succeeded",
+      })
 
       if (gate?.decision === "stop") {
         return await finish("succeeded", {

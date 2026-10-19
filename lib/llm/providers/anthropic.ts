@@ -20,6 +20,10 @@ interface AnthropicContentBlock {
 
 interface AnthropicMessage {
   content?: AnthropicContentBlock[]
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+  }
 }
 
 /** A user turn with files: image / document blocks first, then the text. */
@@ -171,11 +175,18 @@ export const anthropicProvider: LLMProvider = {
       throw new ProviderError("Anthropic returned an empty response", 502)
     }
 
+    const usage =
+      typeof json?.usage?.input_tokens === "number" &&
+      typeof json?.usage?.output_tokens === "number"
+        ? { inputTokens: json.usage.input_tokens, outputTokens: json.usage.output_tokens }
+        : undefined
+
     return {
       content,
       model: request.model,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       ...(reasoning ? { reasoning } : {}),
+      ...(usage ? { usage } : {}),
     }
   },
 }

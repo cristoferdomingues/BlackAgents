@@ -10,6 +10,7 @@ import {
   writeText,
 } from "@/lib/fs-service"
 
+import { deleteAuditEvents } from "./audit"
 import { isWorkflowRun, workflowSchema, type Workflow, type WorkflowRun } from "./schema"
 
 /**
@@ -118,6 +119,9 @@ export async function listRuns(root: string, workflow?: string): Promise<Workflo
 export async function pruneRuns(root: string, keep = MAX_KEPT_RUNS): Promise<number> {
   const runs = await listRuns(root)
   const old = runs.slice(keep).filter((r) => r.finishedAt)
-  for (const run of old) await removePath(runPath(root, run.id))
+  for (const run of old) {
+    await removePath(runPath(root, run.id))
+    await deleteAuditEvents(root, run.id).catch(() => undefined)
+  }
   return old.length
 }

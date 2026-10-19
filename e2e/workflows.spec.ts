@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { fulfillSse, stubVerifiedProvider, stubWorkspace, WORKSPACE } from "./support/stubs"
+import { fulfillSse, sse, stubVerifiedProvider, stubWorkspace, WORKSPACE } from "./support/stubs"
 
 const workflow = {
   name: "review-line",
@@ -518,5 +518,87 @@ test.describe("workflows", () => {
     await expect(page.getByRole("button", { name: "Cancel run" })).toBeVisible()
     await card.getByRole("button", { name: "Approve", exact: true }).click()
     await expect.poll(() => decision).toMatchObject({ approved: true })
+  })
+
+  test("shows live step activity, stuck warning, and the timeline tab", async ({ page }) => {
+    const staleAt = new Date(Date.now() - 120_000).toISOString()
+    const live = run({
+      status: "running",
+      finishedAt: undefined,
+      report: undefined,
+      limits: { stepTimeoutMinutes: 30, runTimeoutMinutes: 180, maxRetries: 1 },
+      steps: [
+        {
+          id: "plan",
+          agent: "planner",
+          status: "running",
+          attempts: 1,
+          toolExecutions: [],
+          filesChanged: [],
+          startedAt: staleAt,
+          turn: 4,
+          maxTurns: 25,
+          lastActivityAt: staleAt,
+          activity: { kind: "waiting_model", label: "Waiting for model…", since: staleAt },
+          recent: [{ at: staleAt, text: "Turn 4 / 25" }],
+        },
+      ],
+    })
+    await page.route("**/api/runs/run-1/events", async (route) => {
+      // Keep the stream open so the UI stays "Live" (a closed stream reconnects).
+      const body =
+        sse([
+          ["run", live],
+          ["ping", { serverTime: new Date().toISOString() }],
+        ]) + ": keep-alive\n\n"
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
+        body,
+      })
+    })
+    await page.route("**/api/runs/run-1/audit**", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            runId: "run-1",
+            events: [
+              {
+                type: "run_started",
+                ts: "2026-10-19T12:00:00.000Z",
+                workflow: "review-line",
+                task: "Ship it",
+              },
+              {
+                type: "llm_response",
+                ts: "2026-10-19T12:00:10.000Z",
+                stepId: "plan",
+                attempt: 1,
+                turn: 3,
+                model: "gpt-4o-mini",
+                provider: "openai",
+                content: "Working…",
+                durationMs: 1200,
+              },
+            ],
+          },
+        },
+      })
+    )
+
+    await page.goto("/workflows/runs/run-1")
+    await expect(page.getByTestId("run-connection")).toContainText("Live")
+    await expect(page.getByTestId("step-turn")).toContainText("Turn 4 / 25")
+    await expect(page.getByTestId("step-action")).toContainText("Waiting for model")
+    await expect(page.getByTestId("step-stale")).toContainText("No activity for")
+
+    await page.getByRole("tab", { name: "Timeline" }).click()
+    await expect(page.getByTestId("run-timeline")).toBeVisible()
+    await expect(page.getByText("Run started · review-line")).toBeVisible()
+    await expect(page.getByText("Model reply", { exact: false })).toBeVisible()
   })
 })

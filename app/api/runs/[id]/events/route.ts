@@ -9,6 +9,13 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
+/** Keep-alive interval for open run streams. Override in tests via env. */
+export function runEventsPingMs(): number {
+  const raw = process.env.BLACK_AGENTS_SSE_PING_MS
+  const n = raw ? Number(raw) : 15_000
+  return Number.isFinite(n) && n > 0 ? n : 15_000
+}
+
 /** Live run snapshots (`run` events) until the run finishes. */
 export async function GET(req: Request, ctx: RouteContext) {
   return handle(async () => {
@@ -22,12 +29,17 @@ export async function GET(req: Request, ctx: RouteContext) {
       send("run", initial)
       if (isTerminal(initial.status)) return
       await new Promise<void>((resolve) => {
+        const ping = setInterval(() => {
+          send("ping", { serverTime: new Date().toISOString() })
+        }, runEventsPingMs())
+        ping.unref?.()
         const unsubscribe = getRunner().subscribe((run: WorkflowRun) => {
           if (run.id !== id) return
           send("run", run)
           if (isTerminal(run.status)) done()
         })
         function done(): void {
+          clearInterval(ping)
           unsubscribe()
           resolve()
         }

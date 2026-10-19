@@ -159,6 +159,21 @@ export interface StepGateResult {
   confidence?: number
 }
 
+export type StepActivityKind = "waiting_model" | "running_tool" | "waiting_approval" | "idle"
+
+/** What the step is doing right now (live runs only). */
+export interface StepActivity {
+  kind: StepActivityKind
+  label: string
+  since: string
+}
+
+/** One short line in the step's live feed. */
+export interface ActivityEntry {
+  at: string
+  text: string
+}
+
 export interface StepRun {
   id: string
   agent: string
@@ -179,6 +194,12 @@ export interface StepRun {
   modelSource?: ModelSource
   /** Set when the step ran a task kind (`task:vision` and the rest). */
   task?: ChatModelTask
+  /** Live progress while the step runs. Optional so old run files still load. */
+  activity?: StepActivity
+  turn?: number
+  maxTurns?: number
+  lastActivityAt?: string
+  recent?: ActivityEntry[]
 }
 
 export interface WorkflowRun {
@@ -190,6 +211,12 @@ export interface WorkflowRun {
   task: string
   /** Optional per-step file overrides for this run (`stepId -> fileNames[]`). */
   stepFiles?: Record<string, string[]>
+  /** Snapshot of workflow limits at start (for live UI timers). */
+  limits?: {
+    stepTimeoutMinutes: number
+    runTimeoutMinutes: number
+    maxRetries: number
+  }
   createdAt: string
   startedAt?: string
   finishedAt?: string

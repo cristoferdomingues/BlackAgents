@@ -2,6 +2,8 @@
   "name": "implement-plugin-system",
   "description": "Implements the BlackAgents plugin system end-to-end — domain lifecycle with install ledger, API routes, runtime-extensible provider registry, /plugins UI, full test coverage, and a gated release review that sends failures back to the developer.",
   "task": "Implement the BlackAgents plugin system following the plugin-system skill. Start with Phase 1 (declarative core), then Phase 2 (MCP + provider contributions). Do not touch Tier 3 (code plugins).",
+  "provider": "custom",
+  "model": "deepseek/deepseek-v4.1-flash",
   "trigger": {
     "type": "manual"
   },

@@ -71,8 +71,9 @@ function withScriptedGenerate(resolved: ResolvedLlm, scripted: ReturnType<typeof
   }
 }
 
-async function waitFor(check: () => boolean): Promise<void> {
-  for (let i = 0; i < 200; i++) {
+async function waitFor(check: () => boolean, ms = 1_000): Promise<void> {
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
     if (check()) return
     await new Promise((r) => setTimeout(r, 5))
   }
@@ -155,6 +156,41 @@ describe("executeRun", () => {
     const jev = fakeJev({ next: choiceAnswer("stop", 0.5) })
     const run = await executeRun(start(wf), wf, deps(scriptedProvider([{ content: "x" }]), { jev }), new AbortController().signal)
     expect(run.steps[0].gate).toEqual({ decision: "continue", by: "default" })
+  })
+
+  it("pushes tool traces and live activity while the step runs", async () => {
+    const lookup = fakeTool("lookup", "read")
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const slowLookup = {
+      ...lookup,
+      async execute(args: Record<string, unknown>) {
+        await gate
+        return lookup.execute(args, { workspaceRoot: env.workspace })
+      },
+    }
+    const provider = scriptedProvider([
+      { toolCalls: [call("c1", "lookup", { q: 1 })] },
+      { content: "done" },
+    ])
+    const saved: WorkflowRun[] = []
+    const wf = workflow({ steps: [{ id: "plan", agent: "planner" }] })
+    const done = executeRun(start(wf), wf, deps(provider, { tools: [slowLookup], saved }), new AbortController().signal)
+
+    await waitFor(
+      () => saved.some((r) => r.steps[0]?.activity?.kind === "running_tool"),
+      3_000
+    )
+    const mid = [...saved].reverse().find((r) => r.steps[0]?.activity?.kind === "running_tool")
+    expect(mid?.steps[0]?.turn).toBe(1)
+    expect(mid?.steps[0]?.activity?.label).toContain("lookup")
+    release()
+    const run = await done
+    expect(run.status).toBe("succeeded")
+    expect(run.steps[0].toolExecutions).toHaveLength(1)
+    expect(run.steps[0].activity).toBeUndefined()
   })
 
   it("waits for approval, records files changed, and continues", async () => {

@@ -86,6 +86,8 @@ function summarize(event: AuditEvent): string {
       return `Context protected · removed ${event.removedMessages} old messages`
     case "empty_retry":
       return "Empty model reply · asking once more"
+    case "continuation":
+      return "Safety limit reached · one continuation round with a fresh budget"
     case "approval_requested":
       return `Needs approval · ${event.tool}`
     case "approval_resolved":

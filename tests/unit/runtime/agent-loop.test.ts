@@ -229,6 +229,46 @@ describe("runAgentLoop", () => {
     })
   })
 
+  it("tells the model when a turn's calls were trimmed, so it does not assume they all ran", async () => {
+    const tool = fakeTool("search", "read")
+    const calls = Array.from({ length: 30 }, (_, i) => call(`c${i}`, "search", { q: i }))
+    const provider = scriptedProvider([{ toolCalls: calls }, { content: "final result" }])
+    await runAgentLoop(options({ provider, tools: [tool], maxToolCallsPerTurn: 3 }))
+    const second = provider.requests[1]
+    expect(second.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: "You asked for 30 tool calls this turn; only 3 ran. Continue with what you have; ask for the rest only if still needed.",
+    })
+  })
+
+  it("does not add a trim notice when the step ends at the total budget instead", async () => {
+    const tool = fakeTool("search", "read")
+    const provider = scriptedProvider([
+      { toolCalls: Array.from({ length: 3 }, (_, i) => call(`a${i}`, "search", { q: i })) },
+      { content: "wrapped up" },
+    ])
+    await runAgentLoop(
+      options({ provider, tools: [tool], maxToolCallsPerTurn: 3, maxTotalToolCalls: 2 })
+    )
+    const second = provider.requests[1]
+    expect(second.messages.at(-1)?.content).not.toContain("tool calls this turn")
+  })
+
+  it("scales the total tool-call budget with maxTurns when none is set", async () => {
+    const tool = fakeTool("search", "read")
+    // 6 calls per turn, 3 turns: default per-turn cap (20) never trims, so
+    // only a total budget smaller than 18 would stop this early.
+    const provider = scriptedProvider([
+      { toolCalls: Array.from({ length: 6 }, (_, i) => call(`a${i}`, "search", { q: i })) },
+      { toolCalls: Array.from({ length: 6 }, (_, i) => call(`b${i}`, "search", { q: i })) },
+      { toolCalls: Array.from({ length: 6 }, (_, i) => call(`c${i}`, "search", { q: i })) },
+      { content: "done" },
+    ])
+    const result = await runAgentLoop(options({ provider, tools: [tool], maxTurns: 4 }))
+    expect(tool.calls).toHaveLength(18)
+    expect(result).toMatchObject({ content: "done", stoppedAtLimit: false })
+  })
+
   it("removes duplicate calls in the same model reply", async () => {
     const tool = fakeTool("search", "read")
     const calls = Array.from({ length: 30 }, (_, i) => call(`c${i}`, "search", { q: "same" }))

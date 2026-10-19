@@ -28,7 +28,8 @@ export const MAX_TURNS_LIMIT = 100
 export const DEFAULT_TOOL_TIMEOUT_MS = 60_000
 export const MAX_TOOL_RESULT_CHARS = 12_000
 export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 20
-export const DEFAULT_MAX_TOTAL_TOOL_CALLS = 100
+/** Default total budget is `maxTurns * this`, so a longer step gets a bigger budget. */
+export const DEFAULT_TOOL_CALLS_PER_TURN_BUDGET = 5
 /** Approx. 50k tokens. Leaves room for provider-specific formatting/output. */
 export const DEFAULT_MAX_CONTEXT_CHARS = 200_000
 /** Sent once when a provider reply has no text and no tool call. */
@@ -87,6 +88,20 @@ export function truncateResult(value: unknown, max = MAX_TOOL_RESULT_CHARS): str
   const text = typeof value === "string" ? value : JSON.stringify(value) ?? "null"
   if (text.length <= max) return text
   return `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`
+}
+
+/** The total tool-call budget for a run: an explicit value, or `maxTurns * DEFAULT_TOOL_CALLS_PER_TURN_BUDGET`. */
+function resolveMaxTotalToolCalls(options: AgentLoopOptions, maxTurns: number): number {
+  return Math.max(1, options.maxTotalToolCalls ?? maxTurns * DEFAULT_TOOL_CALLS_PER_TURN_BUDGET)
+}
+
+/** Told to the model when some of its tool calls were cut mid-turn (not a stop). */
+export function trimNotice(requested: number, accepted: number, duplicates: number): string {
+  const dup = duplicates > 0 ? ` (${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped)` : ""
+  return (
+    `You asked for ${requested} tool calls this turn; only ${accepted} ran${dup}. ` +
+    "Continue with what you have; ask for the rest only if still needed."
+  )
 }
 
 function toDefinition(tool: RuntimeTool): LLMToolDefinition {
@@ -255,10 +270,7 @@ async function generateTurn(
     content: result.content,
     reasoning: result.reasoning,
     // Keep audit files bounded even when a provider returns a runaway list.
-    toolCalls: result.toolCalls?.slice(
-      0,
-      options.maxTotalToolCalls ?? DEFAULT_MAX_TOTAL_TOOL_CALLS
-    ),
+    toolCalls: result.toolCalls?.slice(0, resolveMaxTotalToolCalls(options, maxTurns)),
     durationMs,
     usage: result.usage,
   })
@@ -309,10 +321,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     1,
     options.maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN
   )
-  const maxTotal = Math.max(
-    1,
-    options.maxTotalToolCalls ?? DEFAULT_MAX_TOTAL_TOOL_CALLS
-  )
+  const maxTotal = resolveMaxTotalToolCalls(options, maxTurns)
   const maxContextChars = Math.max(
     1,
     options.maxContextChars ?? DEFAULT_MAX_CONTEXT_CHARS
@@ -409,6 +418,15 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         content: truncateResult(
           trace.error ? { error: trace.error } : trace.result ?? null
         ),
+      })
+    }
+    // The model asked for more calls than this turn accepted, but the loop
+    // still has turns and budget left — tell it so it does not assume every
+    // requested call ran.
+    if (trimmed && !exhausted) {
+      messages.push({
+        role: "user",
+        content: trimNotice(result.toolCalls.length, selected.calls.length, selected.duplicates),
       })
     }
     if (exhausted) break

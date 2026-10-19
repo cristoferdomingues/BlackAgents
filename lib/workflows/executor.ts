@@ -13,7 +13,12 @@ import { readAiSettings } from "@/lib/settings"
 import { getBrowserSecrets } from "@/lib/secrets"
 import { loadAutoAcceptedFlows } from "@/lib/browser"
 import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
-import { runAgentLoop, truncateResult } from "@/lib/runtime/agent-loop"
+import {
+  runAgentLoop,
+  truncateResult,
+  type AgentLoopOptions,
+  type AgentLoopResult,
+} from "@/lib/runtime/agent-loop"
 import { createRegistryApprover } from "@/lib/runtime/ask-user"
 import { browserFillLoginTool } from "@/lib/runtime/tools/browser-fill-login"
 import { agentToolScope, type ToolScope } from "@/lib/runtime/tools"
@@ -40,6 +45,12 @@ import { parseReviewVerdict, reviewReasons } from "./review"
 import type { StepGateResult, StepRun, Workflow, WorkflowRun } from "./schema"
 
 export const REPORT_MAX_CHARS = 2_000
+
+/** Sent once when a step hits its safety limit, before giving it a fresh budget. */
+export const STEP_CONTINUATION_NUDGE =
+  "A safety limit stopped you before this task was finished. You now have a fresh turn and " +
+  "tool-call budget. Continue the same task from where you left off; do not restart or repeat work " +
+  "already done."
 
 /** Everything the executor reads from the outside world, injectable for tests. */
 export interface ExecutorDeps {
@@ -99,6 +110,34 @@ function errorText(err: unknown): string {
 }
 
 class StepFailure extends Error {}
+
+/**
+ * Run a step's agent loop. A step must never move on half-finished: if the
+ * loop stops at its turn/tool-call safety limit, give it exactly one more
+ * round with a fresh budget, continuing from where it left off. A second
+ * safety-limit stop in that same attempt is reported to the caller as
+ * `stoppedAtLimit: true` so the step fails instead of passing on partial work.
+ */
+async function runStepToCompletion(
+  loop: typeof runAgentLoop,
+  loopOptions: AgentLoopOptions,
+  onContinuation: () => void
+): Promise<AgentLoopResult> {
+  const first = await loop(loopOptions)
+  if (!first.stoppedAtLimit) return first
+  onContinuation()
+  const second = await loop({
+    ...loopOptions,
+    messages: [...first.messages, { role: "user", content: STEP_CONTINUATION_NUDGE }],
+  })
+  return {
+    content: second.content,
+    toolExecutions: [...first.toolExecutions, ...second.toolExecutions],
+    messages: second.messages,
+    turns: first.turns + second.turns,
+    stoppedAtLimit: second.stoppedAtLimit,
+  }
+}
 
 /**
  * Run a workflow's steps in order. Each step is one agent loop; its reply is
@@ -418,7 +457,7 @@ export async function executeRun(
 
         let content: string
         try {
-          const result = await loop({
+          const loopOptions: AgentLoopOptions = {
             provider: llm.provider,
             credentials: llm.credentials,
             model: llm.model,
@@ -474,7 +513,26 @@ export async function executeRun(
               )
             },
             signal: stepSignal,
+          }
+          const result = await runStepToCompletion(loop, loopOptions, () => {
+            audit({
+              type: "continuation",
+              ts: auditNow(),
+              stepId: step.id,
+              attempt: stepRun.attempts,
+              reason: "Hit the tool-call safety limit; starting one continuation round with a fresh budget.",
+            })
           })
+          if (result.stoppedAtLimit) {
+            stepRun.status = "failed"
+            stepRun.error = `Step "${step.id}" hit the tool-call safety limit again after one continuation round.`
+            stepRun.finishedAt = new Date().toISOString()
+            clearLiveStepFields(stepRun)
+            throw new StepFailure(
+              `Step "${step.id}" failed: it hit the tool-call safety limit twice, even after a continuation ` +
+                'round with a fresh budget. Raise "Max turns" for this step, or split the task into smaller steps.'
+            )
+          }
           content = result.content
           // Tool traces were pushed live via onEvent; keep a final sync if empty.
           if (stepRun.toolExecutions.length === 0 && result.toolExecutions.length > 0) {

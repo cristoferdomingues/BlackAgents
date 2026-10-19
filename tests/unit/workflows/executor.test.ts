@@ -8,6 +8,7 @@ import { listPendingApprovals, resolveApproval } from "@/lib/runtime/approvals"
 import type { RuntimeTool } from "@/lib/runtime/types"
 import { setProviderSecret } from "@/lib/secrets"
 import { updateAiSettings } from "@/lib/settings"
+import { readAuditEvents } from "@/lib/workflows/audit"
 import { executeRun, newRun, type ExecutorDeps } from "@/lib/workflows/executor"
 import { resolveRunLlm, type ResolvedLlm } from "@/lib/workflows/llm"
 import { workflowSchema, type Workflow, type WorkflowRun } from "@/lib/workflows/schema"
@@ -121,6 +122,40 @@ describe("executeRun", () => {
     )
     expect(run.status).toBe("failed")
     expect(run.steps[1]).toMatchObject({ status: "failed", error: "upstream down" })
+  })
+
+  it("gives a step hitting its safety limit one continuation round with a fresh budget", async () => {
+    const lookup = fakeTool("lookup", "read")
+    const provider = scriptedProvider([
+      { toolCalls: [call("c1", "lookup")] },
+      { content: "partial, still working" },
+      { content: "done" },
+    ])
+    const wf = workflow({ steps: [{ id: "build", agent: "builder", maxTurns: 1 }] })
+    const run = await executeRun(start(wf), wf, deps(provider, { tools: [lookup] }), new AbortController().signal)
+
+    expect(run.status).toBe("succeeded")
+    expect(run.steps[0]).toMatchObject({ status: "succeeded", output: "done" })
+    expect(provider.requests).toHaveLength(3)
+    const events = await readAuditEvents(env.workspace, run.id, { types: ["continuation"] })
+    expect(events).toHaveLength(1)
+  })
+
+  it("fails the run when a step hits its safety limit again after the continuation round", async () => {
+    const lookup = fakeTool("lookup", "read")
+    const provider = scriptedProvider([
+      { toolCalls: [call("c1", "lookup")] },
+      { content: "partial" },
+      { toolCalls: [call("c2", "lookup")] },
+      { content: "still not done" },
+    ])
+    const wf = workflow({ steps: [{ id: "build", agent: "builder", maxTurns: 1 }] })
+    const run = await executeRun(start(wf), wf, deps(provider, { tools: [lookup] }), new AbortController().signal)
+
+    expect(run.status).toBe("failed")
+    expect(run.error).toContain("tool-call safety limit twice")
+    expect(run.steps[0].status).toBe("failed")
+    expect(provider.requests).toHaveLength(4)
   })
 
   it("retries a step when Jev says retry, then continues", async () => {

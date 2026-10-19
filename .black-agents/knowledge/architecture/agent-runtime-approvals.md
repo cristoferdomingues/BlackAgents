@@ -45,17 +45,27 @@ flowchart LR
 |-------|-------|
 | Default / max turns | 25 / 100 (`settings.json` → `assistant.maxToolTurns`) |
 | Tool calls per model reply | 20; duplicate name + argument calls are removed |
-| Tool calls per loop | 100 |
+| Tool calls per loop (total) | `maxTurns * 5` by default, so a longer step gets a bigger budget (`DEFAULT_TOOL_CALLS_PER_TURN_BUDGET`); callers may still pass a fixed `maxTotalToolCalls` |
 | Context estimate | 200 000 chars; oldest complete tool exchanges are removed first |
 | OpenAI-compatible output | 8 192 tokens |
 | Tool timeout | 60 s default (shell up to 300 s) |
 | Tool result size | 12 000 chars, then truncated |
-| At a safety limit | one final model call asks for the best answer and remaining work; tool calls in that reply are not executed |
+| A turn's calls were trimmed, but the loop goes on | the model is told how many of its requested calls ran, so it does not assume the rest happened |
+| At the total safety limit | one final model call asks for the best answer and remaining work; tool calls in that reply are not executed |
 | Empty provider reply | asked once more with a short continue note; a second empty reply fails the step |
 
 Before every provider request, the loop estimates the full request size. If needed, it removes the oldest complete assistant/tool exchange without splitting protocol pairs or removing the caller's initial messages. If protected input alone is too large, it stops with `AgentContextLimitError`. Provider requests receive the run's `AbortSignal`, so timeout and cancel also stop an in-flight HTTP request.
 
 Events emitted include `token`, `tool_call`, `tool_result`, `approval_required`, `approval_resolved`, `turn_start`, `llm_request`, `llm_response`, `tool_limit`, `context_compacted`, and `empty_retry`. The chat streams its supported events over SSE (`lib/sse.ts`, `lib/sse-client.ts`). Workflow runs also write the full event set to their audit log.
+
+### A workflow step never moves on half-finished
+
+`runAgentLoop` reports `stoppedAtLimit: true` when a step ends because it ran out of turns or its total tool-call budget, not because the model was done. The executor (`lib/workflows/executor.ts`) never accepts that as a finished step:
+
+1. It gives the step **one continuation round** with a fresh turn and tool-call budget, picking up the same message history plus a short "continue, do not restart" note.
+2. If the continuation **also** hits the safety limit, the run **fails** with a clear reason (`"it hit the tool-call safety limit twice, even after a continuation round"`) instead of handing an unfinished step to the next one.
+
+This is audited as a `continuation` event. Chat sessions keep the single-round behavior (one safety-limit stop asks for a best-effort final answer); only workflow steps get the continuation-then-fail treatment, since a chat has a user to ask for more.
 
 ## Tool Risk
 

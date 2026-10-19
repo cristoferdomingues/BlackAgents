@@ -117,7 +117,7 @@ export const fsReadTool: RuntimeTool = {
   source: "builtin",
   risk: "read",
   description:
-    "Read a UTF-8 text file inside the workspace (first 100 KB). `path` is relative to the workspace root.",
+    "Read one UTF-8 text file inside the workspace (first 100 KB). Files only: use fs_list to see a folder. `path` is relative to the workspace root.",
   parameters: {
     type: "object",
     properties: { path: { type: "string" } },
@@ -131,7 +131,11 @@ export const fsReadTool: RuntimeTool = {
     if (startsWithAny(rel, [".git/"])) return { error: "Reading .git is not allowed" }
     const abs = resolveInWorkspace(ctx.workspaceRoot, rel)
     const stat = await fs.stat(abs).catch(() => null)
-    if (!stat?.isFile()) return { error: `Not a file: ${parsed.data.path}` }
+    if (!stat) return { error: `Not found: ${parsed.data.path}` }
+    if (stat.isDirectory()) {
+      return { error: `"${parsed.data.path}" is a folder. Use fs_list to see its files.` }
+    }
+    if (!stat.isFile()) return { error: `Not a file: ${parsed.data.path}` }
     const handle = await fs.open(abs, "r")
     try {
       const buffer = Buffer.alloc(Math.min(stat.size, MAX_READ_BYTES))

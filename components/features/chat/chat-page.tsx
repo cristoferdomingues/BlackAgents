@@ -267,6 +267,8 @@ export function ChatPage({
   const [workflows, setWorkflows] = React.useState<WorkflowListItem[]>([])
   const [workspaceFiles, setWorkspaceFiles] = React.useState<WorkspaceFile[]>([])
   const voiceBaseRef = React.useRef("")
+  const replyAbortRef = React.useRef<AbortController | null>(null)
+  React.useEffect(() => () => replyAbortRef.current?.abort(), [])
   const voice = useVoiceInput({
     provider,
     onTranscript: (text) => {
@@ -675,8 +677,10 @@ export function ChatPage({
     setResolvedModel({ agentKey, model: null })
     setLive(EMPTY_LIVE)
     let finished = false
+    const controller = new AbortController()
+    replyAbortRef.current = controller
+    let current = EMPTY_LIVE
     try {
-      let current = EMPTY_LIVE
       const outcome: { final: Turn | null; error: string | null } = {
         final: null,
         error: null,
@@ -715,8 +719,10 @@ export function ChatPage({
           current = applyChatEvent(current, event)
           if (current.model) setResolvedModel({ agentKey, model: current.model })
           setLive(current)
-        }
+        },
+        controller.signal
       )
+      if (controller.signal.aborted) throw new DOMException("Stopped", "AbortError")
       if (outcome.error) throw new Error(outcome.error)
       const reply = outcome.final
       if (!reply) throw new Error("The assistant stopped before answering")
@@ -725,6 +731,25 @@ export function ChatPage({
       saveTurns(finalized, scope)
       finished = true
     } catch (err) {
+      if (controller.signal.aborted) {
+        const partial = current.content.trim()
+        if (partial) {
+          const stopped: Turn = {
+            role: "assistant",
+            content: partial,
+            artifacts: current.artifacts.length ? current.artifacts : undefined,
+            stopped: true,
+          }
+          const finalized = [...next, stopped]
+          if (stillThisChat()) setTurns(finalized)
+          saveTurns(finalized, scope)
+        } else if (stillThisChat()) {
+          setTurns((t) => t.slice(0, -1))
+          setInput(content)
+          setFiles(sentFiles)
+        }
+        return
+      }
       toast.error(err instanceof Error ? err.message : "The assistant failed")
       if (stillThisChat()) {
         setTurns((t) => t.slice(0, -1))
@@ -737,6 +762,7 @@ export function ChatPage({
           // Preserve the current controls when status refresh is unavailable.
         })
     } finally {
+      if (replyAbortRef.current === controller) replyAbortRef.current = null
       setSending(false)
       setLive(EMPTY_LIVE)
     }
@@ -1463,6 +1489,17 @@ export function ChatPage({
             >
               <Mic className="h-4 w-4" />
             </Button>
+          ) : sending ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => replyAbortRef.current?.abort()}
+              aria-label="Stop the reply"
+              title="Stop the reply"
+            >
+              <Square className="h-4 w-4 fill-current" />
+            </Button>
           ) : (
             <Button
               size="icon"
@@ -1611,6 +1648,9 @@ function Message({
                 Stopped at the tool-call limit. You can raise it in Settings.
               </p>
             ) : null}
+            {turn.stopped ? (
+              <p className="text-xs text-muted-foreground">Stopped by you. This reply may be incomplete.</p>
+            ) : null}
           </>
         )}
 
@@ -1644,6 +1684,8 @@ function Message({
             workflow={workflowDraft}
             exists={workflows.some((item) => item.workflow.name === workflowDraft.name)}
             onSaved={onWorkflowSaved}
+            onFix={onFixIssues}
+            fixDisabled={fixDisabled}
           />
         ) : null}
         {bundle ? (

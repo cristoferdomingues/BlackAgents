@@ -3,12 +3,13 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, CheckCircle2, Loader2, Save, Wand2, Workflow as WorkflowIcon } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2, Save, Wand2, Workflow as WorkflowIcon, Wrench } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
 import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import { WORKFLOW_DRAFT_STORAGE_KEY } from "@/lib/llm/workflow-draft"
+import { checkWorkflowDraft, draftFixRequest } from "@/lib/workflows/draft-check"
 import type { Workflow } from "@/lib/workflows/schema"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
@@ -18,20 +19,23 @@ export function WorkflowDraftCard({
   workflow,
   exists,
   onSaved,
+  onFix,
+  fixDisabled = false,
 }: {
   workflow: Workflow
   /** A workflow with this name is already in the workspace (save updates it). */
   exists: boolean
   onSaved: (name: string) => void
+  onFix?: (request: string) => void
+  fixDisabled?: boolean
 }): React.ReactElement {
   const router = useRouter()
   const { byType } = useWorkspace()
-  const agentNames = new Set(
-    withBuiltinArtifacts(byType("agent"))
-      .filter((a) => a.type === "agent")
-      .map((a) => a.name)
-  )
+  const agents = withBuiltinArtifacts(byType("agent")).filter((a) => a.type === "agent")
+  const agentNames = new Set(agents.map((a) => a.name))
   const missing = [...new Set(workflow.steps.map((s) => s.agent).filter((a) => !agentNames.has(a)))]
+  const checks = checkWorkflowDraft(workflow, agents)
+  const fixRequest = draftFixRequest(workflow.name, checks)
   const [saving, setSaving] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -80,18 +84,50 @@ export function WorkflowDraftCard({
         </Badge>
       </div>
       <ol className="mt-3 space-y-1 text-xs" aria-label="Workflow steps">
-        {workflow.steps.map((step, index) => (
-          <li key={step.id} className="flex items-center gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
-              {index + 1}
-            </span>
-            <span className="font-medium">{step.agent}</span>
-            {step.instructions ? (
-              <span className="truncate text-muted-foreground">{step.instructions}</span>
-            ) : null}
-          </li>
-        ))}
+        {workflow.steps.map((step, index) => {
+          const check = checks[index]
+          return (
+            <li key={step.id} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
+                  {index + 1}
+                </span>
+                <span className="font-medium">{step.agent}</span>
+                {check?.ability ? (
+                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px] font-normal">
+                    {check.ability}
+                  </Badge>
+                ) : null}
+                {step.instructions ? (
+                  <span className="truncate text-muted-foreground">{step.instructions}</span>
+                ) : null}
+              </div>
+              {check && check.warnings.length > 0 ? (
+                <ul className="ml-7 space-y-0.5" aria-label={`Warnings for ${step.id}`}>
+                  {check.warnings.map((warning) => (
+                    <li key={warning} className="flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          )
+        })}
       </ol>
+      {fixRequest && onFix && !saved ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3 w-full"
+          disabled={fixDisabled}
+          onClick={() => onFix(fixRequest)}
+        >
+          <Wrench className="h-4 w-4" />
+          Ask Assistant to fix the step tools
+        </Button>
+      ) : null}
       {missing.length > 0 ? (
         <p className="mt-3 flex items-start gap-1.5 text-xs text-destructive" role="alert">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

@@ -1,0 +1,135 @@
+{
+  "name": "implement-project-scopes",
+  "description": "Implements BlackAgents project scopes — one-level sub-scopes with a project.json inheritance whitelist — across domain, loaders, API/UI, tests, and a gated release review that sends failures back for repair.",
+  "task": "Implement project scopes in the BlackAgents source following the `project-scopes` skill: one-level sub-scopes under .black-agents/projects/<id>/ with a project.json whitelist (inherits tokens: mcp, skills, rules, commands, agents, workflows, knowledge), scope-first fail-closed resolution, merge-order MCP config, activeProject persistence, a project switcher UI with origin badges, and full test coverage. All file changes happen in the BlackAgents code source folder.",
+  "trigger": {
+    "type": "manual"
+  },
+  "steps": [
+    {
+      "id": "domain-layer",
+      "agent": "feature-developer",
+      "instructions": "Implement the domain layer from the `project-scopes` skill seam table: parameterize SOURCE_ROOT in lib/artifacts/source.ts, add scope to Artifact in lib/artifacts/types.ts, add the project.json zod schema + loader, and extend scanWorkspace in lib/artifacts/parser.ts with scope-first whitelist-gated merging. Enforce invariants: one level only, id equals folder name, fail closed on invalid manifests. Follow the `typescript-strict` rule.",
+      "input": "task",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "fs_write"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
+      "maxTurns": 60,
+      "gate": false,
+      "review": false,
+      "repair": false,
+      "login": false
+    },
+    {
+      "id": "loaders-and-api",
+      "agent": "feature-developer",
+      "instructions": "Make the service loaders scope-aware per the `project-scopes` skill: merge-order MCP config in lib/mcp/config.ts (project wins on name), scope-gated workflow and knowledge loaders, activeProject persistence in lib/config.ts (cleared on workspace switch), scope-aware @mention resolution in the graph. Then add the API surface: project CRUD and scope-aware artifact endpoints using the envelope from the `api-response-format` rule. All writes resolve against the scope root through resolveInWorkspace.",
+      "input": "previous",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "fs_write"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
+      "maxTurns": 60,
+      "gate": false,
+      "review": false,
+      "repair": false,
+      "login": false
+    },
+    {
+      "id": "project-switcher-ui",
+      "agent": "uiux-designer",
+      "instructions": "Build the project UI: a project switcher beside the workspace switcher in the header, origin badges (project vs inherited) on artifact lists, and a project management view for creating projects and editing the inherits whitelist. Follow the `design-system` rule and the `design-system` skill.",
+      "input": "previous",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "fs_write"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
+      "maxTurns": 40,
+      "gate": false,
+      "review": false,
+      "repair": false,
+      "login": false
+    },
+    {
+      "id": "test-coverage",
+      "agent": "tester",
+      "instructions": "Cover the feature per the `testing-required` rule and `testing-patterns` skill: manifest validation (unknown tokens, id/folder mismatch, nested projects rejected), resolution order (project beats parent), fail-closed behavior for every non-inherited token, MCP merge order, filesystem confinement (../../ escape must fail), and API integration tests for project CRUD. Follow the `project-scopes` skill invariants as the acceptance list.",
+      "input": "all",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "fs_write",
+        "shell_run"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
+      "maxTurns": 60,
+      "gate": true,
+      "review": false,
+      "repair": false,
+      "login": false
+    },
+    {
+      "id": "fix-pass",
+      "agent": "feature-developer",
+      "instructions": "Repair the defects reported by the test or review steps. Re-run the failed tests and verify each defect is closed. Keep fail-closed semantics and workspace confinement intact — never weaken an invariant to make a test pass.",
+      "input": "all",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "fs_write",
+        "shell_run"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
+      "maxTurns": 60,
+      "gate": false,
+      "review": false,
+      "repair": true,
+      "login": false
+    },
+    {
+      "id": "release-review",
+      "agent": "release-reviewer",
+      "instructions": "Verify every acceptance criterion from the `project-scopes` skill against the diff and the running app: create a project, confirm inherited artifacts appear badged, confirm a non-inherited service is absent, confirm writes land inside the project folder, confirm nested projects and unknown tokens are rejected. Issue VERDICT: approve or VERDICT: reject with actionable defects.",
+      "input": "all",
+      "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read"
+      ],
+      "mcpServers": [],
+      "allowWrites": false,
+      "maxTurns": 50,
+      "gate": false,
+      "review": true,
+      "onReject": {
+        "step": "fix-pass",
+        "maxRounds": 2
+      },
+      "repair": false,
+      "login": false
+    }
+  ],
+  "limits": {
+    "stepTimeoutMinutes": 30,
+    "runTimeoutMinutes": 180,
+    "maxRetries": 1
+  },
+  "selfAssess": false
+}

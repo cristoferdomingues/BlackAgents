@@ -37,6 +37,7 @@ export const BUILTIN_ARTIFACTS: readonly Artifact[] = [
 2. Check which agents and files already exist in the active workspace before proposing a workflow.
 3. If a required step agent does not exist yet, propose creating that agent (via an \`artifact\` or \`bundle\` draft block) before emitting the workflow block.
 4. Choose the right trigger (\`manual\`, \`interval\`, or \`daily\`), step \`input\` mode (\`previous\`, \`task\`, or \`all\`), \`files\` bindings (\`@file:<name>\`), \`gate\` setting, and \`limits\`.
+4a. For every step, set \`tools\`, \`mcpServers\`, and \`allowWrites\` from what that step must do (see the \`workflows-guide\` table). An agent with no \`tools\` list can only read, so a step that implements or fixes code must set \`fs_write\` itself.
 5. Emit a valid \`workflow\` fenced JSON block and explain how to run or schedule it.
 
 ## Output
@@ -140,8 +141,8 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
   - At run time, the executor resolves each handle to its metadata and \`absolutePath\` on disk and injects a \`## Files for this step\` section into the step prompt.
   - Users can also override a step's files for a single manual run in the **Run workflow** panel or Assistant **WorkflowRunCard** (\`stepFiles\` map) without modifying the saved workflow definition.
   - You can also write \`@file:<name>\` inside \`task\` or step \`instructions\` to auto-attach that file.
-- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_find\`, \`fs_search\`, \`fs_write\`, \`fs_edit\`, \`shell_run\`, \`browser_run_flow\`, \`brain_propose_reverification\`). Defaults to the agent's frontmatter \`tools\`. Read access also brings \`fs_find\` and \`fs_search\`; \`fs_write\` also brings \`fs_edit\`.
-- \`mcpServers\`: Optional override of MCP server names (e.g. \`["browser"]\`). Defaults to the agent's frontmatter \`mcpServers\`.
+- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_find\`, \`fs_search\`, \`fs_write\`, \`fs_edit\`, \`shell_run\`, \`browser_run_flow\`, \`brain_propose_reverification\`). Defaults to the agent's frontmatter \`tools\`; an agent with no \`tools\` list can only read (\`fs_list\`, \`fs_read\`). Read access also brings \`fs_find\` and \`fs_search\`; \`fs_write\` also brings \`fs_edit\`.
+- \`mcpServers\`: Optional override of MCP server names (e.g. \`["browser"]\`). Defaults to the agent's frontmatter \`mcpServers\`; an agent with no list gets every workspace server. \`[]\` means no MCP.
 - \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools, \`fs_write\` and \`fs_edit\` auto-approve during this step (\`shell_run\` and protected paths still ask for approval).
 - \`maxTurns\`: \`1..100\` tool turns per step (default \`30\`). Building or changing code needs many turns: use 30 or more for implementation steps.
 - \`gate\`: Boolean (default \`false\`). When \`true\` and **Jev** is enabled in **Settings → AI**, Jev evaluates the step output (\`continue\`, \`retry\`, or \`stop\`) at \`>= 0.8\` confidence. If \`retry\`, the step re-runs up to \`limits.maxRetries\` with reviewer feedback.
@@ -159,6 +160,15 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
 ## How to Use
 
 - When the user asks to create or update a workflow, verify that all step \`agent\` names exist in the workspace (or propose missing agents first), then emit a single \`workflow\` fenced JSON block.
+- Set \`tools\`, \`mcpServers\`, and \`allowWrites\` on every step from what the step must do. Never rely on the agent's defaults:
+
+| Step does | \`tools\` | \`allowWrites\` |
+|---|---|---|
+| Reads, plans, reviews, reports | \`["fs_list", "fs_read"]\` | \`false\` |
+| Writes or changes files (implement, build, fix) | \`["fs_list", "fs_read", "fs_write"]\` | \`true\` |
+| Also runs tests, builds, or other commands | \`["fs_list", "fs_read", "fs_write", "shell_run"]\` | \`true\` |
+
+- Set \`"mcpServers": []\` unless the step needs an outside service; then name only those servers. \`allowWrites\` also auto-approves write-tier MCP tools, so never pair it with servers the step does not need.
 `,
   },
   {
@@ -312,6 +322,7 @@ Follow the \`workflow-guardrails\` rule and \`browser-automation-guardrails\` ru
 - Choose \`input\` deliberately: \`"previous"\` for linear pipelines, \`"task"\` for independent steps that only need the initial prompt, and \`"all"\` for final synthesis/review steps.
 - Bind workspace files via step \`files: ["handle-name"]\` (from **Media & Files**) rather than hardcoding local filesystem paths in instructions.
 - When a step replays a browser flow or uses Playwright MCP, include \`"browser_run_flow"\` in \`tools\` and \`"browser"\` in \`mcpServers\`.
+- Give every step explicit \`tools\`, \`mcpServers\`, and \`allowWrites\` that match its job: steps that change files need \`fs_write\` and \`allowWrites: true\`; steps that run tests need \`shell_run\`; review and report steps stay read-only. Use \`"mcpServers": []\` unless the step needs an outside service.
 - Enable \`gate: true\` only on steps where Jev should verify output quality and potentially trigger a retry or early stop.
 - Only set step \`model\` and \`provider\` when the user asks for a specific model or task tier (\`task:fast\`, \`task:reasoning\`, \`task:vision\`).
 

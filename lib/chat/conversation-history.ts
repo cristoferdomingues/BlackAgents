@@ -61,6 +61,8 @@ export const storedTurnSchema = z.object({
   toolExecutions: z.array(toolExecutionTraceSchema).optional(),
   artifacts: z.array(turnArtifactSchema).optional(),
   stoppedAtLimit: z.boolean().optional(),
+  /** The user pressed Stop; `content` is the part that arrived. */
+  stopped: z.boolean().optional(),
   attachments: z.array(attachmentMetaSchema).optional(),
   workflowRun: workflowRunTurnSchema.optional(),
 })

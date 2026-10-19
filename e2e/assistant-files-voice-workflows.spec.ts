@@ -150,6 +150,34 @@ test.describe("assistant files, voice and workflows", () => {
     expect(posted).toEqual([expect.objectContaining({ name: "release-line", steps: [expect.objectContaining({ agent: "planner" })] })])
   })
 
+  test("warns when a drafted step cannot do its job and asks the assistant to fix it", async ({ page }) => {
+    await stubWorkflows(page, [])
+    const draft = {
+      name: "build-line",
+      steps: [{ id: "build", agent: "planner", instructions: "Implement the API" }],
+    }
+    const bodies: Array<{ messages: Array<{ content: string }> }> = []
+    await page.route("**/api/chat", (route) => {
+      bodies.push(route.request().postDataJSON())
+      return fulfillSse(route, [
+        ["done", { content: `Here it is.\n\n\`\`\`workflow\n${JSON.stringify(draft)}\n\`\`\``, model: "gpt-4o-mini", toolExecutions: [] }],
+      ])
+    })
+    await page.goto("/chat")
+    await page.getByRole("textbox", { name: "Message assistant" }).fill("Make a build workflow")
+    await page.getByRole("button", { name: "Send" }).click()
+
+    const card = page.getByTestId("workflow-draft-card").first()
+    await expect(card.getByText("Read only")).toBeVisible()
+    await expect(card.getByRole("list", { name: "Warnings for build" })).toContainText(
+      "It can only read files, but its instructions ask it to change them."
+    )
+    await card.getByRole("button", { name: "Ask Assistant to fix the step tools" }).click()
+    await expect.poll(() => bodies.length).toBe(2)
+    expect(bodies[1].messages.at(-1)?.content).toContain('Fix the tools in the "build-line" workflow draft.')
+    expect(bodies[1].messages.at(-1)?.content).toContain("- build: It can only read files")
+  })
+
   test("starts a workflow with /name input without calling the model", async ({ page }) => {
     await stubWorkflows(page)
     let chatCalls = 0
@@ -187,5 +215,50 @@ test.describe("assistant files, voice and workflows", () => {
     await page.getByRole("textbox", { name: "Message assistant" }).fill("start @workflow:triage")
     await page.getByRole("button", { name: "Send" }).click()
     await expect(page.getByTestId("workflow-run-card").getByRole("textbox")).toHaveValue("Default triage task")
+  })
+
+  test("stop before any text gives the message back", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.route("**/api/chat", () => {
+      // Never answer: the reply stays in progress until the user stops it.
+    })
+    await page.goto("/chat")
+    const input = page.getByRole("textbox", { name: "Message assistant" })
+    await input.fill("Explain workflows")
+    await page.getByRole("button", { name: "Send" }).click()
+
+    await page.getByRole("button", { name: "Stop the reply" }).click()
+    await expect(page.getByRole("button", { name: "Stop the reply" })).toHaveCount(0)
+    await expect(input).toHaveValue("Explain workflows")
+    await expect(input).toBeEnabled()
+  })
+
+  test("stop keeps the text that already arrived", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.addInitScript(() => {
+      const original = window.fetch.bind(window)
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+        if (!url.endsWith("/api/chat")) return original(input, init)
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event: token\ndata: {"content":"Workflows run steps"}\n\n'))
+            init?.signal?.addEventListener("abort", () =>
+              controller.error(new DOMException("Aborted", "AbortError"))
+            )
+          },
+        })
+        return Promise.resolve(new Response(body, { headers: { "Content-Type": "text/event-stream" } }))
+      }
+    })
+    await page.goto("/chat")
+    await page.getByRole("textbox", { name: "Message assistant" }).fill("Explain workflows")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("Workflows run steps")).toBeVisible()
+
+    await page.getByRole("button", { name: "Stop the reply" }).click()
+    await expect(page.getByText("Stopped by you. This reply may be incomplete.")).toBeVisible()
+    await expect(page.getByText("Workflows run steps")).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Message assistant" })).toHaveValue("")
   })
 })

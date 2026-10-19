@@ -561,7 +561,8 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
   const [content, setContent] = React.useState(proposal.content)
   const [description, setDescription] = React.useState(proposal.description ?? "")
   const [busy, setBusy] = React.useState<"approve" | "reject" | null>(null)
-  const isArtifact = proposal.kind !== "memory_note"
+  const isReverification = proposal.kind === "reverify_concept"
+  const isArtifact = proposal.kind !== "memory_note" && !isReverification
 
   async function decide(action: "approve" | "reject"): Promise<void> {
     setBusy(action)
@@ -598,7 +599,9 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
               {proposal.target.type}:{proposal.target.name}
             </Badge>
           ) : null}
-          {proposal.kind === "new_concept" || proposal.kind === "update_concept" ? (
+          {proposal.kind === "new_concept" ||
+          proposal.kind === "update_concept" ||
+          proposal.kind === "reverify_concept" ? (
             <Badge variant="outline">Knowledge</Badge>
           ) : (
             <Badge variant="outline">{scopeLabel(proposal.agent)}</Badge>
@@ -606,7 +609,9 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
           <span className="text-xs text-muted-foreground">{proposalOrigin(proposal)}</span>
         </div>
         <CardTitle className="text-base">{proposal.title}</CardTitle>
-        {proposal.rationale ? <CardDescription>Why: {proposal.rationale}</CardDescription> : null}
+        {proposal.rationale && !isReverification ? (
+          <CardDescription>Why: {proposal.rationale}</CardDescription>
+        ) : null}
         {proposal.source.comment ? (
           <p className="text-xs text-muted-foreground">Your comment: “{proposal.source.comment}”</p>
         ) : null}
@@ -618,21 +623,35 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
             <Input id={`${proposal.id}-description`} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         ) : null}
-        <div className="space-y-1.5">
-          <Label htmlFor={`${proposal.id}-content`}>
-            {proposal.kind === "new_concept" || proposal.kind === "update_concept" ? "Concept text" : isArtifact ? "New body" : "Note"}
-          </Label>
-          <Textarea
-            id={`${proposal.id}-content`}
-            rows={isArtifact ? 10 : 2}
-            className="font-mono text-xs"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">You can edit this before you approve.</p>
-        </div>
+        {isReverification ? (
+          <div className="space-y-1.5 rounded-md bg-muted/40 p-3">
+            <p className="text-xs font-medium">Why this needs review</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{proposal.content}</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor={`${proposal.id}-content`}>
+              {proposal.kind === "new_concept" || proposal.kind === "update_concept"
+                ? "Concept text"
+                : isArtifact
+                  ? "New body"
+                  : "Note"}
+            </Label>
+            <Textarea
+              id={`${proposal.id}-content`}
+              rows={isArtifact ? 10 : 2}
+              className="font-mono text-xs"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">You can edit this before you approve.</p>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => void decide("approve")} disabled={busy !== null || !content.trim()}>
+          <Button
+            onClick={() => void decide("approve")}
+            disabled={busy !== null || (!isReverification && !content.trim())}
+          >
             {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             Approve
           </Button>

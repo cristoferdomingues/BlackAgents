@@ -14,8 +14,8 @@ import {
   type AbilityChoice,
 } from "@/lib/artifacts/abilities"
 import { BUILTIN_TOOL_LABELS, BUILTIN_TOOL_NAMES, expandBuiltinTools, type BuiltinToolName } from "@/lib/runtime/tool-names"
-import { abilityLabel } from "@/lib/workflows/step-explain"
-import { CHOICE_ICONS, RISK_DOT, RISK_TEXT } from "@/components/features/editor/abilities-field"
+import { STEP_MCP, abilityLabel, stepMcpChoice, type StepMcpChoice } from "@/lib/workflows/step-explain"
+import { CHOICE_ICONS, McpServerPicker, RISK_DOT, RISK_TEXT } from "@/components/features/editor/abilities-field"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 
@@ -27,6 +27,7 @@ export function StepAbilitiesField({
   ownTools,
   tools,
   agentTools,
+  mcpServers,
   onChange,
 }: {
   stepKey: string
@@ -34,7 +35,8 @@ export function StepAbilitiesField({
   tools: BuiltinToolName[]
   /** `null` while no agent is chosen. */
   agentTools: BuiltinToolName[] | null
-  onChange: (patch: { ownTools: boolean; tools: BuiltinToolName[] }) => void
+  mcpServers?: string[]
+  onChange: (patch: { ownTools?: boolean; tools?: BuiltinToolName[]; mcpServers?: string[] }) => void
 }): React.ReactElement {
   const derived: StepChoice = ownTools ? "agent" : abilityChoiceOf(tools)
   const [customOpen, setCustomOpen] = React.useState(derived === "custom")
@@ -132,6 +134,66 @@ export function StepAbilitiesField({
           <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", RISK_DOT[risk])} />
           {effective.length === 0 ? "No built-in tools: it can only talk." : RISK_TEXT[risk]}
         </p>
+      ) : null}
+
+      <StepMcpField
+        stepKey={stepKey}
+        servers={mcpServers}
+        onChange={(servers) => onChange({ mcpServers: servers })}
+      />
+    </div>
+  )
+}
+
+const MCP_ORDER: StepMcpChoice[] = ["agent", "none", "chosen"]
+
+function StepMcpField({
+  stepKey,
+  servers,
+  onChange,
+}: {
+  stepKey: string
+  servers: string[] | undefined
+  onChange: (servers: string[] | undefined) => void
+}): React.ReactElement {
+  const [mode, setMode] = React.useState<StepMcpChoice>(() => stepMcpChoice(servers))
+  const choice: StepMcpChoice = servers && servers.length > 0 ? "chosen" : mode
+
+  function pick(next: StepMcpChoice): void {
+    setMode(next)
+    if (next === "agent") onChange(undefined)
+    else if (next === "none") onChange([])
+    else onChange(servers && servers.length > 0 ? [...servers] : [])
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">MCP servers</p>
+      <div role="radiogroup" aria-label="MCP servers for this step" className="flex flex-wrap gap-1.5">
+        {MCP_ORDER.map((option) => {
+          const selected = choice === option
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => pick(option)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                selected ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              {STEP_MCP[option].label}
+            </button>
+          )
+        })}
+      </div>
+      <p id={`${stepKey}-mcp-help`} className="text-xs text-muted-foreground">
+        {STEP_MCP[choice].summary} Each server keeps its trust level. Risky calls always ask. Ask calls ask too, unless this step allows safe changes.
+      </p>
+      {choice === "chosen" ? (
+        <McpServerPicker value={servers ?? []} onChange={onChange} showAll={false} heading={false} />
       ) : null}
     </div>
   )

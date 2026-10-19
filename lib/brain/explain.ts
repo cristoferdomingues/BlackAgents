@@ -10,6 +10,7 @@ export const KIND_LABEL: Record<ProposalKind, string> = {
   new_rule: "New rule",
   new_concept: "New concept",
   update_concept: "Update concept",
+  reverify_concept: "Re-verify concept",
 }
 
 export const KIND_HELP: Record<ProposalKind, string> = {
@@ -20,6 +21,7 @@ export const KIND_HELP: Record<ProposalKind, string> = {
   new_rule: "Creates a new rule: a short guardrail the assistant follows.",
   new_concept: "A durable fact from an OKF bundle. It is saved as knowledge, not as a memory note.",
   update_concept: "Replaces the text of a knowledge concept that is already saved.",
+  reverify_concept: "Asks you to confirm that an existing knowledge concept is still correct.",
 }
 
 /** One sentence: what happens on Approve. */
@@ -41,6 +43,8 @@ export function approveEffect(proposal: Pick<BrainProposal, "kind" | "agent" | "
       return `Approve saves ${target} into .black-agents/knowledge/ and marks it reviewed by you.`
     case "update_concept":
       return `Approve updates ${target} in .black-agents/knowledge/ and marks it reviewed by you.`
+    case "reverify_concept":
+      return `Approve keeps ${target} unchanged and records that you reviewed it now.`
   }
 }
 

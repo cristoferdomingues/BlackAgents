@@ -31,6 +31,7 @@ export const PROPOSAL_KINDS = [
   "new_rule",
   "new_concept",
   "update_concept",
+  "reverify_concept",
 ] as const
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 
@@ -63,7 +64,7 @@ export interface BrainProposal {
   kind: ProposalKind
   /** Owner brain; absent = shared workspace notes. */
   agent?: string
-  /** Artifact to create or update, or the concept id for `new_concept`. */
+  /** Artifact to create or update, or a concept id. */
   target?: ProposalTarget
   /** OKF frontmatter kept until a `new_concept` proposal is approved. */
   concept?: OkfConceptFrontmatter

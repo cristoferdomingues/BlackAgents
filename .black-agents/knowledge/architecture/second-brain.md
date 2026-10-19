@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Second Brain
-description: Feedback → proposals → approved memory/skills/rules
+description: Feedback and audits → proposals → approved memory, artifacts, and knowledge
 tags:
   - blackagents
   - architecture
@@ -65,7 +65,7 @@ flowchart TD
 - Self signals need Jev; without Jev only explicit feedback is drafted.
 - The draft is a fenced ` ```proposal ` JSON block, checked with zod and `checkArtifactStandards` (e.g. skills need `## When to Apply`; rules ≤ 40 lines).
 - Jev proposal kinds: `memory_note`, `update_skill`, `new_skill`, `update_rule`, `new_rule`.
-- Inbox-only kinds (Jev does not draft these): `new_concept`, `update_concept`. See [Knowledge (OKF)](./knowledge-okf.md).
+- Inbox-only kinds (Jev does not draft these): `new_concept`, `update_concept`, `reverify_concept`. The OKF audit workflow creates re-verification requests through the narrow `brain_propose_reverification` tool. See [Knowledge (OKF)](./knowledge-okf.md).
 - The result is `{ kind: "recorded", reason }` or `{ kind: "proposed", proposalId }`.
 
 ## Approve / Reject (`decideProposal`)
@@ -73,6 +73,7 @@ flowchart TD
 - `memory_note` → appended to the agent's brain (or `workspace.md`).
 - Skill/rule kinds → saved through the artifact store (source in `.black-agents/artifacts/`, then export). Existing rule frontmatter (`alwaysApply`, `globs`) is kept. Checked again against the standards.
 - `new_concept` / `update_concept` → `writeConcept` into `.black-agents/knowledge/`. Approval appends `verified`. It does not invent `generated`. Standards errors block the save; a broken concept link is only a warning.
+- `reverify_concept` → keeps the latest concept body and frontmatter unchanged, then appends `{ by: "human:local", at }` to `verified`. Pending duplicates for the same concept are reused.
 - The user may edit the content and description before approving.
 - Already decided → 409; missing → 404.
 

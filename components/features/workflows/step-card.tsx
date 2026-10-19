@@ -123,6 +123,7 @@ export function StepCard({
     files: step.files.length,
     repair: step.repair,
     sendBack: step.review && step.sendBack,
+    mcpServers: step.mcpServers,
   })
 
   function pickKind(next: StepKind): void {
@@ -375,13 +376,14 @@ export function StepCard({
               ownTools={step.ownTools}
               tools={step.tools}
               agentTools={agentTools}
+              mcpServers={step.mcpServers}
               onChange={onChange}
             />
             {ability?.canWrite ? (
               <SwitchRow
                 id={`${step.key}-writes`}
-                label="Allow file writes without asking"
-                hint="Off: you approve each file change. Commands always ask."
+                label="Allow safe changes without asking"
+                hint="Includes file writes and Brain inbox proposals. Commands always ask."
                 checked={step.allowWrites}
                 onChange={(v) => onChange({ allowWrites: v })}
               />

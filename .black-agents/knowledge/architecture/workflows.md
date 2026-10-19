@@ -48,7 +48,7 @@ verified:
   "steps": [                                       // 1–10
     { "id": "plan", "agent": "planner", "instructions": "",
       "input": "previous",                         // previous | all | task
-      "tools": ["fs_read"], "mcpServers": [],      // optional overrides
+      "tools": ["fs_read"], "mcpServers": [],      // omit = agent's servers; [] = none
       "provider": "anthropic", "model": "claude-sonnet-4-20250514", // optional
       "allowWrites": false, "maxTurns": 6, "gate": true,
       "review": false,                             // true = ends with VERDICT: approve|reject
@@ -82,6 +82,7 @@ flowchart LR
 - **Send back** (`onReject`): only on a review step. On reject, the named step runs again with the defects quoted as untrusted JSON (`## Review feedback` in `buildStepMessage`), then this review runs again. `maxRounds` is 1–3 (how many fix passes). When the rounds run out, the run **fails**. `StepRun.sentBack` is how many times this review sent the work back. A step with `repair: true` is skipped until a review names it; it cannot also be a review, and some review must point at it.
 - **Live activity** (`lib/workflows/live.ts`): while a step runs, the run snapshot carries `activity` (waiting for the model, running a tool, or waiting for approval), `turn` / `maxTurns`, `lastActivityAt`, and the last few `recent` lines. Tool traces are pushed as each call finishes. Saves are throttled to about once a second. No activity for 90 seconds shows a stuck warning on the run page.
 - **Audit** (`lib/workflows/audit.ts`): every model exchange, tool call, approval, login pause, retry, gate, send-back, and error is appended as one JSON line. Secrets are redacted before write. Payloads are capped. The full prompt stays in the audit file, not in the SSE snapshot.
+- **Knowledge re-verification**: `okf-staleness-check` can call only read tools plus `brain_propose_reverification`. The narrow write tool adds a pending `reverify_concept` item to the workspace Brain inbox and cannot edit knowledge. Human approval records the verification.
 - **Limits**: step and run timeouts (`AbortSignal.timeout`), user cancel, at most 20 tool calls from one model reply and 100 per step. Duplicate calls in one reply are ignored. OpenAI-compatible output is capped at 8 192 tokens. Before each request, old complete tool exchanges are removed when the estimated context exceeds 200 000 characters; the timeline records `tool_limit` and `context_compacted` events.
 - **LLM choice** (`llm.ts`): resolved for each step in this order: step → agent frontmatter → workflow → Assistant default → first verified provider. A layer may use `model: "task:vision"` (or `fast` / `reasoning`) to follow Settings → AI → Models by task. Credentials are cached by the final provider + model.
 - **Fail fast**: manual and scheduled runs check every step before queueing. A missing task model or unverified provider returns/records a clear error.

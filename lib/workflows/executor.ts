@@ -434,6 +434,7 @@ export async function executeRun(
             tools: includeLoginTool ? [...tools, browserFillLoginTool] : tools,
             maxTurns: step.maxTurns,
             workspaceRoot: run.workspaceRoot,
+            runId: run.id,
             policy,
             approve,
             onEvent,

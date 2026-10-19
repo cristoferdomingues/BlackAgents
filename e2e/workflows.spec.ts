@@ -95,6 +95,47 @@ test.describe("workflows", () => {
     expect(saved).toMatchObject({ name: "review-line", task: "Ship it", steps: [{ id: "step-1", agent: "planner", gate: true }] })
   })
 
+  test("saves the MCP servers a step may use", async ({ page }) => {
+    let saved: { steps?: Array<{ mcpServers?: string[] }> } | undefined
+    await page.route("**/api/mcp", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: { servers: [{ name: "github", status: "ready", toolCount: 1 }], totalTools: 1 },
+        },
+      })
+    )
+    await page.route("**/api/workflows", async (route) => {
+      saved = route.request().postDataJSON()
+      await route.fulfill({ status: 201, json: { success: true, data: { workflow } } })
+    })
+    await page.route("**/api/workflows/review-line", (route) =>
+      route.fulfill({ json: { success: true, data: { workflow, active: false } } })
+    )
+    await page.route("**/api/workflows/review-line/runs", (route) =>
+      route.fulfill({ json: { success: true, data: { runs: [] } } })
+    )
+
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByRole("radio", { name: "None", exact: true }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page).toHaveURL(/\/workflows\/review-line$/)
+    expect(saved?.steps?.[0]?.mcpServers).toEqual([])
+
+    await page.goto("/workflows/new")
+    await page.getByLabel("Name").fill("review-line")
+    await page.getByRole("combobox", { name: "Agent" }).click()
+    await page.getByRole("option", { name: "planner" }).click()
+    await page.getByRole("radio", { name: "Choose", exact: true }).click()
+    await page.getByRole("button", { name: "github", exact: true }).click()
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page).toHaveURL(/\/workflows\/review-line$/)
+    expect(saved?.steps?.[0]?.mcpServers).toEqual(["github"])
+  })
+
   test("saves a review step", async ({ page }) => {
     let saved: unknown
     await page.route("**/api/workflows", async (route) => {

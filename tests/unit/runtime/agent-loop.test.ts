@@ -64,6 +64,21 @@ describe("runAgentLoop", () => {
     ])
   })
 
+  it("passes the workflow run id to tools", async () => {
+    let seenRunId: string | undefined
+    const tool = fakeTool("lookup", "read")
+    tool.execute = async (_args, context) => {
+      seenRunId = context.runId
+      return { result: "ok" }
+    }
+    const provider = scriptedProvider([
+      { toolCalls: [call("c1", "lookup")] },
+      { content: "done" },
+    ])
+    await runAgentLoop(options({ provider, tools: [tool], runId: "run-1" }))
+    expect(seenRunId).toBe("run-1")
+  })
+
   it("emits turn and llm events around each model call", async () => {
     const provider = scriptedProvider([{ content: "answer", reasoning: "plan" }])
     const events: AgentLoopEvent[] = []

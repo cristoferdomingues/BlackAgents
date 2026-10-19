@@ -14,6 +14,8 @@ export type ToolSource = "builtin" | "mcp"
 
 export interface ToolContext {
   workspaceRoot: string
+  /** Present when a workflow run invoked the tool. */
+  runId?: string
   signal?: AbortSignal
 }
 

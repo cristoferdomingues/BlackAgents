@@ -8,6 +8,7 @@ import {
   extractProposalDraft,
   MAX_PROPOSALS_PER_RUN,
   processSignal,
+  proposeConceptReverification,
   ProposalError,
   selfAssessRun,
   validateDraft,
@@ -22,6 +23,7 @@ import {
   readProposal,
 } from "@/lib/brain/store"
 import { feedbackSignalSchema, type FeedbackSignal } from "@/lib/brain/types"
+import { readConcept } from "@/lib/knowledge/store"
 import { scanWorkspace } from "@/lib/artifacts/parser"
 import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { newRun } from "@/lib/workflows/executor"
@@ -226,6 +228,74 @@ describe("decideProposal", () => {
     expect((await decideProposal(env.workspace, id, { action: "reject" })).status).toBe("rejected")
     expect(await readFile(path.join(env.workspace, ".cursor/rules/style.mdc"), "utf8")).toContain("Use short sentences.")
     await expect(decideProposal(env.workspace, "missing", { action: "reject" })).rejects.toBeInstanceOf(ProposalError)
+  })
+
+  it("queues one re-verification request and approval only verifies the current concept", async () => {
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/knowledge/architecture/workflows.md",
+      [
+        "---",
+        "type: Reference",
+        "title: Workflows",
+        "generated:",
+        "  by: agent:cursor",
+        "  at: '2026-10-19T12:00:00Z'",
+        "verified:",
+        "  - by: human:local",
+        "    at: '2026-10-16T12:00:00Z'",
+        "---",
+        "",
+        "# Workflows",
+        "",
+        "Current body.",
+        "",
+      ].join("\n")
+    )
+
+    const first = await proposeConceptReverification(
+      env.workspace,
+      {
+        conceptId: "architecture/workflows",
+        reason: "Generated after its latest human verification.",
+        runId: "run-1",
+      },
+      new Date("2026-10-19T13:00:00.000Z")
+    )
+    const duplicate = await proposeConceptReverification(env.workspace, {
+      conceptId: "architecture/workflows",
+      reason: "Same finding again.",
+      runId: "run-1",
+    })
+    expect(first.created).toBe(true)
+    expect(duplicate).toMatchObject({ created: false, proposal: { id: first.proposal.id } })
+    expect(first.proposal).toMatchObject({
+      kind: "reverify_concept",
+      target: { type: "concept", name: "architecture/workflows" },
+      source: { kind: "run", signal: "self", runId: "run-1" },
+    })
+
+    const before = await readConcept(env.workspace, "architecture/workflows")
+    await decideProposal(
+      env.workspace,
+      first.proposal.id,
+      { action: "approve" },
+      new Date("2026-10-20T09:30:00.000Z")
+    )
+    const after = await readConcept(env.workspace, "architecture/workflows")
+    expect(after?.body).toBe(before?.body)
+    expect(after?.frontmatter.generated).toEqual(before?.frontmatter.generated)
+    expect(after?.frontmatter.verified?.at(-1)).toEqual({
+      by: "human:local",
+      at: "2026-10-20T09:30:00Z",
+    })
+
+    await expect(
+      proposeConceptReverification(env.workspace, {
+        conceptId: "missing",
+        reason: "Missing.",
+      })
+    ).rejects.toMatchObject({ status: 404 })
   })
 })
 

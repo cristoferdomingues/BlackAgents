@@ -12,9 +12,11 @@ import {
   fsWriteTool,
 } from "@/lib/runtime/tools/fs"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, builtinTools, buildToolset } from "@/lib/runtime/tools"
+import { brainProposeReverificationTool } from "@/lib/runtime/tools/brain"
 import { mcpToolName, toRuntimeTool } from "@/lib/runtime/tools/mcp"
 import { isCommandLine, runProcess, shellRunTool } from "@/lib/runtime/tools/shell"
 import type { Artifact } from "@/lib/artifacts/types"
+import { listProposals } from "@/lib/brain/store"
 
 import { makeTempEnv, type TempEnv } from "../../helpers/workspace"
 
@@ -56,6 +58,41 @@ describe("file tools", () => {
     expect(fsWriteTool.riskFor?.({ path: "src/a.ts" })).toBe("write")
     expect(fsWriteTool.riskFor?.({ path: ".cursor/rules/x.mdc" })).toBe("exec")
     expect(fsWriteTool.riskFor?.({ path: "./.claude/agents/a.md" })).toBe("exec")
+  })
+})
+
+describe("brain tools", () => {
+  it("queues a workspace-confined re-verification proposal and deduplicates it", async () => {
+    const dir = path.join(env.workspace, ".black-agents/knowledge/architecture")
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, "workflows.md"),
+      "---\ntype: Reference\ntitle: Workflows\n---\n\n# Workflows\n"
+    )
+    const args = {
+      conceptId: "architecture/workflows",
+      reason: "Generated after the latest verification.",
+    }
+    const first = await brainProposeReverificationTool.execute(args, {
+      workspaceRoot: env.workspace,
+      runId: "run-1",
+    })
+    const duplicate = await brainProposeReverificationTool.execute(args, {
+      workspaceRoot: env.workspace,
+      runId: "run-1",
+    })
+    expect(first.result).toMatchObject({ conceptId: "architecture/workflows", created: true })
+    expect(duplicate.result).toMatchObject({ conceptId: "architecture/workflows", created: false })
+    expect(await listProposals(env.workspace)).toHaveLength(1)
+    expect((await brainProposeReverificationTool.execute({}, ctx())).error).toContain("conceptId")
+    expect(
+      (
+        await brainProposeReverificationTool.execute(
+          { conceptId: "architecture/missing", reason: "Missing." },
+          ctx()
+        )
+      ).error
+    ).toContain("does not exist")
   })
 })
 

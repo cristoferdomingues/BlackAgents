@@ -90,6 +90,36 @@ export function agentBuiltinTools(frontmatter: Record<string, unknown> | undefin
   return raw.filter(isBuiltinToolName)
 }
 
+export type StepMcpChoice = "agent" | "none" | "chosen"
+
+export const STEP_MCP: Record<StepMcpChoice, { label: string; summary: string }> = {
+  agent: {
+    label: "Same as agent",
+    summary: "Uses the MCP servers saved on the agent.",
+  },
+  none: {
+    label: "None",
+    summary: "This step cannot call MCP tools.",
+  },
+  chosen: {
+    label: "Choose",
+    summary: "This step can use only the servers you pick.",
+  },
+}
+
+/** Missing means inherit. An empty list means no MCP access. */
+export function stepMcpChoice(servers: readonly string[] | undefined): StepMcpChoice {
+  if (servers === undefined) return "agent"
+  return servers.length === 0 ? "none" : "chosen"
+}
+
+export function mcpFact(servers: readonly string[] | undefined): string | null {
+  const choice = stepMcpChoice(servers)
+  if (choice === "agent") return null
+  if (choice === "none") return "No MCP"
+  return servers?.length === 1 ? "1 MCP server" : `${servers?.length ?? 0} MCP servers`
+}
+
 export function abilityLabel(tools: readonly BuiltinToolName[]): string {
   if (tools.length === 0) return "Talk only"
   const choice = abilityChoiceOf(tools)
@@ -115,7 +145,11 @@ export function stepAbility(params: {
   return {
     label: abilityLabel(tools),
     risk: riskOfTools(expanded),
-    canWrite: expanded.some((name) => FILE_WRITE_TOOLS.includes(name)),
+    canWrite: expanded.some(
+      (name) =>
+        FILE_WRITE_TOOLS.includes(name) ||
+        name === "brain_propose_reverification"
+    ),
     fromAgent: params.ownTools,
   }
 }
@@ -129,6 +163,7 @@ export function stepFacts(params: {
   files: number
   repair?: boolean
   sendBack?: boolean
+  mcpServers?: readonly string[]
 }): string[] {
   const facts: string[] = []
   if (params.kind === "review") facts.push("Review")
@@ -136,9 +171,11 @@ export function stepFacts(params: {
   if (params.repair) facts.push("Fixes a rejection")
   if (params.sendBack) facts.push("Sends back if rejected")
   if (params.ability) facts.push(params.ability.label)
-  if (params.ability?.canWrite && params.allowWrites) facts.push("Writes without asking")
+  if (params.ability?.canWrite && params.allowWrites) facts.push("Changes without asking")
   if (params.gate) facts.push("Jev checks")
   if (params.files > 0) facts.push(params.files === 1 ? "1 file" : `${params.files} files`)
+  const mcp = mcpFact(params.mcpServers)
+  if (mcp) facts.push(mcp)
   return facts
 }
 

@@ -178,12 +178,17 @@ type ServersState =
   | { status: "error" }
   | { status: "ready"; names: string[] }
 
-function McpServerPicker({
+export function McpServerPicker({
   value,
   onChange,
+  showAll = true,
+  heading = true,
 }: {
   value: string[]
   onChange: (servers: string[]) => void
+  /** An empty list means every server. Turn this off when empty means none. */
+  showAll?: boolean
+  heading?: boolean
 }): React.ReactElement {
   const [state, setState] = React.useState<ServersState>({ status: "loading" })
 
@@ -208,10 +213,12 @@ function McpServerPicker({
 
   return (
     <div className="space-y-2">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <Server className="h-3.5 w-3.5" aria-hidden />
-        MCP servers
-      </p>
+      {heading ? (
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Server className="h-3.5 w-3.5" aria-hidden />
+          MCP servers
+        </p>
+      ) : null}
       {state.status === "loading" ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -219,7 +226,7 @@ function McpServerPicker({
         </p>
       ) : (
         <div role="group" aria-label="MCP servers" className="flex flex-wrap gap-1.5">
-          <ServerChip label="All servers" pressed={all} onClick={() => onChange([])} />
+          {showAll ? <ServerChip label="All servers" pressed={all} onClick={() => onChange([])} /> : null}
           {known.map((name) => (
             <ServerChip key={name} label={name} pressed={value.includes(name)} onClick={() => toggle(name)} />
           ))}
@@ -247,7 +254,11 @@ function McpServerPicker({
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          {all ? "It can use every server in this workspace." : "It can use only the selected servers."}
+          {showAll && all
+            ? "It can use every server in this workspace."
+            : value.length === 0
+              ? "Pick at least one server."
+              : "It can use only the selected servers."}
         </p>
       )}
     </div>

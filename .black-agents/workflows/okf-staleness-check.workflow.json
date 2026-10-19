@@ -10,10 +10,16 @@
     {
       "id": "knowledge-audit",
       "agent": "knowledge-steward",
-      "instructions": "Scan every concept under .black-agents/knowledge/ (excluding index.md and log.md). Check stale_after dates, generated/verified provenance, links to non-existent concepts, and OKF v0.2 frontmatter validity. Write one re-verify proposal per overdue concept into the Brain inbox using the Brain store's existing JSON shape; if the inbox is unreachable, emit proposals as a report instead. Never edit concept files or mark anything verified. Fail the step (non-zero) if any concept has malformed frontmatter.",
+      "instructions": "Scan every concept under .black-agents/knowledge/ (excluding index.md and log.md). Check stale_after dates, generated/verified provenance, links to non-existent concepts, and OKF v0.2 frontmatter validity. For each overdue concept, and each concept generated after its latest verification, call brain_propose_reverification with the concept id and clear evidence. The tool only creates a pending Brain inbox item; it never edits or verifies knowledge. Never use a general file-write tool. Report malformed frontmatter as an error.",
       "input": "task",
       "files": [],
-      "allowWrites": false,
+      "tools": [
+        "fs_list",
+        "fs_read",
+        "brain_propose_reverification"
+      ],
+      "mcpServers": [],
+      "allowWrites": true,
       "maxTurns": 30,
       "gate": true,
       "login": false
@@ -24,6 +30,11 @@
       "instructions": "Consolidate the audit output into a single markdown report: concepts scanned, overdue, unverified, broken links, malformed files, and the proposals filed (or emitted). Keep it to a table plus a 3-line summary.",
       "input": "previous",
       "files": [],
+      "tools": [
+        "fs_list",
+        "fs_read"
+      ],
+      "mcpServers": [],
       "allowWrites": false,
       "maxTurns": 30,
       "gate": false,

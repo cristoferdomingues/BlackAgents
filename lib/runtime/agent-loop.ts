@@ -45,6 +45,7 @@ export interface AgentLoopOptions {
   maxTotalToolCalls?: number
   maxContextChars?: number
   workspaceRoot: string
+  runId?: string
   policy: ApprovalPolicy
   /** Ask the user about a call that needs approval. */
   approve: (tool: RuntimeTool, args: Record<string, unknown>) => Promise<ApprovalDecision>
@@ -195,6 +196,7 @@ async function runTool(
     const outcome = await withTimeout(
       tool.execute(args, {
         workspaceRoot: options.workspaceRoot,
+        runId: options.runId,
         signal: options.signal,
       }),
       tool.timeoutMs ?? options.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,

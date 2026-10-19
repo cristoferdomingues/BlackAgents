@@ -64,7 +64,12 @@ export function includedTools(tools: readonly BuiltinToolName[]): BuiltinToolNam
 /** The highest risk among the given tools. */
 export function riskOfTools(tools: readonly BuiltinToolName[]): AbilityRisk {
   if (tools.includes("shell_run")) return "high"
-  if (tools.includes("fs_write") || tools.includes("fs_edit") || tools.includes("browser_run_flow")) {
+  if (
+    tools.includes("fs_write") ||
+    tools.includes("fs_edit") ||
+    tools.includes("browser_run_flow") ||
+    tools.includes("brain_propose_reverification")
+  ) {
     return "medium"
   }
   return "low"

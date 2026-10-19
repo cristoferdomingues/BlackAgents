@@ -122,6 +122,56 @@ test.describe("brain", () => {
     await expect(page.getByText("15 / 3,000 characters")).toBeVisible()
   })
 
+  test("shows and approves a workflow re-verification request", async ({ page }) => {
+    const reverify = {
+      id: "rv1",
+      kind: "reverify_concept",
+      title: "Re-verify Workflows",
+      rationale: "Generated after its latest human verification.",
+      content: "Generated after its latest human verification.",
+      target: { type: "concept", name: "architecture/workflows" },
+      source: { kind: "run", signal: "self", runId: "run-1" },
+      decision: { by: "feedback" },
+      status: "pending",
+      createdAt: "2026-10-19T13:00:00.000Z",
+    }
+    let approved = false
+    let decision: unknown
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            proposals: approved ? [{ ...reverify, status: "approved" }] : [reverify],
+            workspaceNotes: [],
+            agents: [],
+          },
+        },
+      })
+    )
+    await page.route("**/api/brain/proposals/rv1", async (route) => {
+      decision = route.request().postDataJSON()
+      approved = true
+      await route.fulfill({
+        json: { success: true, data: { proposal: { ...reverify, status: "approved" } } },
+      })
+    })
+
+    await page.goto("/brain")
+    await expect(page.getByText("Re-verify concept")).toBeVisible()
+    await expect(page.getByText("Why this needs review")).toBeVisible()
+    await expect(page.getByText("Generated after its latest human verification.")).toBeVisible()
+    await expect(
+      page.getByText(
+        "Approve keeps architecture/workflows unchanged and records that you reviewed it now."
+      )
+    ).toBeVisible()
+    await expect(page.getByRole("textbox")).toHaveCount(0)
+    await page.getByRole("button", { name: "Approve" }).click()
+    await expect(page.getByText("The inbox is empty")).toBeVisible()
+    expect(decision).toEqual({ action: "approve", edits: {} })
+  })
+
   test("previews an OKF folder and sends a concept to the inbox", async ({ page }) => {
     let proposals: unknown[] = []
     await page.route("**/api/brain", (route) =>

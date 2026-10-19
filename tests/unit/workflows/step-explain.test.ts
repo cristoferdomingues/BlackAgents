@@ -5,8 +5,10 @@ import {
   agentBuiltinTools,
   inputForKind,
   stepAbility,
+  mcpFact,
   stepFacts,
   stepIndexOfIssue,
+  stepMcpChoice,
   stepKindFlags,
   stepKindOf,
   stepLinkText,
@@ -92,6 +94,13 @@ describe("stepAbility", () => {
       canWrite: false,
       fromAgent: false,
     })
+    expect(
+      stepAbility({
+        ownTools: false,
+        tools: ["fs_read", "brain_propose_reverification"],
+        agentTools: null,
+      })
+    ).toMatchObject({ risk: "medium", canWrite: true })
   })
 
   it("is unknown when the step uses the agent's tools but has no agent", () => {
@@ -112,13 +121,26 @@ describe("stepFacts", () => {
     ])
   })
 
-  it("shows writes without asking only when the step can write", () => {
+  it("shows changes without asking only when the step can change state", () => {
     expect(stepFacts({ kind: "work", ability: readOnly, gate: false, allowWrites: true, files: 0 })).toEqual(["Read only"])
     expect(stepFacts({ kind: "work", ability: writer, gate: false, allowWrites: true, files: 1 })).toEqual([
       "Read and write",
-      "Writes without asking",
+      "Changes without asking",
       "1 file",
     ])
+  })
+
+  it("shows a custom MCP choice on the closed card", () => {
+    expect(stepMcpChoice(undefined)).toBe("agent")
+    expect(stepMcpChoice([])).toBe("none")
+    expect(stepMcpChoice(["github"])).toBe("chosen")
+    expect(mcpFact(undefined)).toBeNull()
+    expect(mcpFact([])).toBe("No MCP")
+    expect(mcpFact(["github"])).toBe("1 MCP server")
+    expect(mcpFact(["github", "slack"])).toBe("2 MCP servers")
+    expect(
+      stepFacts({ kind: "work", ability: readOnly, gate: false, allowWrites: false, files: 0, mcpServers: [] })
+    ).toEqual(["Read only", "No MCP"])
   })
 
   it("is empty for a plain step with no agent", () => {

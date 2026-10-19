@@ -80,6 +80,7 @@ const KIND_TARGET: Record<ProposalKind, { type: "skill" | "rule"; exists: boolea
   new_rule: { type: "rule", exists: false },
   new_concept: null,
   update_concept: null,
+  reverify_concept: null,
 }
 
 export function extractProposalDraft(text: string): ProposalDraft | null {
@@ -422,6 +423,71 @@ export async function proposeConcept(
   return proposal
 }
 
+export interface ReverificationProposalInput {
+  conceptId: string
+  reason: string
+  runId?: string
+}
+
+/**
+ * Queue a review request without changing the concept. Approval only appends
+ * a human verification event to the latest version on disk.
+ */
+export async function proposeConceptReverification(
+  root: string,
+  input: ReverificationProposalInput,
+  now = new Date()
+): Promise<{ proposal: BrainProposal; created: boolean }> {
+  const reason = input.reason.trim()
+  if (!reason) throw new ProposalError("A reason is required", 400)
+  if (reason.length > 2_000) throw new ProposalError("The reason is too long", 400)
+
+  let concept: Awaited<ReturnType<typeof readConcept>>
+  try {
+    concept = await readConcept(root, input.conceptId)
+  } catch (err) {
+    if (err instanceof KnowledgePathError) throw new ProposalError(err.message, 400)
+    throw err
+  }
+  if (!concept) throw new ProposalError(`The concept "${input.conceptId}" does not exist`, 404)
+
+  const existing = (await listProposals(root)).find(
+    (proposal) =>
+      proposal.status === "pending" &&
+      proposal.kind === "reverify_concept" &&
+      proposal.target?.type === "concept" &&
+      proposal.target.name === concept.id
+  )
+  if (existing) return { proposal: existing, created: false }
+
+  const title = concept.frontmatter.title?.trim() || concept.id.split("/").at(-1) || concept.id
+  const proposal: BrainProposal = {
+    id: randomUUID(),
+    kind: "reverify_concept",
+    target: { type: "concept", name: concept.id },
+    title: `Re-verify ${title}`,
+    rationale: reason,
+    content: reason,
+    source: {
+      kind: input.runId ? "run" : "assistant",
+      signal: "self",
+      ...(input.runId ? { runId: input.runId } : {}),
+    },
+    decision: { by: "feedback" },
+    status: "pending",
+    createdAt: now.toISOString(),
+  }
+  await saveProposal(root, proposal)
+  await appendLog(root, {
+    at: now.toISOString(),
+    event: "proposed",
+    proposalId: proposal.id,
+    kind: proposal.kind,
+    target: `concept:${concept.id}`,
+  })
+  return { proposal, created: true }
+}
+
 /**
  * Queue a preference the user asked the Assistant to remember. Approval writes
  * the note. An omitted agent means every agent.
@@ -495,6 +561,24 @@ export async function decideProposal(
     const description = input.edits?.description ?? proposal.description
     if (proposal.kind === "memory_note") {
       await appendNote(root, proposal.agent, content, now)
+    } else if (proposal.kind === "reverify_concept") {
+      const target = proposal.target
+      if (!target || target.type !== "concept") {
+        throw new ProposalError("The proposal has no concept", 400)
+      }
+      const existing = await readConcept(root, target.name)
+      if (!existing) throw new ProposalError(`The concept "${target.name}" no longer exists`, 409)
+      await writeConcept(root, {
+        id: existing.id,
+        frontmatter: {
+          ...existing.frontmatter,
+          verified: [
+            ...(existing.frontmatter.verified ?? []),
+            { by: "human:local", at: stamp(now) },
+          ],
+        },
+        body: existing.body,
+      })
     } else if (proposal.kind === "new_concept" || proposal.kind === "update_concept") {
       await applyConcept(root, proposal, content, description, now)
     } else {

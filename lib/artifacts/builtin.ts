@@ -140,7 +140,7 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
   - At run time, the executor resolves each handle to its metadata and \`absolutePath\` on disk and injects a \`## Files for this step\` section into the step prompt.
   - Users can also override a step's files for a single manual run in the **Run workflow** panel or Assistant **WorkflowRunCard** (\`stepFiles\` map) without modifying the saved workflow definition.
   - You can also write \`@file:<name>\` inside \`task\` or step \`instructions\` to auto-attach that file.
-- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_find\`, \`fs_search\`, \`fs_write\`, \`fs_edit\`, \`shell_run\`, \`browser_run_flow\`). Defaults to the agent's frontmatter \`tools\`. Read access also brings \`fs_find\` and \`fs_search\`; \`fs_write\` also brings \`fs_edit\`.
+- \`tools\`: Optional override of builtin tools for this step (\`fs_list\`, \`fs_read\`, \`fs_find\`, \`fs_search\`, \`fs_write\`, \`fs_edit\`, \`shell_run\`, \`browser_run_flow\`, \`brain_propose_reverification\`). Defaults to the agent's frontmatter \`tools\`. Read access also brings \`fs_find\` and \`fs_search\`; \`fs_write\` also brings \`fs_edit\`.
 - \`mcpServers\`: Optional override of MCP server names (e.g. \`["browser"]\`). Defaults to the agent's frontmatter \`mcpServers\`.
 - \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools, \`fs_write\` and \`fs_edit\` auto-approve during this step (\`shell_run\` and protected paths still ask for approval).
 - \`maxTurns\`: \`1..100\` tool turns per step (default \`30\`). Building or changing code needs many turns: use 30 or more for implementation steps.

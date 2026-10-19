@@ -47,6 +47,7 @@ describe("riskOfTools", () => {
     expect(riskOfTools(["fs_list", "fs_read", "fs_search"])).toBe("low")
     expect(riskOfTools(["fs_read", "fs_edit"])).toBe("medium")
     expect(riskOfTools(["browser_run_flow"])).toBe("medium")
+    expect(riskOfTools(["brain_propose_reverification"])).toBe("medium")
     expect(riskOfTools(["fs_write", "shell_run"])).toBe("high")
   })
 })

@@ -10,6 +10,7 @@ export const BUILTIN_TOOL_NAMES = [
   "fs_edit",
   "shell_run",
   "browser_run_flow",
+  "brain_propose_reverification",
 ] as const
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number]
 export const builtinToolNameSchema = z.enum(BUILTIN_TOOL_NAMES)
@@ -53,5 +54,9 @@ export const BUILTIN_TOOL_LABELS: Record<BuiltinToolName, { label: string; hint:
   browser_run_flow: {
     label: "Run browser flow",
     hint: "Replay a saved flow. Turn on Run without asking to skip approval.",
+  },
+  brain_propose_reverification: {
+    label: "Propose knowledge re-verification",
+    hint: "Adds a review request to the Brain inbox. It never edits knowledge directly.",
   },
 }

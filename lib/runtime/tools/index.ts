@@ -8,6 +8,7 @@ import {
 } from "../tool-names"
 import { commandEnv } from "../shell-env"
 import type { RuntimeTool } from "../types"
+import { brainProposeReverificationTool } from "./brain"
 import { browserRunFlowTool } from "./browser-run-flow"
 import { fsEditTool, fsFindTool, fsListTool, fsReadTool, fsSearchTool, fsWriteTool } from "./fs"
 import { loadMcpRuntimeTools } from "./mcp"
@@ -22,6 +23,7 @@ const BUILTIN_TOOLS: Record<BuiltinToolName, RuntimeTool> = {
   fs_edit: fsEditTool,
   shell_run: shellRunTool,
   browser_run_flow: browserRunFlowTool,
+  brain_propose_reverification: brainProposeReverificationTool,
 }
 
 /** The runtime tools for these names, plus the tools each one brings along. */

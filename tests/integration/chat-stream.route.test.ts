@@ -256,6 +256,57 @@ describe("POST /api/chat streaming", () => {
     expect(await readFile(path.join(env.workspace, "notes.md"), "utf8")).toBe("hi")
   })
 
+  it("refuses a knowledge file with no OKF frontmatter, even once the write is approved", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        openAIReply({
+          content: null,
+          tool_calls: [
+            {
+              id: "c1",
+              type: "function",
+              function: {
+                name: "fs_write",
+                arguments: JSON.stringify({
+                  path: ".black-agents/knowledge/revenue.md",
+                  content: "# Revenue\n\nJust a note, no frontmatter.\n",
+                }),
+              },
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(openAIReply({ content: "I could not save that as knowledge." }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    // `.black-agents/` is a protected prefix, so this write still asks (exec risk) even with allowWrites.
+    const response = await POST(streamRequest({ agent: "writer", allowWrites: true }))
+    const textPromise = response.text()
+    const id = await waitForApproval()
+    await DECIDE(jsonRequest(`http://t/api/approvals/${id}`, "POST", { approved: true }), {
+      params: Promise.resolve({ id }),
+    })
+
+    const { events } = parseSseFrames(await textPromise)
+    const result = events.find((e) => e.event === "tool_result")
+    expect(result?.data).toMatchObject({
+      trace: { error: expect.stringContaining("not a valid OKF knowledge concept") },
+    })
+    expect(events.at(-1)).toMatchObject({
+      event: "done",
+      data: { content: "I could not save that as knowledge." },
+    })
+    await expect(
+      readFile(path.join(env.workspace, ".black-agents/knowledge/revenue.md"), "utf8")
+    ).rejects.toThrow()
+
+    const second = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)) as {
+      messages: Array<{ role: string; content: string }>
+    }
+    expect(second.messages.at(-1)?.content).toContain("not a valid OKF knowledge concept")
+  })
+
   it("denies approval-gated calls in JSON mode", async () => {
     vi.stubGlobal(
       "fetch",

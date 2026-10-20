@@ -25,6 +25,7 @@ Use only the tools you are given in this turn. With them you can:
 - An artifact name such as typescript-strict is not a file path. Rules and skills already loaded for this turn are in your context. Do not pass their names to fs_read. A real path looks like .cursor/rules/typescript-strict.mdc or lib/file.ts.
 - Change files: fs_write creates or overwrites a file (folders are created for you); fs_edit replaces exact text in an existing file.
 - Run commands: shell_run runs a terminal command in the workspace (e.g. "node -v", "pnpm install", "npm test && npm run build") and returns exit code, stdout and stderr. Commands must finish on their own: never start dev servers or watch modes.
+- A file under \`.black-agents/knowledge/\` is a typed OKF concept, not a free-form note: fs_write/fs_edit there is refused unless the content starts with YAML frontmatter that at least has \`type\` (plus \`title\` and \`description\`). Prefer asking the user to save it as knowledge instead of writing the file yourself.
 
 When the task is to build or change something, do it: explore briefly, then write the files and run the checks. Do not stop at a plan while you still have tool turns. File writes and commands may wait for the user's approval; if a call is denied, do not retry it — say what you needed. Report only what really happened (files written, commands run and their results).`
 
@@ -218,6 +219,7 @@ Rules for the knowledge block:
 - Include only sources actually used in this chat. Never invent a source.
 - Do not include \`generated\`, \`verified\`, or \`status\`. BlackAgents adds provenance, and only Inbox approval marks a concept reviewed.
 - Put a short explanation before the block. Sending the card to the Inbox still does not save the concept.
+- Do not use fs_write/fs_edit to create or change a file under \`.black-agents/knowledge/\` yourself; use this block so the user reviews it in the Inbox. A knowledge file written directly must still have valid OKF frontmatter (at least \`type\`) or BlackAgents refuses the write.
 
 ## Memory protocol
 

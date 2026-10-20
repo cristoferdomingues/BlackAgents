@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
+import { pathExists } from "@/lib/fs-service"
 import { expandBuiltinTools } from "@/lib/runtime/tool-names"
 import {
   fsEditTool,
@@ -78,6 +79,76 @@ describe("file tools", () => {
     expect(fsWriteTool.riskFor?.({ path: "src/a.ts" })).toBe("write")
     expect(fsWriteTool.riskFor?.({ path: ".cursor/rules/x.mdc" })).toBe("exec")
     expect(fsWriteTool.riskFor?.({ path: "./.claude/agents/a.md" })).toBe("exec")
+  })
+
+  it("refuses a knowledge concept with no OKF frontmatter, leaving nothing on disk", async () => {
+    const result = await fsWriteTool.execute(
+      { path: ".black-agents/knowledge/crypto/portfolio-metrics.md", content: "# Just a heading\n\nSome notes.\n" },
+      ctx()
+    )
+    expect(result.error).toContain("not a valid OKF knowledge concept")
+    expect(result.error).toContain("type is required")
+    expect(result.error).toContain("```knowledge draft block")
+    expect(
+      await pathExists(path.join(env.workspace, ".black-agents/knowledge/crypto/portfolio-metrics.md"))
+    ).toBe(false)
+  })
+
+  it("refuses a badly-named knowledge file", async () => {
+    const result = await fsWriteTool.execute(
+      { path: ".black-agents/knowledge/Portfolio Metrics.md", content: "---\ntype: Definition\n---\n\nBody.\n" },
+      ctx()
+    )
+    expect(result.error).toContain("not a valid knowledge concept path")
+  })
+
+  it("accepts a knowledge file with valid OKF frontmatter", async () => {
+    const content = "---\ntype: Definition\ntitle: Portfolio metrics\ndescription: How it is measured.\n---\n\nBody.\n"
+    const result = await fsWriteTool.execute(
+      { path: ".black-agents/knowledge/crypto/portfolio-metrics.md", content },
+      ctx()
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.result).toMatchObject({ path: ".black-agents/knowledge/crypto/portfolio-metrics.md" })
+    expect(
+      await readFile(path.join(env.workspace, ".black-agents/knowledge/crypto/portfolio-metrics.md"), "utf8")
+    ).toBe(content)
+  })
+
+  it("lets index.md and log.md stay plain markdown", async () => {
+    for (const name of ["index.md", "log.md"]) {
+      const result = await fsWriteTool.execute(
+        { path: `.black-agents/knowledge/${name}`, content: "# Just navigation, no frontmatter\n" },
+        ctx()
+      )
+      expect(result.error).toBeUndefined()
+    }
+  })
+
+  it("fs_edit also refuses an edit that leaves a knowledge concept invalid", async () => {
+    await mkdir(path.join(env.workspace, ".black-agents/knowledge"), { recursive: true })
+    await writeFile(
+      path.join(env.workspace, ".black-agents/knowledge/revenue.md"),
+      "---\ntype: Metric\ntitle: Revenue\n---\n\nOld body.\n"
+    )
+    const broken = await fsEditTool.execute(
+      {
+        path: ".black-agents/knowledge/revenue.md",
+        oldText: "---\ntype: Metric\ntitle: Revenue\n---\n\n",
+        newText: "",
+      },
+      ctx()
+    )
+    expect(broken.error).toContain("not a valid OKF knowledge concept")
+    expect(await readFile(path.join(env.workspace, ".black-agents/knowledge/revenue.md"), "utf8")).toContain(
+      "Old body."
+    )
+
+    const fixed = await fsEditTool.execute(
+      { path: ".black-agents/knowledge/revenue.md", oldText: "Old body.", newText: "New body." },
+      ctx()
+    )
+    expect(fixed.error).toBeUndefined()
   })
 })
 

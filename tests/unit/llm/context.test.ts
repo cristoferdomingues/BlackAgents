@@ -62,6 +62,13 @@ describe("buildSystemContext", () => {
     expect(context).toContain(
       "Emit at most one artifact draft, bundle, workflow, knowledge, or memory block per reply"
     )
+    expect(context).toContain("Do not use fs_write/fs_edit to create or change a file under `.black-agents/knowledge/`")
+  })
+
+  it("warns in the tool guide that a knowledge file must be valid OKF", async () => {
+    const context = await buildSystemContext()
+    expect(context).toContain("typed OKF concept, not a free-form note")
+    expect(context).toContain("at least `type`")
   })
 
   it("lists knowledge ids without concept bodies", async () => {
@@ -137,6 +144,7 @@ describe("buildSystemContext", () => {
     expect(context.indexOf("## Asking the user to choose")).toBeLessThan(
       context.indexOf("## Selected workspace agent")
     )
+    expect(context).toContain("typed OKF concept, not a free-form note")
   })
 
   it("tells the assistant how to offer clickable choices", async () => {

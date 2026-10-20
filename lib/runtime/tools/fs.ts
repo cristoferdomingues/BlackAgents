@@ -9,6 +9,8 @@ import {
   resolveInWorkspace,
   writeText,
 } from "@/lib/fs-service"
+import { conceptIdFromRel, KNOWLEDGE_DIR } from "@/lib/knowledge/store"
+import { parseConceptContent } from "@/lib/knowledge/parse"
 
 import type { RuntimeTool, ToolOutcome, ToolRisk } from "../types"
 import { toolArgsError } from "./args"
@@ -30,6 +32,7 @@ const FIND_IGNORE = ["**/.git/**", "**/node_modules/**", "**/.next/**", "**/dist
  */
 const PROTECTED_PREFIXES = [".cursor/", ".claude/", ".black-agents/", ".agents/", ".git/"]
 const BLOCKED_PREFIXES = [".git/", ".black-agents/brain/", ".black-agents/runs/", ".black-agents/files/"]
+const KNOWLEDGE_PREFIX = `${KNOWLEDGE_DIR}/`
 
 function normalizeRel(root: string, relPath: string): string {
   const abs = resolveInWorkspace(root, relPath)
@@ -39,6 +42,32 @@ function normalizeRel(root: string, relPath: string): string {
 function startsWithAny(rel: string, prefixes: string[]): boolean {
   const withSlash = rel.endsWith("/") ? rel : `${rel}/`
   return prefixes.some((p) => withSlash.startsWith(p))
+}
+
+const OKF_EXAMPLE =
+  '---\ntype: Definition\ntitle: Clear title\ndescription: one-line summary\n---\n\nBody in markdown.'
+
+/**
+ * A file under `.black-agents/knowledge/` is an OKF concept, not a free-form
+ * note. `index.md` and `log.md` are the only reserved, unvalidated files.
+ * Block fs_write/fs_edit from creating an invalid concept directly — the
+ * model should prefer the ```knowledge draft protocol, which goes through the
+ * Brain inbox, but if it writes the file itself it must still be valid OKF.
+ */
+function knowledgeConceptError(rel: string, content: string): string | null {
+  if (!rel.startsWith(KNOWLEDGE_PREFIX) || !rel.endsWith(".md")) return null
+  const relToKnowledge = rel.slice(KNOWLEDGE_PREFIX.length)
+  const base = path.posix.basename(relToKnowledge)
+  if (base === "index.md" || base === "log.md") return null
+  const id = conceptIdFromRel(relToKnowledge)
+  if (!id) {
+    return `"${rel}" is not a valid knowledge concept path. Use kebab-case folders and a kebab-case file name, for example ${KNOWLEDGE_PREFIX}crypto/portfolio-metrics.md.`
+  }
+  const parsed = parseConceptContent(id, content)
+  if (!parsed.ok) {
+    return `"${rel}" is not a valid OKF knowledge concept: ${parsed.message} Start the file with YAML frontmatter, for example:\n${OKF_EXAMPLE}\n\nPrefer the \`\`\`knowledge draft block instead so the user approves it in the Brain inbox.`
+  }
+  return null
 }
 
 const listArgs = z.object({ path: z.string().trim().default(".") })
@@ -363,6 +392,8 @@ export const fsEditTool: RuntimeTool = {
     }
     const next = replaceAll ? content.split(oldText).join(newText) : content.replace(oldText, () => newText)
     if (Buffer.byteLength(next) > MAX_WRITE_BYTES) return { error: "The file would be too large" }
+    const knowledgeError = knowledgeConceptError(rel, next)
+    if (knowledgeError) return { error: knowledgeError }
     await writeText(abs, next)
     return { result: { path: rel, replacements: replaceAll ? count : 1 } }
   },
@@ -376,7 +407,8 @@ export const fsWriteTool: RuntimeTool = {
   risk: "write",
   riskFor: protectedRisk,
   description:
-    "Create or overwrite a UTF-8 text file inside the workspace. `path` is relative to the workspace root.",
+    "Create or overwrite a UTF-8 text file inside the workspace. `path` is relative to the workspace root. " +
+    `A file under ${KNOWLEDGE_DIR}/ must be a valid OKF concept (YAML frontmatter with at least "type"); prefer the \`\`\`knowledge draft block instead so the user approves it.`,
   parameters: {
     type: "object",
     properties: {
@@ -395,6 +427,8 @@ export const fsWriteTool: RuntimeTool = {
     if (startsWithAny(rel, BLOCKED_PREFIXES)) {
       return { error: `Writing to ${rel} is not allowed` }
     }
+    const knowledgeError = knowledgeConceptError(rel, parsed.data.content)
+    if (knowledgeError) return { error: knowledgeError }
     await writeText(resolveInWorkspace(ctx.workspaceRoot, rel), parsed.data.content)
     return { result: { path: rel, bytes: Buffer.byteLength(parsed.data.content) } }
   },

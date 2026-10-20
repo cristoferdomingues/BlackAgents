@@ -71,6 +71,7 @@ v0.2's `generated`/`verified`/`status` map naturally onto Brain proposals (who p
 
 ## Guardrails
 
+- **A knowledge file can only be written as a valid OKF concept.** `fs_write`/`fs_edit` (`lib/runtime/tools/fs.ts`) refuse to create or change any `.black-agents/knowledge/**/*.md` file (other than the reserved `index.md`/`log.md`) unless its content parses as a valid concept (`parseConceptContent`, requires at least `type`). This holds even when a model bypasses the `\`\`\`knowledge` draft/Inbox protocol and tries to write the file directly — the tool layer is the fail-closed backstop, not just the prompt.
 - **Never migrate artifacts to OKF.** Agent/rule/skill frontmatter is platform-specific (`.mdc`, `alwaysApply`, `globs`) and already handled by multi-platform export. Two schemas for one file = fragile mapping.
 - **Never migrate Memory notes to OKF.** Preferences, pitfalls and chat feedback stay lightweight in `lib/brain/`; only durable domain facts become concepts. Decide with the `brain-memory-vs-knowledge` rule.
 - **Bundle OKF is verbose.** Do not load whole bundles into context; traverse `index.md` level by level and select concepts on demand (`context-headroom` rule). The spec's progressive disclosure is the mechanism.

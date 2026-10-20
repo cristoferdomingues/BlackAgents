@@ -108,12 +108,14 @@ export function DashboardPage() {
                   <Link
                     key={`${artifact.type}:${artifact.name}`}
                     href={`/${meta.route}/${artifact.name}`}
-                    className="flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-muted"
+                    className="flex items-start gap-3 rounded-md px-2 py-2 transition-colors hover:bg-muted"
                   >
-                    <Icon className={cn("h-4 w-4 shrink-0", meta.colorClass)} />
-                    <span className="text-sm font-medium">{artifact.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {artifact.description}
+                    <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", meta.colorClass)} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{artifact.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {artifact.description}
+                      </span>
                     </span>
                   </Link>
                 )

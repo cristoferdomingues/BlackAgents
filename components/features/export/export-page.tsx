@@ -116,7 +116,8 @@ const STATUS_DESCRIPTION: Record<ExportStatus, string> = {
 }
 
 export function ExportPage() {
-  const { workspace } = useWorkspace()
+  const { workspace, project, scoped, loading } = useWorkspace()
+  const previewRequest = React.useRef(0)
   const [platform, setPlatform] = React.useState("claude")
   const [overwrite, setOverwrite] = React.useState(true)
   const [target, setTarget] = React.useState("")
@@ -134,6 +135,10 @@ export function ExportPage() {
 
   const targetValid =
     !target.trim() || Boolean(targetCheck?.exists && targetCheck.isDirectory)
+  const targetIsWorkspace =
+    Boolean(project && workspace && appliedTarget) &&
+    appliedTarget.replace(/\/+$/, "") === workspace?.path.replace(/\/+$/, "")
+  const needsTarget = Boolean(project) && (!appliedTarget || targetIsWorkspace)
 
   React.useEffect(() => {
     const t = target.trim()
@@ -162,38 +167,40 @@ export function ExportPage() {
   }, [target])
 
   const preview = React.useCallback(async () => {
+    const request = ++previewRequest.current
     setPreviewing(true)
     try {
-      const data = await apiFetch<ExportResult>("/api/export", {
+      const data = await apiFetch<ExportResult>(scoped("/api/export"), {
         method: "POST",
         body: JSON.stringify({
           platform,
           mode: "dry-run",
-          targetPath: appliedTarget || undefined,
+          targetPath: (!targetIsWorkspace && appliedTarget) || undefined,
         }),
       })
-      setResult(data)
+      if (request === previewRequest.current) setResult(data)
     } catch (err) {
+      if (request !== previewRequest.current) return
       toast.error(err instanceof Error ? err.message : "Preview failed")
       setResult(null)
     } finally {
-      setPreviewing(false)
+      if (request === previewRequest.current) setPreviewing(false)
     }
-  }, [platform, appliedTarget])
+  }, [platform, appliedTarget, scoped, targetIsWorkspace])
 
   React.useEffect(() => {
-    if (workspace) void preview()
-  }, [workspace, preview])
+    if (workspace && !loading) void preview()
+  }, [workspace, loading, preview])
 
   async function downloadZip() {
     if (!workspace) return
     setZipping(true)
     try {
       const data = await apiFetch<{ platform: string; files: ExportFile[] }>(
-        `/api/export?platform=${platform}`
+        scoped(`/api/export?platform=${platform}`)
       )
       if (data.files.length === 0) {
-        toast.info("Nothing to export in this workspace.")
+        toast.info(project ? "Nothing to export in this project." : "Nothing to export in this workspace.")
         return
       }
       const zip = new JSZip()
@@ -202,7 +209,7 @@ export function ExportPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `${workspace.name}-${platform}.zip`
+      link.download = `${project ? project.id : workspace.name}-${platform}.zip`
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -218,7 +225,7 @@ export function ExportPage() {
   async function write() {
     setWriting(true)
     try {
-      const data = await apiFetch<ExportResult>("/api/export", {
+      const data = await apiFetch<ExportResult>(scoped("/api/export"), {
         method: "POST",
         body: JSON.stringify({
           platform,
@@ -252,10 +259,17 @@ export function ExportPage() {
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Export</h1>
-        <p className="text-sm text-muted-foreground">
-          Re-emit <span className="font-medium">{workspace.name}</span>&rsquo;s
-          artifacts in another platform&rsquo;s layout.
-        </p>
+        {project ? (
+          <p className="text-sm text-muted-foreground">
+            Re-emit project <span className="font-medium">{project.name}</span>&rsquo;s
+            artifacts (plus what it inherits from the workspace) into its own folder.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Re-emit <span className="font-medium">{workspace.name}</span>&rsquo;s
+            artifacts in another platform&rsquo;s layout.
+          </p>
+        )}
       </div>
 
       <Card>
@@ -321,12 +335,14 @@ export function ExportPage() {
             <Label htmlFor="target-path" className="font-normal">
               Write into{" "}
               <span className="text-muted-foreground">
-                (optional — defaults to the active workspace)
+                {project
+                  ? "(required — a project goes into its own folder, not the workspace)"
+                  : "(optional — defaults to the active workspace)"}
               </span>
             </Label>
             <Input
               id="target-path"
-              placeholder={workspace.path}
+              placeholder={project ? `/path/to/${project.id}` : workspace.path}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               spellCheck={false}
@@ -336,6 +352,10 @@ export function ExportPage() {
               <p className="text-xs">
                 {targetChecking ? (
                   <span className="text-muted-foreground">Checking…</span>
+                ) : targetIsWorkspace ? (
+                  <span className="text-destructive">
+                    This is the workspace folder. Pick the project&rsquo;s own folder.
+                  </span>
                 ) : targetValid ? (
                   <span className="text-skill">
                     Cross-repo export → bundle written into this folder.
@@ -343,6 +363,10 @@ export function ExportPage() {
                 ) : (
                   <span className="text-destructive">Not a directory.</span>
                 )}
+              </p>
+            ) : project ? (
+              <p className="text-xs text-muted-foreground">
+                Pick a folder to export into. The preview shows every file as new until then.
               </p>
             ) : null}
           </div>
@@ -417,7 +441,7 @@ export function ExportPage() {
               Download .zip
             </Button>
             <Button
-              disabled={!summary || willWrite === 0 || writing || !targetValid}
+              disabled={!summary || willWrite === 0 || writing || !targetValid || needsTarget}
               onClick={() => setConfirmOpen(true)}
             >
               {writing ? (
@@ -480,7 +504,9 @@ export function ExportPage() {
             <p className="py-8 text-center text-sm text-muted-foreground">
               {platform === "okf"
                 ? "No knowledge to export yet. Approve a concept on the Brain page first."
-                : "No artifacts to export in this workspace."}
+                : project
+                  ? "No artifacts to export in this project."
+                  : "No artifacts to export in this workspace."}
             </p>
           )}
         </CardContent>

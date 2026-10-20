@@ -1,6 +1,9 @@
+import path from "node:path"
+
 import { ok, fail, handle } from "@/lib/api-response"
 import { readConfig } from "@/lib/config"
 import { scanWorkspace } from "@/lib/artifacts/parser"
+import { resolveScopeParam } from "@/lib/artifacts/scope-request"
 import { PLATFORM_LAYOUTS } from "@/lib/artifacts/layout"
 import {
   buildExportManifest,
@@ -41,8 +44,10 @@ export async function GET(req: Request) {
 
     const config = await readConfig()
     if (!config.currentPath) return ok({ platform, files: [] })
+    const scope = await resolveScopeParam(config.currentPath, req.url)
+    if (!scope.ok) return fail(scope.error, scope.status)
 
-    const files = await manifestFor(config.currentPath, platform)
+    const files = await manifestFor(config.currentPath, platform, scope.scope)
     return ok({ platform, files })
   })
 }
@@ -84,10 +89,12 @@ export async function POST(req: Request) {
     const config = await readConfig()
     if (!config.currentPath) return fail("No workspace selected", 400)
     const sourceRoot = config.currentPath
+    const scope = await resolveScopeParam(sourceRoot, req.url)
+    if (!scope.ok) return fail(scope.error, scope.status)
 
     // Sources are always read from the active workspace; the bundle may be
     // written into a different folder (cross-repo export).
-    let targetRoot = sourceRoot
+    let targetRoot: string | null = path.resolve(sourceRoot)
     if (json?.targetPath && json.targetPath.trim()) {
       const t = normalizeWorkspaceInput(json.targetPath)
       const chk = await checkDirectory(t)
@@ -95,8 +102,18 @@ export async function POST(req: Request) {
       if (!chk.isDirectory) return fail(`Target is not a directory: ${t}`)
       targetRoot = t
     }
+    // A project never writes into the workspace's own IDE folders: it needs its own folder.
+    if (scope.scope && targetRoot === path.resolve(sourceRoot)) {
+      if (json?.targetPath?.trim()) {
+        return fail("A project cannot be exported into the workspace folder. Pick its own folder.")
+      }
+      targetRoot = null
+    }
+    if (scope.scope && !targetRoot && mode === "write") {
+      return fail(`Pick a folder to export project "${scope.scope}" into`)
+    }
 
-    const manifest = await manifestFor(sourceRoot, platform)
+    const manifest = await manifestFor(sourceRoot, platform, scope.scope)
     const diff = await diffManifest(targetRoot, manifest, mode, overwrite)
 
     return ok({
@@ -110,14 +127,16 @@ export async function POST(req: Request) {
   })
 }
 
-async function manifestFor(workspaceRoot: string, platform: string): Promise<ExportFile[]> {
-  if (platform === OKF_TARGET) return buildOkfBundle(await listConcepts(workspaceRoot))
+/** With `scope`: the project's own items plus what it inherits from the workspace. */
+async function manifestFor(workspaceRoot: string, platform: string, scope?: string): Promise<ExportFile[]> {
+  if (platform === OKF_TARGET) return buildOkfBundle(await listConcepts(workspaceRoot, scope))
   if (!isPlatform(platform)) return []
-  return buildExportManifest(await scanWorkspace(workspaceRoot), platform)
+  return buildExportManifest(await scanWorkspace(workspaceRoot, scope), platform)
 }
 
+/** `targetRoot: null` (a project with no folder picked yet) previews every file as new. */
 async function diffManifest(
-  targetRoot: string,
+  targetRoot: string | null,
   manifest: ExportFile[],
   mode: "dry-run" | "write",
   overwrite: boolean
@@ -127,13 +146,13 @@ async function diffManifest(
   const counts: Record<ExportStatus, number> = { create: 0, overwrite: 0, unchanged: 0 }
 
   for (const file of manifest) {
-    const abs = resolveInWorkspace(targetRoot, file.path)
-    const existing = (await pathExists(abs)) ? await readText(abs) : null
+    const abs = targetRoot ? resolveInWorkspace(targetRoot, file.path) : null
+    const existing = abs && (await pathExists(abs)) ? await readText(abs) : null
     const status = fileStatus(existing, file.content)
     counts[status] += 1
 
     let applied = false
-    if (mode === "write") {
+    if (mode === "write" && abs) {
       const shouldWrite = status === "create" || (status === "overwrite" && overwrite)
       if (shouldWrite) {
         await writeText(abs, file.content)

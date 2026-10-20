@@ -90,6 +90,16 @@ The chat page sends `scoped("/api/chat")`, and the route resolves `?scope=` with
 `loadKnowledgeContext(root, scope)` all see what the project sees. The `@` menu's workflow list, and the
 chat's workflow draft and run cards, call `/api/workflows*` through `scoped()` too.
 
+## Exporting a project
+
+Saving a project artifact never writes the workspace IDE folders, and Sync (drift, import, export all) stays
+workspace-only. To use a project in an IDE, export it into **its own folder** from the Export page:
+`/api/export?scope=<id>` builds the files from `scanWorkspace(root, scope)` (project items plus what it
+inherits) or, for OKF, `listConcepts(root, scope)`. Without a picked folder the preview shows every file as
+`create` (`target: null`); a write needs a `targetPath` and refuses the workspace root itself (`400`), so a
+project can never land in the workspace's own `.cursor/`/`.claude/`. `scope` is stripped from exported
+frontmatter.
+
 ## Not scoped yet
 
 - **Scheduled triggers**: `WorkflowRunner.tick()` only enumerates workspace-wide `listWorkflows(root)` — an

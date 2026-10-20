@@ -152,6 +152,12 @@ export async function workflowExists(
   return pathExists(workflowPath(root, name))
 }
 
+/** True when this scope owns the file itself, not just an inherited workspace copy. */
+export async function workflowIsLocal(root: string, name: string, scope?: string): Promise<boolean> {
+  if (!scope) return true
+  return pathExists(workflowPath(root, name, scope))
+}
+
 export async function saveRun(run: WorkflowRun): Promise<void> {
   await ensureLocalStateIgnored(run.workspaceRoot)
   const abs = runPath(run.workspaceRoot, run.id)
@@ -172,14 +178,28 @@ export async function readRun(root: string, id: string): Promise<WorkflowRun | n
   }
 }
 
-/** Newest first. Optionally only one workflow's runs. */
-export async function listRuns(root: string, workflow?: string): Promise<WorkflowRun[]> {
+/**
+ * Newest first. Optionally only one workflow's runs.
+ *
+ * `scope` filters by project: omit it (`undefined`) to see every run regardless
+ * of scope, pass `null` for the workspace's own runs, or a project id for that
+ * project's runs. This tells apart "don't care" from "the workspace scope",
+ * since a project may own a workflow with the same name.
+ */
+export async function listRuns(
+  root: string,
+  workflow?: string,
+  scope?: string | null
+): Promise<WorkflowRun[]> {
   const dir = resolveInWorkspace(root, RUNS_DIR)
   const runs: WorkflowRun[] = []
   for (const entry of await listDir(dir)) {
     if (entry.isDirectory || !entry.name.endsWith(".json") || entry.name.startsWith(".")) continue
     const run = await readRun(root, entry.name.slice(0, -5))
-    if (run && (!workflow || run.workflow === workflow)) runs.push(run)
+    if (!run) continue
+    if (workflow && run.workflow !== workflow) continue
+    if (scope !== undefined && (run.projectScope ?? null) !== scope) continue
+    runs.push(run)
   }
   return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }

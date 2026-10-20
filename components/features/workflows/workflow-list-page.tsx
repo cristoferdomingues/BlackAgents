@@ -31,17 +31,17 @@ type LoadState =
 
 export function WorkflowListPage() {
   const router = useRouter()
-  const { workspace, loading } = useWorkspace()
+  const { workspace, loading, scoped } = useWorkspace()
   const [state, setState] = React.useState<LoadState>({ kind: "loading" })
   const [starting, setStarting] = React.useState<string | null>(null)
 
   const load = React.useCallback((): void => {
-    apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
+    apiFetch<{ workflows: WorkflowListItem[] }>(scoped("/api/workflows"))
       .then((data) => setState({ kind: "ready", items: data.workflows }))
       .catch((err: unknown) =>
         setState({ kind: "error", message: err instanceof Error ? err.message : "Could not load workflows" })
       )
-  }, [])
+  }, [scoped])
 
   React.useEffect(() => {
     if (workspace) load()
@@ -51,7 +51,7 @@ export function WorkflowListPage() {
     setStarting(name)
     try {
       const { run } = await apiFetch<{ run: WorkflowRun }>(
-        `/api/workflows/${encodeURIComponent(name)}/runs`,
+        scoped(`/api/workflows/${encodeURIComponent(name)}/runs`),
         { method: "POST", body: JSON.stringify({}) }
       )
       router.push(`/workflows/runs/${run.id}`)

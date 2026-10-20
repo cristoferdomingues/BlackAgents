@@ -13,7 +13,7 @@ import { parseSseFrames } from "@/lib/sse-client"
 import { getRunner } from "@/lib/workflows/runner"
 import { isTerminal, type WorkflowRun } from "@/lib/workflows/schema"
 
-import { jsonRequest, makeTempEnv, seedArtifact, type TempEnv } from "../helpers/workspace"
+import { jsonRequest, makeTempEnv, seedArtifact, seedProject, type TempEnv } from "../helpers/workspace"
 
 let env: TempEnv
 
@@ -58,7 +58,9 @@ describe("workflow routes", () => {
     expect(created.status).toBe(201)
     expect((await json(await POST(jsonRequest("http://t/api/workflows", "POST", body)))).status).toBe(409)
 
-    const listed = await json<{ workflows: Array<{ workflow: { name: string }; lastRun: null; active: boolean }> }>(await GET())
+    const listed = await json<{ workflows: Array<{ workflow: { name: string }; lastRun: null; active: boolean }> }>(
+      await GET(new Request("http://t/api/workflows"))
+    )
     expect(listed.body.data?.workflows).toEqual([expect.objectContaining({ lastRun: null, active: false })])
 
     const one = await json<{ workflow: { steps: unknown[] } }>(await GET_ONE(new Request("http://t"), named("review-line")))
@@ -246,5 +248,99 @@ describe("workflow routes", () => {
 
     expect((await json(await CANCEL_RUN(new Request("http://t"), byId(id)))).status).toBe(409)
     expect((await json(await GET_RUN(new Request("http://t"), byId("nope")))).status).toBe(404)
+  })
+})
+
+describe("workflow routes with ?scope=<project>", () => {
+  const drillBody = {
+    name: "drill",
+    task: "Run the drill",
+    steps: [{ id: "drill", agent: "cca-f-study-coach" }],
+  }
+
+  beforeEach(async () => {
+    await seedProject(env.workspace, "claude-certification", { inherits: [] })
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/projects/claude-certification/artifacts/agents/cca-f-study-coach.md",
+      "---\nname: cca-f-study-coach\ndescription: Coaches.\n---\nYou coach.\n"
+    )
+  })
+
+  it("does not find a project-only agent without a scope", async () => {
+    const res = await json(await POST(jsonRequest("http://t/api/workflows", "POST", drillBody)))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('agent "cca-f-study-coach" was not found')
+  })
+
+  it("saves, lists, reads and runs a workflow that uses a project-only agent", async () => {
+    const created = await json(
+      await POST(jsonRequest("http://t/api/workflows?scope=claude-certification", "POST", drillBody))
+    )
+    expect(created.status).toBe(201)
+
+    // Not visible from the whole workspace (the project did not inherit workflows).
+    const unscopedList = await json<{ workflows: unknown[] }>(await GET(new Request("http://t/api/workflows")))
+    expect(unscopedList.body.data?.workflows).toEqual([])
+
+    const scopedList = await json<{ workflows: Array<{ workflow: { name: string } }> }>(
+      await GET(new Request("http://t/api/workflows?scope=claude-certification"))
+    )
+    expect(scopedList.body.data?.workflows.map((w) => w.workflow.name)).toEqual(["drill"])
+
+    const read = await json<{ workflow: { steps: Array<{ agent: string }> } }>(
+      await GET_ONE(new Request("http://t?scope=claude-certification"), named("drill"))
+    )
+    expect(read.status).toBe(200)
+    expect(read.body.data?.workflow.steps[0]?.agent).toBe("cca-f-study-coach")
+
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    await updateAiSettings({ models: { fast: { provider: "openai", model: "gpt-4o-mini" } } })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: "Drill complete" } }] }),
+      }))
+    )
+    const started = await json<{ run: WorkflowRun }>(
+      await START_RUN(jsonRequest("http://t?scope=claude-certification", "POST", {}), named("drill"))
+    )
+    expect(started.status).toBe(201)
+    const done = await untilTerminal(started.body.data?.run.id ?? "")
+    expect(done.status).toBe("succeeded")
+    expect(done.report).toBe("Drill complete")
+
+    const runs = await json<{ runs: Array<{ id: string }> }>(
+      await LIST_RUNS(new Request("http://t?scope=claude-certification"), named("drill"))
+    )
+    expect(runs.body.data?.runs.map((r) => r.id)).toEqual([done.id])
+  })
+
+  it("refuses to mutate an inherited workspace workflow from a project", async () => {
+    await seedProject(env.workspace, "claude-certification", { inherits: ["workflows"] })
+    await POST(jsonRequest("http://t/api/workflows", "POST", body))
+
+    const put = await json(
+      await PUT(
+        jsonRequest("http://t?scope=claude-certification", "PUT", { ...body, description: "Changed" }),
+        named("review-line")
+      )
+    )
+    expect(put.status).toBe(403)
+
+    const del = await json(
+      await DELETE(new Request("http://t?scope=claude-certification"), named("review-line"))
+    )
+    expect(del.status).toBe(403)
+  })
+
+  it("rejects an unknown or invalid project scope", async () => {
+    expect((await json(await GET(new Request("http://t/api/workflows?scope=ghost")))).status).toBe(404)
+    expect((await json(await GET(new Request("http://t/api/workflows?scope=..%2F..")))).status).toBe(400)
   })
 })

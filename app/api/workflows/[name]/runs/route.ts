@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { ok, fail, handle } from "@/lib/api-response"
 import { nameSchema } from "@/lib/artifacts/schemas"
+import { resolveScopeParam } from "@/lib/artifacts/scope-request"
 import { readConfig } from "@/lib/config"
 import { CredentialStateError } from "@/lib/llm/credentials"
 import { ModelRefError } from "@/lib/llm/model-ref"
@@ -19,13 +20,15 @@ const startSchema = z.object({
   stepFiles: z.record(z.string(), z.array(nameSchema).max(MAX_STEP_FILES)).optional(),
 })
 
-export async function GET(_req: Request, ctx: RouteContext) {
+export async function GET(req: Request, ctx: RouteContext) {
   return handle(async () => {
     const { name } = await ctx.params
     if (!nameSchema.safeParse(name).success) return fail("Invalid workflow name")
     const { currentPath } = await readConfig()
     if (!currentPath) return ok({ runs: [] })
-    return ok({ runs: (await listRuns(currentPath, name)).map(summarizeRun) })
+    const scope = await resolveScopeParam(currentPath, req.url)
+    if (!scope.ok) return fail(scope.error, scope.status)
+    return ok({ runs: (await listRuns(currentPath, name, scope.scope ?? null)).map(summarizeRun) })
   })
 }
 
@@ -38,10 +41,17 @@ export async function POST(req: Request, ctx: RouteContext) {
     if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid request body")
     const { currentPath } = await readConfig()
     if (!currentPath) return fail("No workspace selected", 412)
-    const workflow = await readWorkflow(currentPath, name)
+    const scope = await resolveScopeParam(currentPath, req.url)
+    if (!scope.ok) return fail(scope.error, scope.status)
+    const workflow = await readWorkflow(currentPath, name, scope.scope)
     if (!workflow) return fail("Workflow not found", 404)
     try {
-      await ensureWorkflowModels(currentPath, workflow, (layers, options) => resolveRunLlm(layers, options))
+      await ensureWorkflowModels(
+        currentPath,
+        workflow,
+        (layers, options) => resolveRunLlm(layers, options),
+        scope.scope
+      )
     } catch (err) {
       if (err instanceof ModelRefError || err instanceof CredentialStateError) {
         return fail(err.message, err.status)
@@ -54,6 +64,7 @@ export async function POST(req: Request, ctx: RouteContext) {
       trigger: "manual",
       task: parsed.data.task,
       stepFiles: parsed.data.stepFiles,
+      scope: scope.scope,
     })
     return ok({ run }, 201)
   })

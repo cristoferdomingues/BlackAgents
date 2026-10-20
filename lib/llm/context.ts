@@ -240,9 +240,9 @@ ${KNOWLEDGE_CONTEXT_HINT}
 ${formatKnowledgeRegistry(concepts)}`
 }
 
-/** Load the knowledge section for one workspace. An unreadable folder becomes an empty list. */
-export async function loadKnowledgeContext(root: string): Promise<string> {
-  const concepts = await listConcepts(root).catch(() => [] as OkfConcept[])
+/** Load the knowledge section for one workspace (or project scope). An unreadable folder becomes an empty list. */
+export async function loadKnowledgeContext(root: string, scope?: string): Promise<string> {
+  const concepts = await listConcepts(root, scope).catch(() => [] as OkfConcept[])
   return buildKnowledgeContext(concepts)
 }
 

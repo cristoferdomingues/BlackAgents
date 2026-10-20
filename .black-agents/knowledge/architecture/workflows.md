@@ -39,6 +39,11 @@ status: draft
 
 `.black-agents/.gitignore` is written automatically with `runs/` and `brain/inbox/`.
 
+> [!note] Project scopes
+> With `?scope=<project-id>`, definitions, runs, validation, the model preflight, and a step's agent/tool/knowledge
+> lookup all resolve inside that project first. Scheduled triggers stay workspace-wide for now. See
+> [Project Scopes](./project-scopes.md#workflows-are-scoped-end-to-end).
+
 ## Definition (`lib/workflows/schema.ts`)
 
 ```jsonc

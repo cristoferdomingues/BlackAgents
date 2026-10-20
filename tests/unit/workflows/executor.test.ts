@@ -15,7 +15,7 @@ import { workflowSchema, type Workflow, type WorkflowRun } from "@/lib/workflows
 
 import { choiceAnswer, fakeJev } from "../../helpers/jev"
 import { call, fakeTool, scriptedProvider } from "../../helpers/runtime"
-import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
+import { makeTempEnv, seedArtifact, seedProject, type TempEnv } from "../../helpers/workspace"
 
 let env: TempEnv
 
@@ -58,8 +58,8 @@ function deps(
   }
 }
 
-function start(wf: Workflow): WorkflowRun {
-  return newRun({ id: "run-1", workflow: wf, workspaceRoot: env.workspace, trigger: "manual", task: wf.task })
+function start(wf: Workflow, projectScope?: string): WorkflowRun {
+  return newRun({ id: "run-1", workflow: wf, workspaceRoot: env.workspace, trigger: "manual", task: wf.task, projectScope })
 }
 
 function withScriptedGenerate(resolved: ResolvedLlm, scripted: ReturnType<typeof scriptedProvider>): ResolvedLlm {
@@ -110,6 +110,36 @@ describe("executeRun", () => {
     expect(run.status).toBe("failed")
     expect(run.error).toContain('"ghost"')
     expect(run.steps.map((s) => s.status)).toEqual(["skipped", "skipped"])
+  })
+
+  it("finds a project-only agent and whitelisted knowledge when the run is scoped", async () => {
+    const { writeConcept } = await import("@/lib/knowledge/store")
+    await seedProject(env.workspace, "web", { inherits: ["knowledge"] })
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/projects/web/artifacts/agents/coach.md",
+      "---\nname: coach\ndescription: Coaches.\n---\nYou coach.\n"
+    )
+    await writeConcept(env.workspace, {
+      id: "drills/basics",
+      frontmatter: { type: "Metric", title: "Drill basics", description: "How a drill works.", extra: {} },
+      body: "Body.\n",
+    })
+    const provider = scriptedProvider([{ content: "Drilled" }])
+    const wf = workflow({ steps: [{ id: "drill", agent: "coach" }] })
+
+    // Unscoped: the project-only agent is invisible, so the step fails fast.
+    const unscoped = await executeRun(start(wf), wf, deps(provider), new AbortController().signal)
+    expect(unscoped.status).toBe("failed")
+    expect(unscoped.error).toContain('"coach"')
+
+    // Scoped: the project's own agent is found, and whitelisted workspace knowledge comes through.
+    const run = await executeRun(start(wf, "web"), wf, deps(provider), new AbortController().signal)
+    expect(run.status).toBe("succeeded")
+    expect(run.steps[0]).toMatchObject({ status: "succeeded", output: "Drilled" })
+    const request = provider.requests.at(-1)
+    expect(request?.systemContext).toContain("You coach.")
+    expect(request?.systemContext).toContain("drills/basics")
   })
 
   it("fails the run when a step's LLM call fails", async () => {

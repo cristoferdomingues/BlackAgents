@@ -54,7 +54,7 @@ export const STEP_CONTINUATION_NUDGE =
 
 /** Everything the executor reads from the outside world, injectable for tests. */
 export interface ExecutorDeps {
-  artifacts: (root: string) => Promise<Artifact[]>
+  artifacts: (root: string, scope?: string) => Promise<Artifact[]>
   resolveLlm: (layers: ModelLayer[], options?: ResolveLlmOptions) => Promise<ResolvedLlm>
   buildTools: (root: string, scope: ToolScope) => Promise<RuntimeTool[]>
   decision: () => Promise<ResolvedDecisionClient | null>
@@ -77,6 +77,8 @@ export function newRun(params: {
   trigger: WorkflowRun["trigger"]
   task: string
   stepFiles?: Record<string, string[]>
+  /** The project scope this run started in, or absent for the whole workspace. */
+  projectScope?: string
   now?: Date
 }): WorkflowRun {
   return {
@@ -86,6 +88,7 @@ export function newRun(params: {
     status: "queued",
     trigger: params.trigger,
     task: params.task,
+    ...(params.projectScope ? { projectScope: params.projectScope } : {}),
     ...(params.stepFiles && Object.keys(params.stepFiles).length > 0 ? { stepFiles: params.stepFiles } : {}),
     limits: { ...params.workflow.limits },
     createdAt: (params.now ?? new Date()).toISOString(),
@@ -215,12 +218,12 @@ export async function executeRun(
   try {
     const [settings, workspaceArtifacts, resolved] = await Promise.all([
       readAiSettings(),
-      deps.artifacts(run.workspaceRoot),
+      deps.artifacts(run.workspaceRoot, run.projectScope),
       deps.decision(),
     ])
     const all = withBuiltinArtifacts(workspaceArtifacts)
     const credentialCache = new Map<string, ResolvedLlm>()
-    const knowledge = await loadKnowledgeContext(run.workspaceRoot)
+    const knowledge = await loadKnowledgeContext(run.workspaceRoot, run.projectScope)
 
     const reviewFeedback = new Map<string, string>()
     const sentBack = new Map<string, number>()

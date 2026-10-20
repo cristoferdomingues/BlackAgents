@@ -126,6 +126,8 @@ export class WorkflowRunner {
     trigger: WorkflowRun["trigger"]
     task?: string
     stepFiles?: Record<string, string[]>
+    /** The project scope to run this workflow in, or absent for the whole workspace. */
+    scope?: string
   }): Promise<WorkflowRun> {
     const run = newRun({
       id: randomUUID(),
@@ -134,10 +136,11 @@ export class WorkflowRunner {
       trigger: params.trigger,
       task: params.task?.trim() || params.workflow.task,
       stepFiles: params.stepFiles,
+      projectScope: params.scope,
     })
     await saveRun(run)
     this.emit(run)
-    const key = this.key(params.root, params.workflow.name)
+    const key = this.key(params.root, params.workflow.name, params.scope)
     const queue = this.queues.get(key) ?? []
     queue.push({ run, workflow: params.workflow })
     this.queues.set(key, queue)
@@ -167,8 +170,8 @@ export class WorkflowRunner {
     return false
   }
 
-  isActive(root: string, workflow: string): boolean {
-    const key = this.key(root, workflow)
+  isActive(root: string, workflow: string, scope?: string): boolean {
+    const key = this.key(root, workflow, scope)
     return this.busy.has(key) || (this.queues.get(key)?.length ?? 0) > 0
   }
 
@@ -254,7 +257,8 @@ export class WorkflowRunner {
     const controller = new AbortController()
     this.controllers.set(next.run.id, controller)
     try {
-      const latest = (await readWorkflow(next.run.workspaceRoot, next.workflow.name)) ?? next.workflow
+      const latest =
+        (await readWorkflow(next.run.workspaceRoot, next.workflow.name, next.run.projectScope)) ?? next.workflow
       const run = await executeRun(
         next.run,
         latest,
@@ -292,8 +296,8 @@ export class WorkflowRunner {
     return false
   }
 
-  private key(root: string, workflow: string): string {
-    return `${root}::${workflow}`
+  private key(root: string, workflow: string, scope?: string): string {
+    return `${root}::${scope ?? ""}::${workflow}`
   }
 }
 

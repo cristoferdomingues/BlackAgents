@@ -60,9 +60,35 @@ The server never guesses the scope. The client adds `?scope=` with `scoped(url)`
 - Artifact lists show **Project** / **Inherited** badges; the editor shows a read-only banner for inherited items.
 - **Settings → Projects** (`/settings#projects`): create, edit the whitelist, delete, and see broken folders.
 
+## Workflows are scoped end-to-end
+
+Workflow definitions, validation (agent + file lookup), the model-resolution preflight, the run queue's
+dedupe key, and a step's agent/tool lookup and knowledge context all take the same `?scope=` /
+`scope?: string` thread as artifacts:
+
+| Layer | Scope-aware call |
+|-------|------|
+| Storage | `lib/workflows/store.ts`: `listWorkflows`, `readWorkflow`, `saveWorkflow`, `deleteWorkflow`, `workflowExists`, `workflowIsLocal`, `listRuns(root, workflow?, scope?: string \| null)` |
+| Validation | `lib/workflows/service.ts`'s `parseWorkflowBody`/`listWorkflowItems` → `scanWorkspace(root, scope)` |
+| Model preflight | `lib/workflows/llm.ts`'s `ensureWorkflowModels(root, workflow, resolve, scope?)` |
+| Run queue | `lib/workflows/runner.ts`: `enqueue({ ..., scope })`, `isActive(root, workflow, scope?)`, dedupe `key()` folds in the scope so a workspace run and a project run of the same workflow name never block each other |
+| Execution | `lib/workflows/executor.ts`'s `WorkflowRun.projectScope` carries the scope into `deps.artifacts(root, scope)` (agent lookup) and `loadKnowledgeContext(root, scope)` |
+| API | `/api/workflows`, `/api/workflows/[name]`, `/api/workflows/[name]/runs` all resolve `?scope=` via `resolveScopeParam`; PUT/DELETE on an inherited (non-local) workflow return `403` |
+| UI | `workflow-list-page.tsx` and `workflow-builder.tsx` (incl. its `DeleteButton`/`RunPanel`) call every `/api/workflows*` route through `scoped()` |
+
+This is what makes a project's own agent resolvable in that project's workflows — the original
+gap this section used to flag. `Step "<id>": agent "<name>" was not found` from a project workflow
+now means the agent truly is not visible in that scope (wrong whitelist or typo), not that the
+backend forgot to look.
+
 ## Not scoped yet
 
-Chat, the assistant context, the workflow runtime, the graph route, and the MCP settings panel still use the whole workspace.
+- **Scheduled triggers**: `WorkflowRunner.tick()` only enumerates workspace-wide `listWorkflows(root)` — an
+  `interval`/`daily` trigger on a project-scoped workflow never fires on its own; it still runs fine when
+  started manually with `?scope=`.
+- **Per-step MCP servers**: a step's toolset only loads the workspace-wide `.black-agents/mcp.json`
+  (`buildToolset`/`loadMcpRuntimeTools`), not a project's own MCP whitelist.
+- Chat, the assistant context, the graph route, and the MCP settings panel still use the whole workspace.
 
 ## Key files
 
@@ -73,6 +99,7 @@ Chat, the assistant context, the workflow runtime, the graph route, and the MCP 
 | `lib/artifacts/parser.ts` | scope-first scan and lookup |
 | `lib/artifacts/graph.ts` | scope-aware node ids and links |
 | `lib/mcp/config.ts`, `lib/workflows/store.ts`, `lib/knowledge/store.ts` | scoped readers and writers |
+| `lib/workflows/service.ts`, `lib/workflows/llm.ts`, `lib/workflows/runner.ts`, `lib/workflows/executor.ts` | scoped validation, model preflight, run queue, and execution |
 | `lib/artifacts/projects-explain.ts` | UI copy and helpers |
 | `components/layout/project-switcher.tsx`, `components/features/settings/projects-panel.tsx` | UI |
 

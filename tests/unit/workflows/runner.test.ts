@@ -15,7 +15,7 @@ import { listRuns, readRun, saveRun, saveWorkflow } from "@/lib/workflows/store"
 
 import { choiceAnswer, fakeJev } from "../../helpers/jev"
 import { call, fakeTool, scriptedProvider } from "../../helpers/runtime"
-import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
+import { makeTempEnv, seedArtifact, seedProject, type TempEnv } from "../../helpers/workspace"
 
 let env: TempEnv
 let runner: WorkflowRunner
@@ -191,6 +191,52 @@ describe("WorkflowRunner", () => {
     const runs = await listRuns(env.workspace, "hourly")
     expect(runs).toHaveLength(1)
     expect(runs[0]).toMatchObject({ status: "failed", error: message, trigger: "schedule" })
+  })
+
+  it("tracks the workspace and a project run of the same workflow name independently", async () => {
+    const write = fakeTool("fs_write", "write")
+    runner = makeRunner(scriptedProvider([{ toolCalls: [call("c", "fs_write", { path: "a" })] }]), { tools: [write] })
+    await seedProject(env.workspace, "web", { inherits: ["agents"] })
+    const wf = workflow()
+    const workspaceRun = await runner.enqueue({ root: env.workspace, workflow: wf, trigger: "manual" })
+    const projectRun = await runner.enqueue({ root: env.workspace, workflow: wf, trigger: "manual", scope: "web" })
+
+    // Both run concurrently: the project run is a different queue key, not blocked by the workspace one.
+    expect(runner.isActive(env.workspace, "line")).toBe(true)
+    expect(runner.isActive(env.workspace, "line", "web")).toBe(true)
+    expect(workspaceRun.projectScope).toBeUndefined()
+    expect(projectRun.projectScope).toBe("web")
+
+    for (let i = 0; i < 100 && listPendingApprovals().length < 2; i++) await new Promise((r) => setTimeout(r, 5))
+    expect(await runner.cancel(workspaceRun.id)).toBe(true)
+    expect(await runner.cancel(projectRun.id)).toBe(true)
+    await new Promise((r) => setTimeout(r, 20))
+  })
+
+  it("resolves a project-only agent when a scoped run is enqueued", async () => {
+    runner = new WorkflowRunner({
+      artifacts: scanWorkspace,
+      resolveLlm: (layers, options) => resolveRunLlm(layers, options),
+      buildTools: async () => [],
+      decision: async () => null,
+      brainContext: async () => "",
+    })
+    await setProviderSecret("openai", {
+      apiKey: "sk-valid",
+      verification: { status: "valid", checkedAt: "2026-08-21T10:00:00.000Z" },
+    })
+    await seedProject(env.workspace, "web", { inherits: [] })
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/projects/web/artifacts/agents/coach.md",
+      "---\nname: coach\ndescription: Coaches.\nmodel: claude-sonnet-4-20250514\nprovider: anthropic\n---\nYou coach.\n"
+    )
+    const wf = workflow({ steps: [{ id: "drill", agent: "coach" }] })
+    const run = await runner.enqueue({ root: env.workspace, workflow: wf, trigger: "manual", scope: "web" })
+    const done = await untilTerminal(runner, run.id)
+    // The step blames the project agent's own (unverified) provider — proof it was found and read.
+    expect(done.status).toBe("failed")
+    expect(done.error).toBe('Step "drill" uses Anthropic, which is not verified. Verify it under AI Providers.')
   })
 
   it("skips a scheduled run when Jev is sure nothing changed", async () => {

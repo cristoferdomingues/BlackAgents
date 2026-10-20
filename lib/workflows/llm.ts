@@ -165,9 +165,10 @@ export function stepResolveOptions(
 export async function ensureWorkflowModels(
   root: string,
   workflow: Workflow,
-  resolve: (layers: ModelLayer[], options?: ResolveLlmOptions) => Promise<ResolvedLlm>
+  resolve: (layers: ModelLayer[], options?: ResolveLlmOptions) => Promise<ResolvedLlm>,
+  scope?: string
 ): Promise<void> {
-  const [settings, artifacts] = await Promise.all([readAiSettings(), scanWorkspace(root)])
+  const [settings, artifacts] = await Promise.all([readAiSettings(), scanWorkspace(root, scope)])
   const cache = new Map<string, ResolvedLlm>()
   for (const step of workflow.steps) {
     const agent = artifacts.find((item) => item.type === "agent" && item.name === step.agent)

@@ -275,6 +275,8 @@ export interface WorkflowRun {
   status: RunStatus
   trigger: "manual" | "schedule"
   task: string
+  /** The project scope this run used, or absent for the whole workspace. */
+  projectScope?: string
   /** Optional per-step file overrides for this run (`stepId -> fileNames[]`). */
   stepFiles?: Record<string, string[]>
   /** Snapshot of workflow limits at start (for live UI timers). */

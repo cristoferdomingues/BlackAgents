@@ -5,7 +5,7 @@ import { setProviderSecret } from "@/lib/secrets"
 import { ensureWorkflowModels, resolveRunLlm } from "@/lib/workflows/llm"
 import { workflowSchema } from "@/lib/workflows/schema"
 
-import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
+import { makeTempEnv, seedArtifact, seedProject, type TempEnv } from "../../helpers/workspace"
 
 let env: TempEnv
 
@@ -47,5 +47,27 @@ describe("ensureWorkflowModels", () => {
     await expect(ensureWorkflowModels(env.workspace, workflow, resolveRunLlm)).rejects.toThrow(
       'Step "plan" uses Anthropic, which is not verified. Verify it under AI Providers.'
     )
+  })
+
+  it("reads a project-only agent's model when scoped", async () => {
+    await seedProject(env.workspace, "web", { inherits: [] })
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/projects/web/artifacts/agents/coach.md",
+      "---\nname: coach\ndescription: Coaches.\nmodel: task:nope\n---\nYou coach.\n"
+    )
+    const workflow = workflowSchema.parse({
+      name: "line",
+      steps: [{ id: "drill", agent: "coach" }],
+    })
+    // Without the scope, the project agent is invisible, so there is nothing to blame — it just inherits.
+    await expect(ensureWorkflowModels(env.workspace, workflow, resolveRunLlm)).rejects.toThrow(
+      "No verified AI provider. Verify one under AI Providers."
+    )
+    // Scoped, the project agent's own (broken) model ref is the one that is checked.
+    await expect(ensureWorkflowModels(env.workspace, workflow, resolveRunLlm, "web")).rejects.toMatchObject({
+      message: 'Step "drill": Unknown model task "nope"',
+      status: 400,
+    } satisfies Partial<ModelRefError>)
   })
 })

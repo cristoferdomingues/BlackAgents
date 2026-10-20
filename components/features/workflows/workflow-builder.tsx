@@ -250,7 +250,7 @@ type LoadState = { kind: "loading" } | { kind: "error"; message: string } | { ki
 
 export function WorkflowBuilder({ name }: { name?: string }) {
   const router = useRouter()
-  const { workspace, loading, byType } = useWorkspace()
+  const { workspace, loading, byType, scoped } = useWorkspace()
   const agents = byType("agent")
   const editing = Boolean(name)
   const [load, setLoad] = React.useState<LoadState>(editing ? { kind: "loading" } : { kind: "ready" })
@@ -293,7 +293,7 @@ export function WorkflowBuilder({ name }: { name?: string }) {
 
   React.useEffect(() => {
     if (!name || !workspace) return
-    apiFetch<{ workflow: Workflow }>(`/api/workflows/${encodeURIComponent(name)}`)
+    apiFetch<{ workflow: Workflow }>(scoped(`/api/workflows/${encodeURIComponent(name)}`))
       .then(({ workflow }) => {
         const next = toDraft(takeChatDraft(name) ?? workflow)
         setDraft(next)
@@ -303,7 +303,7 @@ export function WorkflowBuilder({ name }: { name?: string }) {
       .catch((err: unknown) =>
         setLoad({ kind: "error", message: err instanceof Error ? err.message : "Could not load the workflow" })
       )
-  }, [name, workspace])
+  }, [name, workspace, scoped])
 
   // A draft handed over from the Assistant ("Open in builder").
   React.useEffect(() => {
@@ -383,13 +383,13 @@ export function WorkflowBuilder({ name }: { name?: string }) {
         })
       }
       if (editing && name) {
-        await apiFetch(`/api/workflows/${encodeURIComponent(name)}`, {
+        await apiFetch(scoped(`/api/workflows/${encodeURIComponent(name)}`), {
           method: "PUT",
           body: JSON.stringify(parsed.data),
         })
         toast.success("Workflow saved")
       } else {
-        await apiFetch("/api/workflows", { method: "POST", body: JSON.stringify(parsed.data) })
+        await apiFetch(scoped("/api/workflows"), { method: "POST", body: JSON.stringify(parsed.data) })
         toast.success("Workflow created")
         router.push(`/workflows/${parsed.data.name}`)
       }
@@ -680,13 +680,14 @@ export function WorkflowBuilder({ name }: { name?: string }) {
 
 function DeleteButton({ name }: { name: string }) {
   const router = useRouter()
+  const { scoped } = useWorkspace()
   const [confirming, setConfirming] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
 
   async function remove() {
     setBusy(true)
     try {
-      await apiFetch(`/api/workflows/${encodeURIComponent(name)}`, { method: "DELETE" })
+      await apiFetch(scoped(`/api/workflows/${encodeURIComponent(name)}`), { method: "DELETE" })
       toast.success("Workflow deleted")
       router.push("/workflows")
     } catch (err) {
@@ -722,6 +723,7 @@ function RunPanel({
   onFilesUpdated: (files: WorkspaceFile[]) => void
 }) {
   const router = useRouter()
+  const { scoped } = useWorkspace()
   const [task, setTask] = React.useState("")
   const [stepFiles, setStepFiles] = React.useState<Record<string, string[]>>(() => {
     const initial: Record<string, string[]> = {}
@@ -747,17 +749,17 @@ function RunPanel({
   }, [steps])
 
   React.useEffect(() => {
-    apiFetch<{ runs: RunSummary[] }>(`/api/workflows/${encodeURIComponent(name)}/runs`)
+    apiFetch<{ runs: RunSummary[] }>(scoped(`/api/workflows/${encodeURIComponent(name)}/runs`))
       .then((data) => setRuns(data.runs))
       .catch(() => setRuns([]))
-  }, [name])
+  }, [name, scoped])
 
   async function start() {
     setStarting(true)
     try {
       const hasFileOverrides = Object.values(stepFiles).some((list) => list.length > 0) ||
         steps.some((s) => s.files.length > 0)
-      const { run } = await apiFetch<{ run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(name)}/runs`, {
+      const { run } = await apiFetch<{ run: WorkflowRun }>(scoped(`/api/workflows/${encodeURIComponent(name)}/runs`), {
         method: "POST",
         body: JSON.stringify({
           task: task.trim() || undefined,

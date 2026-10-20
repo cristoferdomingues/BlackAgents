@@ -12,15 +12,15 @@ export interface WorkflowListItem {
   active: boolean
 }
 
-export async function listWorkflowItems(root: string): Promise<WorkflowListItem[]> {
-  const [workflows, runs] = await Promise.all([listWorkflows(root), listRuns(root)])
+export async function listWorkflowItems(root: string, scope?: string): Promise<WorkflowListItem[]> {
+  const [workflows, runs] = await Promise.all([listWorkflows(root, scope), listRuns(root, undefined, scope ?? null)])
   const runner = getRunner()
   return workflows.map((workflow) => {
     const last = runs.find((r) => r.workflow === workflow.name)
     return {
       workflow,
       lastRun: last ? summarizeRun(last) : null,
-      active: runner.isActive(root, workflow.name),
+      active: runner.isActive(root, workflow.name, scope),
     }
   })
 }
@@ -28,7 +28,7 @@ export async function listWorkflowItems(root: string): Promise<WorkflowListItem[
 export type ParsedWorkflow = { ok: true; workflow: Workflow } | { ok: false; message: string }
 
 /** Validate a workflow body and check that every step's agent and files exist. */
-export async function parseWorkflowBody(root: string, body: unknown): Promise<ParsedWorkflow> {
+export async function parseWorkflowBody(root: string, body: unknown, scope?: string): Promise<ParsedWorkflow> {
   const parsed = workflowSchema.safeParse(body)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
@@ -36,7 +36,7 @@ export async function parseWorkflowBody(root: string, body: unknown): Promise<Pa
     return { ok: false, message: `${where}${issue?.message ?? "Invalid workflow"}` }
   }
   const [workspaceArtifacts, files] = await Promise.all([
-    scanWorkspace(root),
+    scanWorkspace(root, scope),
     listWorkspaceFiles(root).catch(() => []),
   ])
   const artifacts = withBuiltinArtifacts(workspaceArtifacts)

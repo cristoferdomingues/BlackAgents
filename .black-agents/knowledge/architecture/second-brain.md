@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Second Brain
-description: Feedback and audits → proposals → approved memory, artifacts, and knowledge
+description: 'Feedback and audits → proposals → approved memory, artifacts, and knowledge'
 tags:
   - blackagents
   - architecture
@@ -16,10 +16,12 @@ sources:
 generated:
   by: 'agent:cursor'
   at: '2026-10-19T13:47:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:54Z'
+  - by: 'human:local'
+    at: '2026-10-20T00:00:37Z'
+status: draft
 ---
 
 # Second Brain

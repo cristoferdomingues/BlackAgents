@@ -1,12 +1,17 @@
 ---
 type: Reference
 title: Project Scopes
-description: 'One-level .black-agents/projects/<id>/ scopes, project.json whitelist, ?scope= API'
+description: >-
+  One-level .black-agents/projects/<id>/ scopes, project.json whitelist, ?scope=
+  API
 tags:
   - blackagents
   - architecture
   - projects
   - workspace
+verified:
+  - by: 'human:local'
+    at: '2026-10-20T00:00:36Z'
 status: draft
 ---
 

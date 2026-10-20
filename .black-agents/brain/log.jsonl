@@ -59,3 +59,11 @@
 {"at":"2026-10-19T16:29:57.426Z","event":"applied","proposalId":"fe153f80-0653-4200-9714-846f4a18a840","kind":"reverify_concept","target":"concept:roadmap/future-phases"}
 {"at":"2026-10-19T19:44:29.668Z","event":"recorded","reason":"Jev found nothing important to keep"}
 {"at":"2026-10-19T19:48:31.432Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-10-19T23:53:22.111Z","event":"proposed","proposalId":"bbba02a0-dd9e-4185-b11a-fbd8af773862","kind":"reverify_concept","target":"concept:api/api-reference"}
+{"at":"2026-10-19T23:53:22.139Z","event":"proposed","proposalId":"7998ee41-4ff5-4c51-ad73-88b82c493b8c","kind":"reverify_concept","target":"concept:architecture/second-brain"}
+{"at":"2026-10-19T23:53:22.146Z","event":"proposed","proposalId":"bce77980-6d64-4ae7-8b81-b8c329b13836","kind":"reverify_concept","target":"concept:architecture/workflows"}
+{"at":"2026-10-19T23:53:22.152Z","event":"proposed","proposalId":"1f85b25c-7d3a-4ff9-b6b4-56e95f79c72d","kind":"reverify_concept","target":"concept:architecture/project-scopes"}
+{"at":"2026-10-20T00:00:36.034Z","event":"applied","proposalId":"1f85b25c-7d3a-4ff9-b6b4-56e95f79c72d","kind":"reverify_concept","target":"concept:architecture/project-scopes"}
+{"at":"2026-10-20T00:00:37.276Z","event":"applied","proposalId":"bce77980-6d64-4ae7-8b81-b8c329b13836","kind":"reverify_concept","target":"concept:architecture/workflows"}
+{"at":"2026-10-20T00:00:37.883Z","event":"applied","proposalId":"7998ee41-4ff5-4c51-ad73-88b82c493b8c","kind":"reverify_concept","target":"concept:architecture/second-brain"}
+{"at":"2026-10-20T00:00:39.619Z","event":"applied","proposalId":"bbba02a0-dd9e-4185-b11a-fbd8af773862","kind":"reverify_concept","target":"concept:api/api-reference"}

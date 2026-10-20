@@ -20,8 +20,10 @@
       ],
       "mcpServers": [],
       "allowWrites": true,
-      "maxTurns": 30,
+      "maxTurns": 100,
       "gate": true,
+      "review": false,
+      "repair": false,
       "login": false
     },
     {
@@ -36,8 +38,10 @@
       ],
       "mcpServers": [],
       "allowWrites": false,
-      "maxTurns": 30,
+      "maxTurns": 100,
       "gate": false,
+      "review": false,
+      "repair": false,
       "login": false
     }
   ],

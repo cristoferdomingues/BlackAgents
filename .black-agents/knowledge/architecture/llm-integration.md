@@ -106,6 +106,9 @@ The assistant may call tools during a turn, but its **final reply** is steered t
 | Draft a workflow | ` ```workflow ` | `workflowSchema` / `extractWorkflowDraft` (`workflow-draft.ts`) | `/chat` workflow card: **Save** or **Open in builder**. At most one draft, bundle, or workflow block per reply |
 | Review an artifact | ` ```validation ` | `validationResultSchema` / `extractValidation` (`validation.ts`) | [Validate with assistant](../specs/assisted-artifact-drafting.md) |
 | Propose a learning | ` ```proposal ` | `extractProposalDraft` (`lib/brain/learn.ts`) | [Second Brain](./second-brain.md) inbox |
+| Ask the user to choose | ` ```choices ` | `choicesBlockSchema` / `inspectChoices` (`choices.ts`) | `/chat` choice card (assistant and agent personas): click one (`multiple: false`) or several options, plus an **Other** free-text field. **Send answer** posts `B) text` lines and `Other: …` as the next user message. The card is live only on the latest turn |
+
+- **Choice fallback**: a reply with no ` ```choices ` block still gets the card when it ends with options lettered `A)`, `B)`… in order (bullets, bold, `A.`, `(A)` and `A:` work; at most 3 lines may follow). Those lines move from the prose into the card. "Select all" / "all that apply" makes it multiple choice. Code blocks are ignored. The choice card is not shown when another draft card is in the reply.
 
 - Extractors return `null` on a missing block or failed `safeParse`; callers choose a safe fallback (a `502` when no usable draft, or surfacing prose as a single `info` finding) — never a fabricated "valid" result.
 - A draft `body` is **markdown only, no frontmatter** — the platform adds frontmatter on serialize/export.

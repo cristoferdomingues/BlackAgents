@@ -79,6 +79,8 @@ import {
   type MemoryDraftInspection,
 } from "@/lib/llm/memory-draft"
 import { extractBundle, stripBundleBlock } from "@/lib/llm/bundle"
+import { CHOICES_FENCE, inspectChoices } from "@/lib/llm/choices"
+import { stripFencedBlocks } from "@/lib/llm/fenced-json"
 import { inspectModelRef, type ModelRef } from "@/lib/llm/model-ref"
 import {
   type ChatContextModel,
@@ -129,6 +131,7 @@ import {
   KnowledgeDraftProblemCard,
 } from "@/components/features/chat/knowledge-draft-card"
 import { MemoryDraftCard, MemoryDraftProblemCard } from "@/components/features/chat/memory-draft-card"
+import { ChoiceCard } from "@/components/features/chat/choice-card"
 import { WorkflowRunCard } from "@/components/features/chat/workflow-run-card"
 import { ApprovalCard } from "@/components/features/approvals/approval-card"
 import {
@@ -1291,6 +1294,7 @@ export function ChatPage({
                 onOpen={openInEditor}
                 onFixIssues={(request) => void send(request)}
                 fixDisabled={sending || !canChat}
+                isLatest={i === turns.length - 1}
                 agentName={selectedAgent?.name}
                 previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
                 provider={provider}
@@ -1322,10 +1326,13 @@ export function ChatPage({
               {live.content ? (
                 <div className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert">
                   <MarkdownPreview
-                    content={stripMemoryBlock(
-                      stripKnowledgeBlock(
-                        stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))
-                      )
+                    content={stripFencedBlocks(
+                      stripMemoryBlock(
+                        stripKnowledgeBlock(
+                          stripWorkflowBlock(stripBundleBlock(stripDraftBlock(live.content)))
+                        )
+                      ),
+                      CHOICES_FENCE
                     )}
                     variant="inline"
                   />
@@ -1550,6 +1557,7 @@ function Message({
   onOpen,
   onFixIssues,
   fixDisabled,
+  isLatest,
   agentName,
   previousUser,
   provider,
@@ -1562,6 +1570,7 @@ function Message({
   onOpen: (draft: NormalizedDraft) => void
   onFixIssues: (request: string) => void
   fixDisabled: boolean
+  isLatest: boolean
   agentName?: string
   previousUser: string
   provider: string
@@ -1586,11 +1595,18 @@ function Message({
       ? { kind: "none" }
       : inspectDraft(turn.content)
   const draft = draftCheck.kind === "ok" ? draftCheck.draft : null
-  const prose = isUser
+  const cardShown =
+    Boolean(bundle || workflowDraft) ||
+    memoryCheck.kind !== "none" ||
+    knowledgeCheck.kind !== "none" ||
+    draftCheck.kind !== "none"
+  const baseProse = isUser
     ? turn.content
     : stripMemoryBlock(
         stripKnowledgeBlock(stripWorkflowBlock(stripBundleBlock(stripDraftBlock(turn.content))))
       )
+  const choices = isUser || cardShown || turn.workflowRun ? null : inspectChoices(baseProse)
+  const prose = choices ? choices.rest : baseProse
   const attached = turnAttachments(turn)
   const runTarget = turn.workflowRun
     ? workflows.find((item) => item.workflow.name === turn.workflowRun?.workflow)?.workflow
@@ -1654,6 +1670,13 @@ function Message({
           </>
         )}
 
+        {choices ? (
+          <ChoiceCard
+            prompt={choices.prompt}
+            onAnswer={onFixIssues}
+            disabled={fixDisabled || !isLatest}
+          />
+        ) : null}
         {draft ? <DraftCard draft={draft} onOpen={onOpen} /> : null}
         {draftCheck.kind === "invalid" ? (
           <DraftProblemCard

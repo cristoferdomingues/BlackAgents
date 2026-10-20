@@ -133,6 +133,18 @@ describe("buildSystemContext", () => {
     expect(context.indexOf("## Working in the workspace")).toBeLessThan(
       context.indexOf("## Selected workspace agent")
     )
+    expect(context).toContain("```choices")
+    expect(context.indexOf("## Asking the user to choose")).toBeLessThan(
+      context.indexOf("## Selected workspace agent")
+    )
+  })
+
+  it("tells the assistant how to offer clickable choices", async () => {
+    const context = await buildSystemContext()
+    expect(context).toContain("## Asking the user to choose")
+    expect(context).toContain("```choices")
+    expect(context).toContain('Do not add "Other" yourself')
+    expect(context).toContain("Never reveal which option is correct")
   })
 
   it("rejects non-agent artifacts as personas", () => {

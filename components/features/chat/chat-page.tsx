@@ -114,6 +114,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { MentionMenu, type ChatMention } from "@/components/features/chat/mention-menu"
+import { MemoryNotice } from "@/components/features/chat/memory-notice"
+import type { ConversationMemory } from "@/lib/chat/memory"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
 import { agentHeaderSummary } from "@/components/features/models/model-choice"
 import {
@@ -251,6 +253,7 @@ export function ChatPage({
   const [modelsLoading, setModelsLoading] = React.useState(false)
   const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
   const [turns, setTurns] = React.useState<Turn[]>([])
+  const [memory, setMemory] = React.useState<ConversationMemory | null>(null)
   const [conversationId, setConversationId] = React.useState(() => createConversationId())
   const [recentConversations, setRecentConversations] = React.useState<StoredConversation[]>([])
   const [historyReady, setHistoryReady] = React.useState(false)
@@ -359,6 +362,7 @@ export function ChatPage({
       setRecentConversations([])
       if (pathChanged) {
         setTurns([])
+        setMemory(null)
         setInput("")
         setFiles([])
         setLive(EMPTY_LIVE)
@@ -377,10 +381,12 @@ export function ChatPage({
     if (active && active.messages.length > 0 && agentMatches) {
       setConversationId(active.id)
       setTurns(active.messages)
+      setMemory(active.memory ?? null)
     } else if (pathChanged) {
       const id = createConversationId()
       setConversationId(id)
       setTurns([])
+      setMemory(null)
       writeConversationsStore(path, setActiveConversation(store, id))
     } else if (previousPath === undefined) {
       writeConversationsStore(path, setActiveConversation(store, conversationIdRef.current))
@@ -555,7 +561,11 @@ export function ChatPage({
     setModel(nextModel)
   }
 
-  function saveTurns(nextTurns: Turn[], scope?: { path: string; id: string }): void {
+  function saveTurns(
+    nextTurns: Turn[],
+    scope?: { path: string; id: string },
+    nextMemory: ConversationMemory | null = memory
+  ): void {
     const path = scope?.path || workspacePath
     const id = scope?.id || conversationIdRef.current
     if (!path) return
@@ -565,6 +575,7 @@ export function ChatPage({
       agent: selectedAgent?.name,
       provider,
       model,
+      memory: nextMemory,
     })
     writeConversationsStore(path, nextStore)
     if (path === workspacePathRef.current) setRecentConversations(nextStore.conversations)
@@ -685,9 +696,10 @@ export function ChatPage({
     replyAbortRef.current = controller
     let current = EMPTY_LIVE
     try {
-      const outcome: { final: Turn | null; error: string | null } = {
+      const outcome: { final: Turn | null; error: string | null; memory: ConversationMemory | null } = {
         final: null,
         error: null,
+        memory: null,
       }
       await streamPost(
         scoped("/api/chat"),
@@ -697,6 +709,7 @@ export function ChatPage({
           messages: next.filter((turn) => !turn.workflowRun).map(toRequestMessage),
           agent: selectedAgent?.name,
           allowFileWrites,
+          ...(memory ? { memory } : {}),
         },
         (event) => {
           if (event.event === "done") {
@@ -713,6 +726,7 @@ export function ChatPage({
               artifacts: current.artifacts.length ? current.artifacts : undefined,
               stoppedAtLimit: data.stoppedAtLimit,
             }
+            outcome.memory = data.memory ?? null
             return
           }
           if (event.event === "error") {
@@ -731,8 +745,12 @@ export function ChatPage({
       const reply = outcome.final
       if (!reply) throw new Error("The assistant stopped before answering")
       const finalized = [...next, reply]
-      if (stillThisChat()) setTurns(finalized)
-      saveTurns(finalized, scope)
+      const nextMemory = outcome.memory ?? memory
+      if (stillThisChat()) {
+        setTurns(finalized)
+        setMemory(nextMemory)
+      }
+      saveTurns(finalized, scope, nextMemory)
       finished = true
     } catch (err) {
       if (controller.signal.aborted) {
@@ -799,6 +817,7 @@ export function ChatPage({
     }
     setConversationId(id)
     setTurns([])
+    setMemory(null)
     setInput("")
     setFiles([])
     setLive(EMPTY_LIVE)
@@ -826,6 +845,7 @@ export function ChatPage({
     }
     setConversationId(convo.id)
     setTurns(convo.messages)
+    setMemory(convo.memory ?? null)
     setInput("")
     setFiles([])
     setLive(EMPTY_LIVE)
@@ -1288,23 +1308,26 @@ export function ChatPage({
               </div>
             </div>
           ) : (
-            turns.map((turn, i) => (
-              <Message
-                key={i}
-                turn={turn}
-                onOpen={openInEditor}
-                onFixIssues={(request) => void send(request)}
-                fixDisabled={sending || !canChat}
-                isLatest={i === turns.length - 1}
-                agentName={selectedAgent?.name}
-                previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
-                provider={provider}
-                model={model}
-                workflows={workflows}
-                onWorkflowSaved={() => void loadWorkflows()}
-                onWorkflowStarted={(runId, task) => markWorkflowStarted(i, runId, task)}
-              />
-            ))
+            <>
+              {memory ? <MemoryNotice memory={memory} agent={selectedAgent?.name} /> : null}
+              {turns.map((turn, i) => (
+                <Message
+                  key={i}
+                  turn={turn}
+                  onOpen={openInEditor}
+                  onFixIssues={(request) => void send(request)}
+                  fixDisabled={sending || !canChat}
+                  isLatest={i === turns.length - 1}
+                  agentName={selectedAgent?.name}
+                  previousUser={turns[i - 1]?.role === "user" ? turns[i - 1].content : ""}
+                  provider={provider}
+                  model={model}
+                  workflows={workflows}
+                  onWorkflowSaved={() => void loadWorkflows()}
+                  onWorkflowStarted={(runId, task) => markWorkflowStarted(i, runId, task)}
+                />
+              ))}
+            </>
           )}
           {sending && historyVisible ? (
             <div className="space-y-3">
@@ -1314,6 +1337,12 @@ export function ChatPage({
                 steps={live.thinking}
                 waitingForApproval={live.approvals.length > 0}
               />
+              {live.folding ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Summarizing older messages to keep the chat focused…
+                </p>
+              ) : null}
               {live.approvals.map((approval) => (
                 <ApprovalCard
                   key={approval.id}

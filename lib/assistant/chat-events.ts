@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { conversationMemorySchema } from "@/lib/chat/memory"
+
 /**
  * Schemas for the chat SSE events (isomorphic). The client parses each event
  * with these instead of trusting the stream's shape.
@@ -64,5 +66,7 @@ export const chatDoneEventSchema = z.object({
   model: z.string().optional(),
   toolExecutions: z.array(toolTraceSchema).optional(),
   stoppedAtLimit: z.boolean().optional(),
+  /** A bad memory is dropped; the reply itself still applies. */
+  memory: conversationMemorySchema.optional().catch(undefined),
 })
 export const chatErrorEventSchema = z.object({ message: z.string().default("The assistant failed") })

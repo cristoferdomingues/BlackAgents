@@ -65,3 +65,14 @@ describe("applyChatEvent", () => {
     expect(applyChatEvent(EMPTY_LIVE, { event: "ping", data: null })).toBe(EMPTY_LIVE)
   })
 })
+
+describe("memory folding status", () => {
+  it("shows folding until the reply starts", () => {
+    const folding = applyChatEvent(EMPTY_LIVE, { event: "memory_folding", data: {} })
+    expect(folding.folding).toBe(true)
+    expect(applyChatEvent(folding, { event: "token", data: { content: "Hi" } }).folding).toBe(false)
+    expect(
+      applyChatEvent(folding, { event: "tool_call", data: { id: "t1", tool: "fs_read", server: "builtin" } }).folding
+    ).toBe(false)
+  })
+})

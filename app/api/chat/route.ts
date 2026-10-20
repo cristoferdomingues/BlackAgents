@@ -4,9 +4,12 @@ import { chatRequestSchema, prepareChat, runChat } from "@/lib/assistant/chat-se
 import { readConfig } from "@/lib/config"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import { ProviderError } from "@/lib/llm/types"
-import { LoopAbortedError } from "@/lib/runtime/agent-loop"
+import { AgentContextLimitError, LoopAbortedError } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover, denyAllApprover } from "@/lib/runtime/ask-user"
 import { sseResponse } from "@/lib/sse"
+
+const CONTEXT_LIMIT_MESSAGE =
+  "This message is too large for the model, even after older messages were summarized. Start a new chat or attach less."
 
 /**
  * Bring-your-own-key chat. The API key stays server-side. The reply runs the
@@ -36,12 +39,14 @@ export async function POST(req: Request) {
           model: chat.model,
           toolExecutions: result.toolExecutions.length > 0 ? result.toolExecutions : undefined,
           artifacts: chat.selection.artifacts,
+          ...(result.memory ? { memory: result.memory } : {}),
         })
       } catch (err) {
         if (err instanceof ProviderError) {
           await markInvalidOnAuthFailure(chat.provider, err, chat.secret)
           return fail(err.message, err.status)
         }
+        if (err instanceof AgentContextLimitError) return fail(CONTEXT_LIMIT_MESSAGE, 413)
         throw err
       }
     }
@@ -69,18 +74,24 @@ export async function POST(req: Request) {
               send("approval_resolved", { id: approval.id, approved: decision.approved }),
           }),
           onEvent: (event) => send(event.type, event),
+          onMemoryFolding: () => send("memory_folding", {}),
         })
         send("done", {
           content: result.content,
           model: chat.model,
           toolExecutions: result.toolExecutions,
           stoppedAtLimit: result.stoppedAtLimit,
+          ...(result.memory ? { memory: result.memory } : {}),
         })
       } catch (err) {
         if (err instanceof LoopAbortedError) return
         if (err instanceof ProviderError) {
           await markInvalidOnAuthFailure(chat.provider, err, chat.secret)
           send("error", { message: err.message, status: err.status })
+          return
+        }
+        if (err instanceof AgentContextLimitError) {
+          send("error", { message: CONTEXT_LIMIT_MESSAGE, status: 413 })
           return
         }
         throw err

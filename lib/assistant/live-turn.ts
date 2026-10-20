@@ -20,6 +20,8 @@ export interface LiveTurn {
   approvals: ApprovalRequest[]
   artifacts: TurnArtifact[]
   model?: ChatContextModel
+  /** Older messages are being summarized before the reply starts. */
+  folding?: boolean
 }
 
 export const EMPTY_LIVE: LiveTurn = { content: "", thinking: [], approvals: [], artifacts: [] }
@@ -36,18 +38,20 @@ export function applyChatEvent(live: LiveTurn, { event, data }: SseEvent): LiveT
         ...(parsed.data.model ? { model: parsed.data.model } : {}),
       }
     }
+    case "memory_folding":
+      return { ...live, folding: true }
     case "thinking": {
       const parsed = chatThinkingEventSchema.safeParse(data)
       return parsed.success ? { ...live, thinking: addReasoning(live.thinking, parsed.data.content) } : live
     }
     case "token": {
       const parsed = chatTokenEventSchema.safeParse(data)
-      return parsed.success ? { ...live, content: parsed.data.content } : live
+      return parsed.success ? { ...live, folding: false, content: parsed.data.content } : live
     }
     case "tool_call": {
       const parsed = chatToolCallEventSchema.safeParse(data)
       if (!parsed.success) return live
-      return { ...live, content: "", thinking: addToolCall(live.thinking, parsed.data, live.content) }
+      return { ...live, folding: false, content: "", thinking: addToolCall(live.thinking, parsed.data, live.content) }
     }
     case "tool_result": {
       const parsed = chatToolResultEventSchema.safeParse(data)

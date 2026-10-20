@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { attachmentMeta, attachmentMetaSchema, type Attachment } from "@/lib/chat/attachments"
+import { conversationMemorySchema, type ConversationMemory } from "@/lib/chat/memory"
 
 /**
  * Browser-local chat history (no DB). Each workspace keeps its own 5 most
@@ -86,6 +87,8 @@ export const storedConversationSchema = z.object({
   provider: z.string().optional(),
   model: z.string().optional(),
   messages: z.array(storedTurnSchema),
+  /** Long-chat memory; a broken one is dropped, the messages still load. */
+  memory: conversationMemorySchema.optional().catch(undefined),
 })
 export type StoredConversation = z.infer<typeof storedConversationSchema>
 
@@ -107,6 +110,7 @@ export interface ConversationUpsertInput {
   provider?: string
   model?: string
   updatedAt?: string
+  memory?: ConversationMemory | null
 }
 
 /** First user message, trimmed/truncated — used as the history label. */
@@ -144,6 +148,7 @@ export function upsertConversation(
     provider: input.provider,
     model: input.model,
     messages: input.messages.map(toStoredTurn),
+    ...(input.memory ? { memory: input.memory } : {}),
   }
   const rest = store.conversations.filter((c) => c.id !== input.id)
   return {

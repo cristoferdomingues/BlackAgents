@@ -11,7 +11,9 @@ import {
   isBinaryAttachment,
   renderTextAttachments,
 } from "@/lib/chat/attachments"
+import { conversationMemorySchema, planCompaction, renderMemorySection, type ConversationMemory } from "@/lib/chat/memory"
 import { readConfig } from "@/lib/config"
+import { contextCharsFor } from "@/lib/llm/context-limits"
 import { loadDecisionClient } from "@/lib/decision/client"
 import { composeFilesPrompt, parseFileMentions, resolveWorkspaceFiles } from "@/lib/files"
 import { buildAgentPersonaContext, buildSystemContext, loadKnowledgeContext } from "@/lib/llm/context"
@@ -37,6 +39,7 @@ import type { Approver } from "@/lib/runtime/ask-user"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, buildToolset } from "@/lib/runtime/tools"
 import type { AgentLoopEvent, RuntimeTool } from "@/lib/runtime/types"
 
+import { foldConversation } from "./conversation-memory"
 import {
   composeDraftPrompt,
   selectTurnArtifacts,
@@ -63,6 +66,8 @@ export const chatRequestSchema = z.object({
   allowWrites: z.boolean().optional(),
   /** Auto-approve builtin file writes for this message (protected paths still ask). */
   allowFileWrites: z.boolean().optional(),
+  /** Long-chat memory from the browser: facts + summary that replace the first `covered` messages. */
+  memory: conversationMemorySchema.optional(),
 })
 export type ChatRequest = z.infer<typeof chatRequestSchema>
 
@@ -252,11 +257,66 @@ export function toChatMessage(message: ChatRequest["messages"][number]): ChatMes
   }
 }
 
+/** The fast task model when it is set and verified, else the chat's own model. */
+async function foldModel(
+  chat: PreparedChat
+): Promise<{ provider: LLMProvider; credentials: LLMCredentials; model: string }> {
+  const fast = (await readAiSettings()).models.fast
+  const provider = fast ? getProvider(fast.provider) : undefined
+  if (fast && provider) {
+    try {
+      const verified = await getVerifiedCredentials(provider)
+      return { provider, credentials: verified.credentials, model: fast.model }
+    } catch {
+      // An unverified fast model falls back to the chat model.
+    }
+  }
+  return { provider: chat.provider, credentials: chat.credentials, model: chat.model }
+}
+
+/**
+ * The memory for this turn: the browser's memory when it still matches, folded
+ * further when the verbatim part grew too long. A failed fold keeps the old
+ * memory, so the turn falls back to sending more history, never a broken summary.
+ */
+export async function resolveChatMemory(
+  chat: PreparedChat,
+  options: { signal?: AbortSignal; onFolding?: () => void } = {}
+): Promise<ConversationMemory | null> {
+  const plain = chat.request.messages.map((m) => ({ role: m.role, content: m.content }))
+  const plan = planCompaction(plain, chat.request.memory, contextCharsFor(chat.model))
+  if (plan.foldEnd === null) return plan.memory
+  options.onFolding?.()
+  const from = plan.memory?.covered ?? 0
+  const folded = await foldConversation({
+    ...(await foldModel(chat)),
+    previous: plan.memory,
+    messages: plain.slice(from, plan.foldEnd),
+    covered: plan.foldEnd,
+    signal: options.signal,
+  })
+  return folded ?? plan.memory
+}
+
+export interface ChatRunResult extends AgentLoopResult {
+  /** Present when older messages are covered by the memory; the browser stores it. */
+  memory?: ConversationMemory
+}
+
 export async function runChat(
   chat: PreparedChat,
-  options: { approve: Approver; onEvent?: (event: AgentLoopEvent) => void; signal?: AbortSignal }
-): Promise<AgentLoopResult> {
-  const messages: ChatMessage[] = chat.request.messages.map(toChatMessage)
+  options: {
+    approve: Approver
+    onEvent?: (event: AgentLoopEvent) => void
+    signal?: AbortSignal
+    /** Called before older messages are summarized (an extra model call). */
+    onMemoryFolding?: () => void
+  }
+): Promise<ChatRunResult> {
+  const memory = await resolveChatMemory(chat, { signal: options.signal, onFolding: options.onMemoryFolding })
+  const all: ChatMessage[] = chat.request.messages.map(toChatMessage)
+  const messages = memory ? all.slice(memory.covered) : all
+  const systemContext = memory ? `${chat.systemContext}\n\n${renderMemorySection(memory)}` : chat.systemContext
   const policy = createApprovalPolicy(Boolean(chat.request.allowWrites), chat.allowFileWrites)
   if (chat.workspaceRoot) {
     const grants = await loadAutoAcceptedFlows(chat.workspaceRoot)
@@ -265,19 +325,21 @@ export async function runChat(
       policy.autoAcceptedCalls.add(preapprovedCallKey(call.tool, call.args))
     }
   }
-  return runAgentLoop({
+  const result = await runAgentLoop({
     provider: chat.provider,
     credentials: chat.credentials,
     model: chat.model,
     messages,
-    systemContext: chat.systemContext,
+    systemContext,
     temperature: chat.request.temperature,
     tools: chat.tools,
     maxTurns: chat.maxTurns,
+    maxContextChars: contextCharsFor(chat.model),
     workspaceRoot: chat.workspaceRoot ?? process.cwd(),
     policy,
     approve: options.approve,
     onEvent: options.onEvent,
     signal: options.signal,
   })
+  return memory ? { ...result, memory } : result
 }

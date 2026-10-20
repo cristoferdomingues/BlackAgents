@@ -214,3 +214,28 @@ describe("parse / read / write", () => {
     expect(readConversationsStore("/work/alpha", storage)).toEqual(EMPTY_CONVERSATIONS_STORE)
   })
 })
+
+describe("conversation memory in history", () => {
+  const memory = { summary: "Earlier.", facts: ["Agent: study-coach"], covered: 2 }
+
+  it("stores the memory with the conversation and reads it back", () => {
+    const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, { id: "c1", messages: turns(["a", "b"]), memory })
+    expect(getConversation(store, "c1")?.memory).toEqual(memory)
+    const restored = parseConversationsStore(JSON.parse(JSON.stringify(store)) as unknown)
+    expect(getConversation(restored, "c1")?.memory).toEqual(memory)
+  })
+
+  it("leaves memory out when there is none", () => {
+    const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, { id: "c1", messages: turns(["a"]), memory: null })
+    expect(getConversation(store, "c1")).not.toHaveProperty("memory")
+  })
+
+  it("drops a broken memory but keeps the messages", () => {
+    const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, { id: "c1", messages: turns(["a"]) })
+    const raw = JSON.parse(JSON.stringify(store)) as { conversations: Array<Record<string, unknown>> }
+    raw.conversations[0].memory = { summary: 1, facts: "x", covered: -3 }
+    const restored = parseConversationsStore(raw)
+    expect(getConversation(restored, "c1")?.memory).toBeUndefined()
+    expect(getConversation(restored, "c1")?.messages).toHaveLength(2)
+  })
+})

@@ -92,8 +92,20 @@ Extra sections added per turn:
 | `token` | text (whole-turn chunks; no token-by-token streaming yet) |
 | `tool_call` / `tool_result` | each tool call and its (truncated) result |
 | `approval_required` / `approval_resolved` | a write/exec call waiting for the user |
-| `done` | final content, draft, bundle, `stoppedAtLimit` |
+| `memory_folding` | older messages are being summarized before the reply |
+| `done` | final content, draft, bundle, `stoppedAtLimit`, and `memory` when older messages are covered |
 | `error` | message |
+
+## Long chats (`lib/chat/memory.ts`, `lib/assistant/conversation-memory.ts`)
+
+The browser keeps the full history; the model gets a **memory** instead of the oldest messages.
+
+- **Memory** = `{ facts, summary, covered }`. `facts` is a *case facts* block (max 40 short lines: exact names, ids, paths, numbers, decisions, open questions), kept apart from the prose `summary` so folding never blurs them. `covered` = how many leading request messages it replaces. It is stored with the conversation in localStorage and sent back on every message (zod-validated both ways; a broken one is dropped, never trusted).
+- **When to fold** (`planCompaction`): once more than 24 messages, or more than `min(120k chars, half the model budget)`, are not covered yet. The newest 8+ messages always stay word for word, and the verbatim part always starts with a user message.
+- **Folding** (`foldConversation`): one extra call — the **Fast** task model when it is set and verified, else the chat model — at temperature 0, with the old memory plus the next older messages as quoted data. Its reply must be one ` ```conversation-memory ` JSON block; anything else returns `null` and the turn sends the longer history instead of a broken summary.
+- **Prompt**: `renderMemorySection` adds `## Conversation memory` to the system context, framed as notes (not instructions); newer messages win, and the model must say so when a detail is in neither.
+- **Per-model budget** (`lib/llm/context-limits.ts`): `contextCharsFor(model)` maps model families to token windows (unknown → 64k), keeps 15% headroom plus an 8k reply reserve, and is passed as `maxContextChars` to the agent loop (replaces the fixed 200k chars for chat). A message still too large returns a clear `413`.
+- **UI**: the chat shows "The first N messages are summarized…" with **View memory**; each fact can be sent to Brain Memory (an Inbox proposal, never auto-saved).
 
 ## The Protocols (the agentic contract)
 

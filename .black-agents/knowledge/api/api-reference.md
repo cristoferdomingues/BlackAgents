@@ -171,9 +171,9 @@ The route reads the key **server-side** from `secrets.json`, builds the system c
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| POST | `/api/sources/youtube` | Body: `{ url, language? }` → title, channel, and caption transcript |
+| POST | `/api/sources/youtube` | Body: `{ url, language?, watch? }` → title, channel, caption transcript, `durationSeconds`, and with `watch` the `visualNotes` or a `watchError` |
 
-**YouTube** never calls the LLM. **400** bad link, **404** no captions / not found / private, **502** when YouTube fails. See [YouTube Sources](../specs/youtube-sources.md).
+**YouTube** calls the LLM only with `watch: true` (the Video task model on Custom). **400** bad link, **404** no captions / not found / private, **502** when YouTube fails. A failed watch keeps the captions and adds `watchError`; with no captions it fails with the watch status. See [YouTube Sources](../specs/youtube-sources.md).
 
 ## MCP
 

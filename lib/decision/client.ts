@@ -1,5 +1,6 @@
 import { TypeSafeClient } from "@typesafe-ai/sdk"
 
+import { DEFAULT_MODELS, PROVIDER_URLS } from "@/lib/app-config"
 import { readSecrets, type SecretsFile } from "@/lib/secrets"
 import {
   readAiSettings,
@@ -30,8 +31,8 @@ export interface ResolvedDecisionClient {
   client: TypeSafeClient
 }
 
-export const OPENROUTER_BASE_URL = "https://openrouter.ai/api"
-export const OPENROUTER_JEV_MODEL = "typesafe/jev-1.13"
+export const OPENROUTER_BASE_URL = PROVIDER_URLS.openRouter
+export const OPENROUTER_JEV_MODEL = DEFAULT_MODELS.openRouter.jev
 /** Hot-path request options: fast, no retries. */
 export const DECISION_REQUEST_OPTIONS = {
   timeout: 2_000,

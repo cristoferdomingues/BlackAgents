@@ -26,6 +26,17 @@ describe("modelsForTask", () => {
     expect(modelsForTask("voice", plain)).toEqual({ models: plain, filtered: false })
   })
 
+  it("keeps video-in text-out models for video", () => {
+    const videoIn: ModelInfo = {
+      id: "google/gemini-2.5-flash",
+      inputModalities: ["text", "image", "video"],
+      outputModalities: ["text"],
+    }
+    expect(modelsForTask("video", [videoIn, imageIn, audioIn])).toEqual({ models: [videoIn], filtered: true })
+    expect(resolveTaskModel("video", undefined, true)).toBe("google/gemini-2.5-flash")
+    expect(resolveTaskModel("video", undefined, false)).toBeUndefined()
+  })
+
   it("keeps image-in text-out models for vision", () => {
     expect(modelsForTask("vision", [imageIn, textOnly, audioIn])).toEqual({ models: [imageIn], filtered: true })
   })

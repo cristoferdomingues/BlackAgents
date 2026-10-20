@@ -6,19 +6,20 @@ import { Loader2, X, Youtube } from "lucide-react"
 import { ApiError, apiFetch } from "@/lib/api"
 import { AttachmentError, manualYouTubeAttachment } from "@/lib/chat/attachments"
 import {
+  isNoCaptionsMessage,
   MAX_YOUTUBE_SOURCES,
-  NO_CAPTIONS_MESSAGE,
   parseYouTubeUrl,
   type YouTubeDraftSource,
   type YouTubeSource,
 } from "@/lib/sources/youtube"
+import { useWatchVideoPreference, WatchVideoSwitch } from "@/components/features/chat/watch-video-switch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
 type SourceCard =
-  | { id: string; status: "loading"; url: string; videoId: string }
+  | { id: string; status: "loading"; url: string; videoId: string; watch: boolean }
   | {
       id: string
       status: "ready"
@@ -27,6 +28,8 @@ type SourceCard =
       title: string
       channel: string
       transcript: string
+      visualNotes?: string
+      watchError?: string
       truncated: boolean
       manual: boolean
     }
@@ -41,7 +44,15 @@ function readySources(items: SourceCard[]): YouTubeDraftSource[] {
       title: item.title,
       channel: item.channel,
       transcript: item.transcript,
+      ...(item.visualNotes ? { visualNotes: item.visualNotes } : {}),
     }))
+}
+
+function readyStatus(item: Extract<SourceCard, { status: "ready" }>): string {
+  if (item.manual) return "Pasted transcript"
+  if (item.visualNotes) return item.transcript ? "Captions and video notes ready" : "Video notes ready (no captions)"
+  if (item.watchError) return `Captions only: ${item.watchError}`
+  return item.truncated ? "Captions were cut to fit" : "Captions ready"
 }
 
 export function YouTubeSourcesField({
@@ -52,9 +63,10 @@ export function YouTubeSourcesField({
   const [url, setUrl] = React.useState("")
   const [inputError, setInputError] = React.useState<string | null>(null)
   const [items, setItems] = React.useState<SourceCard[]>([])
+  const [watch, setWatch] = useWatchVideoPreference()
   const readyKey = items
     .filter((item) => item.status === "ready")
-    .map((item) => `${item.videoId}:${item.transcript.length}`)
+    .map((item) => `${item.videoId}:${item.transcript.length}:${item.visualNotes?.length ?? 0}`)
     .join("|")
 
   React.useEffect(() => {
@@ -81,7 +93,7 @@ export function YouTubeSourcesField({
       return
     }
     const id = crypto.randomUUID()
-    setItems((current) => [...current, { id, status: "loading", url: submitted, videoId }])
+    setItems((current) => [...current, { id, status: "loading", url: submitted, videoId, watch }])
     setUrl("")
     setInputError(null)
     try {
@@ -90,6 +102,7 @@ export function YouTubeSourcesField({
         body: JSON.stringify({
           url: submitted,
           language: typeof navigator === "undefined" ? undefined : navigator.language,
+          watch,
         }),
       })
       setItems((current) => {
@@ -104,6 +117,8 @@ export function YouTubeSourcesField({
                 title: source.title,
                 channel: source.channel,
                 transcript: source.transcript,
+                ...(source.visualNotes ? { visualNotes: source.visualNotes } : {}),
+                ...(source.watchError ? { watchError: source.watchError } : {}),
                 truncated: source.truncated,
                 manual: false,
               }
@@ -161,6 +176,7 @@ export function YouTubeSourcesField({
           Add a link. The assistant reads the captions and drafts this skill.
         </p>
       </div>
+      <WatchVideoSwitch id="skill-youtube-watch" checked={watch} onCheckedChange={setWatch} />
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           id="skill-youtube-url"
@@ -201,18 +217,14 @@ export function YouTubeSourcesField({
                   {item.status === "loading" ? (
                     <p className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Reading captions…
+                      {item.watch ? "Watching the video… this can take a minute" : "Reading captions…"}
                     </p>
                   ) : null}
                   {item.status === "ready" ? (
                     <>
                       <p className="truncate text-sm font-medium">{item.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item.manual
-                          ? "Pasted transcript"
-                          : item.truncated
-                            ? "Captions were cut to fit"
-                            : "Captions ready"}
+                        {readyStatus(item)}
                         {item.channel ? ` · ${item.channel}` : ""}
                       </p>
                     </>
@@ -220,7 +232,7 @@ export function YouTubeSourcesField({
                   {item.status === "error" ? (
                     <div className="space-y-2">
                       <p className="text-xs text-destructive">{item.message}</p>
-                      {item.message === NO_CAPTIONS_MESSAGE ? (
+                      {isNoCaptionsMessage(item.message) ? (
                         <>
                           <Label htmlFor={`skill-youtube-paste-${item.id}`}>Paste the transcript</Label>
                           <Textarea

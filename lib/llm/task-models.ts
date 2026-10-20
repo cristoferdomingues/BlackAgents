@@ -1,15 +1,17 @@
 import { z } from "zod"
 
+import { DEFAULT_MODELS } from "@/lib/app-config"
+
 /**
  * "Models by task": jobs that need a model with special inputs or outputs,
  * separate from the chat model picked in the Assistant header. Each task says
  * which models fit it, using OpenRouter-style modality metadata.
  *
  * Chat kinds (`vision`, `fast`, `reasoning`) can be named as `model: task:<kind>`.
- * Voice stays a special job and is not a chat model.
+ * Voice and video stay special jobs and are not chat models.
  */
 
-export const modelTaskSchema = z.enum(["voice", "vision", "fast", "reasoning"])
+export const modelTaskSchema = z.enum(["voice", "video", "vision", "fast", "reasoning"])
 export type ModelTask = z.infer<typeof modelTaskSchema>
 
 export const chatModelTaskSchema = z.enum(["vision", "fast", "reasoning"])
@@ -45,10 +47,21 @@ export const MODEL_TASKS: Record<ModelTask, ModelTaskDefinition> = {
     description:
       "Turns your recorded voice into text when the browser cannot. Used with the Custom provider; OpenAI always uses whisper-1.",
     usage: "special",
-    openRouterDefault: "google/gemini-2.5-flash",
+    openRouterDefault: DEFAULT_MODELS.openRouter.voice,
     fitHint: "take audio and give text",
     fits: (model) =>
       Boolean(model.inputModalities?.includes("audio") && model.outputModalities?.includes("text")),
+  },
+  video: {
+    id: "video",
+    label: "Video",
+    description:
+      "Watches a YouTube video and writes notes on what it shows. Used with the Custom provider when you turn on Watch video.",
+    usage: "special",
+    openRouterDefault: DEFAULT_MODELS.openRouter.video,
+    fitHint: "take video and give text",
+    fits: (model) =>
+      Boolean(model.inputModalities?.includes("video") && model.outputModalities?.includes("text")),
   },
   vision: {
     id: "vision",

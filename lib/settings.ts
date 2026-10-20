@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 
+import { LIMITS } from "./app-config"
 import { configDir } from "./config"
 import { providerIdSchema } from "./llm/provider-id"
-import { DEFAULT_MAX_TURNS, MAX_TURNS_LIMIT } from "./runtime/agent-loop"
 
 /**
  * Non-secret AI settings in ~/.black-agents/settings.json. Keys for Jev live in
@@ -28,7 +28,7 @@ const taskChoiceSchema = z.object({
 export const aiSettingsSchema = z.object({
   assistant: z
     .object({
-      maxToolTurns: z.number().int().min(1).max(MAX_TURNS_LIMIT).default(DEFAULT_MAX_TURNS),
+      maxToolTurns: z.number().int().min(1).max(LIMITS.agentLoop.maxTurns).default(LIMITS.agentLoop.defaultMaxTurns),
       /** Generic assistant: run `fs_write` without an approval card. */
       autoApproveFileWrites: z.boolean().default(false),
     })
@@ -46,12 +46,13 @@ export const aiSettingsSchema = z.object({
     })
     .default({}),
   /**
-   * Models by task. Voice stays a Custom-provider model id.
+   * Models by task. Voice and video stay Custom-provider model ids.
    * Chat kinds store the provider and the model together.
    */
   models: z
     .object({
       voice: taskModelIdSchema.optional(),
+      video: taskModelIdSchema.optional(),
       vision: taskChoiceSchema.optional(),
       fast: taskChoiceSchema.optional(),
       reasoning: taskChoiceSchema.optional(),
@@ -75,7 +76,7 @@ export type AiSettings = z.infer<typeof aiSettingsSchema>
 export const aiSettingsPatchSchema = z.object({
   assistant: z
     .object({
-      maxToolTurns: z.number().int().min(1).max(MAX_TURNS_LIMIT),
+      maxToolTurns: z.number().int().min(1).max(LIMITS.agentLoop.maxTurns),
       autoApproveFileWrites: z.boolean(),
     })
     .partial()
@@ -88,10 +89,11 @@ export const aiSettingsPatchSchema = z.object({
     })
     .partial()
     .optional(),
-  /** A value saves it; `null` clears it. Voice is a model id; chat kinds are `{ provider, model }`. */
+  /** A value saves it; `null` clears it. Voice and video are model ids; chat kinds are `{ provider, model }`. */
   models: z
     .object({
       voice: taskModelIdSchema.nullable(),
+      video: taskModelIdSchema.nullable(),
       vision: taskChoiceSchema.nullable(),
       fast: taskChoiceSchema.nullable(),
       reasoning: taskChoiceSchema.nullable(),
@@ -129,9 +131,11 @@ function mergeModels(
 ): AiSettings["models"] {
   const next: AiSettings["models"] = { ...current }
   if (!patch) return next
-  if (patch.voice !== undefined) {
-    if (patch.voice === null) delete next.voice
-    else next.voice = patch.voice
+  for (const key of ["voice", "video"] as const) {
+    const value = patch[key]
+    if (value === undefined) continue
+    if (value === null) delete next[key]
+    else next[key] = value
   }
   for (const key of ["vision", "fast", "reasoning"] as const) {
     const value = patch[key]

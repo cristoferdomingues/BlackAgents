@@ -1,3 +1,4 @@
+import { LIMITS, TIMEOUTS_MS } from "@/lib/app-config"
 import {
   ProviderError,
   type ChatMessage,
@@ -23,15 +24,13 @@ import type {
   ToolExecutionTrace,
 } from "./types"
 
-export const DEFAULT_MAX_TURNS = 25
-export const MAX_TURNS_LIMIT = 100
-export const DEFAULT_TOOL_TIMEOUT_MS = 60_000
-export const MAX_TOOL_RESULT_CHARS = 12_000
-export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 20
-/** Default total budget is `maxTurns * this`, so a longer step gets a bigger budget. */
-export const DEFAULT_TOOL_CALLS_PER_TURN_BUDGET = 5
-/** Approx. 50k tokens. Leaves room for provider-specific formatting/output. */
-export const DEFAULT_MAX_CONTEXT_CHARS = 200_000
+export const DEFAULT_MAX_TURNS = LIMITS.agentLoop.defaultMaxTurns
+export const MAX_TURNS_LIMIT = LIMITS.agentLoop.maxTurns
+export const DEFAULT_TOOL_TIMEOUT_MS = TIMEOUTS_MS.tool
+export const MAX_TOOL_RESULT_CHARS = LIMITS.agentLoop.maxToolResultChars
+export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = LIMITS.agentLoop.maxToolCallsPerTurn
+export const DEFAULT_TOOL_CALLS_PER_TURN_BUDGET = LIMITS.agentLoop.toolCallsPerTurnBudget
+export const DEFAULT_MAX_CONTEXT_CHARS = LIMITS.agentLoop.maxContextChars
 /** Sent once when a provider reply has no text and no tool call. */
 export const EMPTY_REPLY_NUDGE =
   "Your last reply was empty. It had no text and no tool call. Continue now: call the next tool, or give a short answer. Do not repeat the plan."

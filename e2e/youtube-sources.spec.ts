@@ -92,4 +92,67 @@ test.describe("YouTube sources", () => {
     await page.getByRole("button", { name: "Send" }).click()
     await expect(page.getByText("I read the video.")).toBeVisible()
   })
+
+  test("watches a YouTube video for the assistant", async ({ page }) => {
+    const notes = "- [00:04] A checklist on a slide"
+    let sourceBody: { watch?: boolean } = {}
+    let chatBody: { messages?: Array<{ attachments?: Array<{ visualNotes?: string }> }> } = {}
+    await page.route("**/api/workflows", (route) =>
+      route.fulfill({ json: { success: true, data: { workflows: [] } } })
+    )
+    await page.route("**/api/sources/youtube", async (route) => {
+      sourceBody = route.request().postDataJSON() as typeof sourceBody
+      await route.fulfill({ json: { success: true, data: { ...VIDEO, visualNotes: notes } } })
+    })
+    await page.route("**/api/chat", async (route) => {
+      chatBody = route.request().postDataJSON() as typeof chatBody
+      await fulfillSse(route, [["done", { content: "I watched it.", model: "gpt-4o-mini", toolExecutions: [] }]])
+    })
+
+    await page.goto("/chat")
+    await page.getByRole("button", { name: "Add a YouTube video" }).click()
+    await page.getByLabel("YouTube link").fill(VIDEO.url)
+    await page.getByRole("switch", { name: "Watch the video" }).click()
+    await page.getByRole("button", { name: "Add video" }).click()
+    await expect(page.getByText("Demo video")).toBeVisible()
+    expect(sourceBody.watch).toBe(true)
+    await page.getByLabel("Message assistant").fill("What is on the slides?")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("I watched it.")).toBeVisible()
+    expect(chatBody.messages?.at(-1)?.attachments?.[0]?.visualNotes).toBe(notes)
+  })
+
+  test("drafts a skill from a watched video without captions", async ({ page }) => {
+    let draftSources: Array<{ transcript?: string; visualNotes?: string }> = []
+    await page.route("**/api/sources/youtube", (route) =>
+      route.fulfill({
+        json: { success: true, data: { ...VIDEO, transcript: "", visualNotes: "- [00:10] Code on screen" } },
+      })
+    )
+    await page.route("**/api/artifacts/draft-body", async (route) => {
+      draftSources = (route.request().postDataJSON() as { sources?: typeof draftSources }).sources ?? []
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            description: "Use when the user asks for a code review.",
+            body: "# code-review\n",
+            extra: { parallel: false, alwaysApply: false, globs: [] },
+            links: [],
+          },
+        },
+      })
+    })
+
+    await page.goto("/skills/new")
+    await page.getByRole("button", { name: "Start blank" }).click()
+    await page.getByLabel("Name").fill("code-review")
+    await page.getByRole("switch", { name: "Watch the video" }).click()
+    await page.getByLabel("YouTube videos").fill(VIDEO.url)
+    await page.getByRole("button", { name: "Add video" }).click()
+    await expect(page.getByText("Video notes ready (no captions)")).toBeVisible()
+    await page.getByRole("button", { name: "Draft with assistant" }).click()
+    await expect(page.getByLabel("Description")).toHaveValue("Use when the user asks for a code review.")
+    expect(draftSources[0]).toMatchObject({ transcript: "", visualNotes: "- [00:10] Code on screen" })
+  })
 })

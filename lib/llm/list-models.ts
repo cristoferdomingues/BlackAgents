@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { PROVIDER_URLS } from "@/lib/app-config"
 import { getProviderSecret } from "@/lib/secrets"
 
 import { getProvider } from "./registry"
@@ -116,7 +117,7 @@ export async function listProviderModels(id: ProviderId): Promise<ProviderModelL
     (id === "openai" && Boolean(secret?.apiKey)) || (id === "custom" && Boolean(secret?.baseUrl))
   if (!canListLive) return { models: staticModels, source: "static" }
 
-  const baseUrl = id === "openai" ? "https://api.openai.com/v1" : secret?.baseUrl
+  const baseUrl = id === "openai" ? PROVIDER_URLS.openai : secret?.baseUrl
   if (!baseUrl) return { models: staticModels, source: "static" }
   const apiKey = secret?.apiKey ?? ""
 

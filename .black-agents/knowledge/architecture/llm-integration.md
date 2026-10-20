@@ -151,6 +151,8 @@ The send button is a microphone while the input is empty. Speech becomes text in
 
 **Voice model (Custom).** The server picks it, not the browser: the model saved in Settings → AI → **Models by task → Voice** (`settings.models.voice`), else `google/gemini-2.5-flash` when Custom's base URL is OpenRouter. Other custom endpoints with nothing saved get **412** "Choose a voice model in Settings → AI → Models by task". The Voice tab lists only models that take audio and give text (OpenRouter `architecture.input_modalities` / `output_modalities`, via `listModelsWithModalities`). The chat model in the Assistant header is not used for voice.
 
+**Video model (Custom).** Same rules as voice, with `settings.models.video` and the **Video** tab (models that take video and give text). `lib/llm/watch-video.ts` sends the YouTube link as a `video_url` part; the notes reach the chat model as quoted `visualNotes` data on the `youtube` attachment. See [YouTube Sources](../specs/youtube-sources.md#watch-video).
+
 The key stays server-side. A 401/403 marks the stored key invalid, same as chat.
 
 ## Stopping a Reply

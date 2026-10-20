@@ -71,6 +71,7 @@ describe("parseModelRef", () => {
 
     expect(() => parseModelRef("task:voice", undefined)).toThrow(ModelRefError)
     expect(() => parseModelRef("task:voice", undefined)).toThrow('"voice" is not a chat model task')
+    expect(() => parseModelRef("task:video", undefined)).toThrow('"video" is not a chat model task')
     expect(() => parseModelRef("task:nope", undefined)).toThrow('Unknown model task "nope"')
     expect(() => parseModelRef("task:vision", "openai")).toThrow("A task kind cannot set a provider")
   })

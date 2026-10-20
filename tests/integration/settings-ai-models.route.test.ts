@@ -83,6 +83,29 @@ describe("PUT /api/settings/ai models", () => {
     expect((await readAiSettings()).models).toEqual({})
   })
 
+  it("saves a video model and lists only video-in models", async () => {
+    const put = (models: unknown) => PUT(jsonRequest("http://t/api/settings/ai", "PUT", { models }))
+    await setProviderSecret("custom", { apiKey: "k", baseUrl: "https://openrouter.ai/api/v1" })
+    const videoModels = {
+      data: [
+        { id: "google/gemini-2.5-pro", architecture: { input_modalities: ["text", "video"], output_modalities: ["text"] } },
+        { id: "openai/gpt-4o", architecture: { input_modalities: ["text", "image"], output_modalities: ["text"] } },
+      ],
+    }
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => videoModels }))
+    expect((await (await get("video")).json()).data).toMatchObject({
+      effective: "google/gemini-2.5-flash",
+      models: [{ id: "google/gemini-2.5-pro" }],
+      filtered: true,
+    })
+
+    expect((await put({ video: "google/gemini-2.5-pro" })).status).toBe(200)
+    expect((await readAiSettings()).models.video).toBe("google/gemini-2.5-pro")
+    expect((await (await get("video")).json()).data.effective).toBe("google/gemini-2.5-pro")
+    await put({ video: null })
+    expect((await readAiSettings()).models).toEqual({})
+  })
+
   it("saves and clears a chat-kind choice and still reads an old settings file", async () => {
     await writeFile(
       path.join(env.configDir, "settings.json"),

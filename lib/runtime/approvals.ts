@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 
+import { TIMEOUTS_MS } from "@/lib/app-config"
+
 import type { ApprovalDecision, ApprovalRequest } from "./types"
 
 /**
@@ -8,7 +10,7 @@ import type { ApprovalDecision, ApprovalRequest } from "./types"
  * its pending request to the run file so the UI can show it after a reload.
  */
 
-export const APPROVAL_TIMEOUT_MS = 15 * 60_000
+export const APPROVAL_TIMEOUT_MS = TIMEOUTS_MS.approval
 
 interface PendingApproval {
   request: ApprovalRequest

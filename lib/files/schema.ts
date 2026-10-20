@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { LIMITS } from "@/lib/app-config"
+
 import { nameSchema } from "@/lib/artifacts/schemas"
 import { IMAGE_MIME_TYPES, TEXT_EXTENSIONS } from "@/lib/chat/attachments"
 
@@ -13,7 +15,7 @@ import { IMAGE_MIME_TYPES, TEXT_EXTENSIONS } from "@/lib/chat/attachments"
 
 export const FILES_DIR = ".black-agents/files"
 export const MAX_WORKSPACE_FILE_BYTES = 25 * 1024 * 1024
-export const MAX_STEP_FILES = 10
+export const MAX_STEP_FILES = LIMITS.workflows.maxStepFiles
 
 export const WORKSPACE_FILE_KINDS = ["image", "pdf", "text", "binary"] as const
 export type WorkspaceFileKind = (typeof WORKSPACE_FILE_KINDS)[number]

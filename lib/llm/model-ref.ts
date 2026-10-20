@@ -143,10 +143,10 @@ export function inspectModelRef(model: unknown, provider: unknown): ModelRefInsp
       }
     }
     const kind = trimmed.slice("task:".length)
-    if (kind === "voice") {
+    if (kind === "voice" || kind === "video") {
       return {
         ref: { kind: "inherit" },
-        error: new ModelRefError('"voice" is not a chat model task', 400, "not_chat_task"),
+        error: new ModelRefError(`"${kind}" is not a chat model task`, 400, "not_chat_task"),
       }
     }
     const parsed = chatModelTaskSchema.safeParse(kind)

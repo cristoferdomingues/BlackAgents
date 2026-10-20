@@ -5,8 +5,11 @@ import {
   ensureSourcesSection,
   fetchYouTubeSource,
   limitTranscript,
+  isNoCaptionsMessage,
   NO_CAPTIONS_MESSAGE,
   parseCaptionJson,
+  renderYouTubeSourcesForPrompt,
+  youtubeDraftSourceSchema,
   parseCaptionXml,
   parseYouTubeUrl,
   pickCaptionTrack,
@@ -96,6 +99,31 @@ describe("ensureSourcesSection", () => {
   })
 })
 
+describe("watched video sources", () => {
+  const base = { videoId: VIDEO, url: WATCH, title: "Demo", channel: "" }
+
+  it("accepts captions, video notes, or both, but not neither", () => {
+    expect(youtubeDraftSourceSchema.safeParse({ ...base, visualNotes: "- [00:01] a chart" }).success).toBe(true)
+    expect(youtubeDraftSourceSchema.safeParse({ ...base, transcript: "hello" }).success).toBe(true)
+    const empty = youtubeDraftSourceSchema.safeParse({ ...base, transcript: "  " })
+    expect(empty.success).toBe(false)
+    if (!empty.success) expect(empty.error.issues[0]?.message).toBe("A video needs a transcript or video notes")
+  })
+
+  it("quotes the notes in the draft prompt", () => {
+    const prompt = renderYouTubeSourcesForPrompt([{ ...base, transcript: "", visualNotes: "- [00:01] a chart" }])
+    expect(prompt).toContain('"visualNotes": "- [00:01] a chart"')
+    expect(prompt).toContain("watched the video")
+    expect(renderYouTubeSourcesForPrompt([{ ...base, transcript: "hi" }])).not.toContain("watched the video")
+  })
+
+  it("spots a no-captions message after a watch error", () => {
+    expect(isNoCaptionsMessage(NO_CAPTIONS_MESSAGE)).toBe(true)
+    expect(isNoCaptionsMessage(`Choose a video model. ${NO_CAPTIONS_MESSAGE}`)).toBe(true)
+    expect(isNoCaptionsMessage("Video not found")).toBe(false)
+  })
+})
+
 describe("fetchYouTubeSource", () => {
   function json(body: unknown, status = 200): Response {
     return Response.json(body, { status })
@@ -117,7 +145,7 @@ describe("fetchYouTubeSource", () => {
       if (input.includes("/youtubei/v1/player")) {
         return json({
           playabilityStatus: { status: options?.playability ?? "OK" },
-          videoDetails: { title: "Player title", author: "Player author" },
+          videoDetails: { title: "Player title", author: "Player author", lengthSeconds: "212" },
           captions: { playerCaptionsTracklistRenderer: { captionTracks: tracks } },
         })
       }
@@ -138,7 +166,20 @@ describe("fetchYouTubeSource", () => {
       language: "en",
       transcript: "Hello from the video",
       truncated: false,
+      durationSeconds: 212,
     })
+  })
+
+  it("returns an empty transcript when captions may be missing", async () => {
+    const source = await fetchYouTubeSource(WATCH, {
+      fetch: mockFetch({ tracks: [] }),
+      language: "en",
+      allowNoCaptions: true,
+    })
+    expect(source).toMatchObject({ videoId: VIDEO, transcript: "", truncated: false, durationSeconds: 212 })
+    await expect(
+      fetchYouTubeSource(WATCH, { fetch: mockFetch({ tracks: [], playability: "LOGIN_REQUIRED" }), allowNoCaptions: true })
+    ).rejects.toMatchObject({ status: 404 })
   })
 
   it("asks for json3 captions in the requested language", async () => {

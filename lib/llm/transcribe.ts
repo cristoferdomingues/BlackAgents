@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { DEFAULT_MODELS, PROVIDER_URLS } from "@/lib/app-config"
+
 import { ProviderError, type LLMCredentials, type ProviderId } from "./types"
 
 /**
@@ -9,7 +11,7 @@ import { ProviderError, type LLMCredentials, type ProviderId } from "./types"
  * `input_audio` part. Anthropic has no speech-to-text API.
  */
 
-export const OPENAI_TRANSCRIBE_MODEL = "whisper-1"
+export const OPENAI_TRANSCRIBE_MODEL = DEFAULT_MODELS.openaiTranscribe
 export const VOICE_MODEL_MISSING = "Choose a voice model in Settings → AI → Models by task"
 /** About 2 minutes of 16 kHz mono 16-bit WAV, base64-encoded. */
 export const MAX_AUDIO_BASE64_LENGTH = 6_000_000
@@ -54,7 +56,7 @@ async function transcribeOpenAI(
   const language = request.language?.split("-")[0]?.toLowerCase()
   if (language && /^[a-z]{2}$/.test(language)) form.append("language", language)
 
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  const res = await fetch(`${PROVIDER_URLS.openai}/audio/transcriptions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${credentials.apiKey}` },
     body: form,

@@ -11,7 +11,8 @@ import {
   youtubeAttachmentSchema,
   type YouTubeAttachment,
 } from "@/lib/chat/attachments"
-import { NO_CAPTIONS_MESSAGE, parseYouTubeUrl, type YouTubeSource } from "@/lib/sources/youtube"
+import { isNoCaptionsMessage, parseYouTubeUrl, type YouTubeSource } from "@/lib/sources/youtube"
+import { useWatchVideoPreference, WatchVideoSwitch } from "@/components/features/chat/watch-video-switch"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -39,6 +40,7 @@ export function YouTubeLinkButton({
   const [loading, setLoading] = React.useState(false)
   const [paste, setPaste] = React.useState("")
   const [videoId, setVideoId] = React.useState<string | null>(null)
+  const [watch, setWatch] = useWatchVideoPreference()
 
   function reset(): void {
     setUrl("")
@@ -63,6 +65,7 @@ export function YouTubeLinkButton({
         body: JSON.stringify({
           url: submitted,
           language: typeof navigator === "undefined" ? undefined : navigator.language,
+          watch,
         }),
       })
       const parsed = youtubeAttachmentSchema.safeParse({
@@ -72,6 +75,7 @@ export function YouTubeLinkButton({
         title: source.title,
         channel: source.channel,
         transcript: source.transcript,
+        visualNotes: source.visualNotes,
       })
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? "Could not use this video")
@@ -79,12 +83,13 @@ export function YouTubeLinkButton({
       }
       onAdd(parsed.data)
       if (source.truncated) toast("The transcript was cut to fit")
+      if (source.watchError) toast.warning(`Captions only: ${source.watchError}`)
       setOpen(false)
       reset()
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Could not read this video"
       setError(message)
-      if (message === NO_CAPTIONS_MESSAGE) setVideoId(parseYouTubeUrl(submitted))
+      if (isNoCaptionsMessage(message)) setVideoId(parseYouTubeUrl(submitted))
     } finally {
       setLoading(false)
     }
@@ -129,7 +134,7 @@ export function YouTubeLinkButton({
           <DialogHeader>
             <DialogTitle>Add a YouTube video</DialogTitle>
             <DialogDescription>
-              The assistant reads the captions. It does not watch the video.
+              The assistant reads the captions. Turn on Watch to also send the pictures to a video model.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -155,6 +160,16 @@ export function YouTubeLinkButton({
                 disabled={loading}
               />
             </div>
+            <WatchVideoSwitch
+              id="chat-youtube-watch"
+              checked={watch}
+              onCheckedChange={(next) => {
+                setWatch(next)
+                setError(null)
+                setVideoId(null)
+              }}
+              disabled={loading}
+            />
             {error ? <p className="text-xs text-destructive">{error}</p> : null}
             {videoId ? (
               <div className="space-y-2">
@@ -176,7 +191,7 @@ export function YouTubeLinkButton({
               ) : (
                 <Button type="submit" disabled={loading || !url.trim()}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Add video
+                  {loading && watch ? "Watching…" : "Add video"}
                 </Button>
               )}
             </DialogFooter>

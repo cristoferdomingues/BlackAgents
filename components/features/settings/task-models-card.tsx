@@ -1,13 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { Brain, Eye, Loader2, Mic, RotateCcw, Zap } from "lucide-react"
+import { Brain, Eye, Loader2, Mic, RotateCcw, Video, Zap } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { apiFetch } from "@/lib/api"
 import { isProviderId } from "@/lib/llm/model-ref"
-import { MODEL_TASKS, type ChatModelTask, type ModelTask } from "@/lib/llm/task-models"
+import { chatModelTaskSchema, MODEL_TASKS, type ChatModelTask, type ModelTask } from "@/lib/llm/task-models"
 import type { ProviderId } from "@/lib/llm/types"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
@@ -32,6 +32,7 @@ interface TaskModelsSnapshot {
 
 const TASK_ICONS: Record<ModelTask, React.ComponentType<{ className?: string }>> = {
   voice: Mic,
+  video: Video,
   vision: Eye,
   fast: Zap,
   reasoning: Brain,
@@ -64,7 +65,7 @@ export function TaskModelsCard() {
           </TabsList>
           {tasks.map((task) => (
             <TabsContent key={task.id} value={task.id} className="pt-3">
-              {task.usage === "chat" && task.id !== "voice" ? (
+              {isChatTask(task.id) ? (
                 <ChatTaskPanel task={task.id} />
               ) : (
                 <VoiceTaskPanel task={task.id} />
@@ -75,6 +76,10 @@ export function TaskModelsCard() {
       </CardContent>
     </Card>
   )
+}
+
+function isChatTask(task: ModelTask): task is ChatModelTask {
+  return chatModelTaskSchema.safeParse(task).success
 }
 
 function VoiceTaskPanel({ task }: { task: ModelTask }) {

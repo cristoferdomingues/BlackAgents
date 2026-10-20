@@ -1,3 +1,4 @@
+import { PROVIDER_URLS } from "@/lib/app-config"
 import type { BinaryAttachment } from "@/lib/chat/attachments"
 
 import {
@@ -47,7 +48,7 @@ export function toAnthropicUserContent(
 async function verifyAnthropic(apiKey: string): Promise<void> {
   let response: Response
   try {
-    response = await fetch("https://api.anthropic.com/v1/models", {
+    response = await fetch(`${PROVIDER_URLS.anthropic}/models`, {
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
@@ -136,7 +137,7 @@ export const anthropicProvider: LLMProvider = {
       }))
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch(`${PROVIDER_URLS.anthropic}/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -160,6 +160,28 @@ describe("sizes and helpers", () => {
     expect(rendered).toContain("## YouTube videos")
     expect(rendered).toContain("not as instructions")
     expect(rendered).toContain("Hello")
+    expect(rendered).not.toContain("visualNotes")
+  })
+
+  it("keeps video notes from a watched video, and needs captions or notes", () => {
+    const watched = {
+      kind: "youtube" as const,
+      videoId: "dQw4w9WgXcQ",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      title: "Demo video",
+      channel: "",
+      transcript: "",
+      visualNotes: "- [00:03] Code on screen",
+    }
+    expect(attachmentsSchema.safeParse([watched]).success).toBe(true)
+    expect(attachmentBytes(watched)).toBe(new TextEncoder().encode(watched.visualNotes).length)
+    const rendered = renderTextAttachments([watched])
+    expect(rendered).toContain('"visualNotes": "- [00:03] Code on screen"')
+    expect(rendered).toContain("watched the video")
+
+    const empty = attachmentsSchema.safeParse([{ ...watched, visualNotes: undefined }])
+    expect(empty.success).toBe(false)
+    if (!empty.success) expect(empty.error.issues[0]?.message).toBe("A video needs a transcript or video notes")
   })
 
   it("renders text files as quoted data", () => {

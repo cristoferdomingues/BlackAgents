@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { LIMITS } from "@/lib/app-config"
+
 import { nameSchema } from "../artifacts/schemas"
 import { inspectModelRef, providerIdSchema, type ModelSource } from "../llm/model-ref"
 import type { ChatModelTask } from "../llm/task-models"
@@ -14,17 +16,17 @@ import type { ReviewVerdict } from "./review"
  * Isomorphic — the builder UI validates with the same schema.
  */
 
-export const MAX_WORKFLOW_STEPS = 10
-export const MAX_STEP_TURNS = 100
-export const DEFAULT_STEP_TURNS = 30
-export const MAX_STEP_TIMEOUT_MINUTES = 240
-export const DEFAULT_STEP_TIMEOUT_MINUTES = 30
-export const MAX_RUN_TIMEOUT_MINUTES = 1_440
-export const DEFAULT_RUN_TIMEOUT_MINUTES = 180
-export const MAX_GATE_RETRIES = 2
-export const MAX_STEP_FILES = 10
+export const MAX_WORKFLOW_STEPS = LIMITS.workflows.maxSteps
+export const MAX_STEP_TURNS = LIMITS.workflows.maxStepTurns
+export const DEFAULT_STEP_TURNS = LIMITS.workflows.defaultStepTurns
+export const MAX_STEP_TIMEOUT_MINUTES = LIMITS.workflows.maxStepTimeoutMinutes
+export const DEFAULT_STEP_TIMEOUT_MINUTES = LIMITS.workflows.defaultStepTimeoutMinutes
+export const MAX_RUN_TIMEOUT_MINUTES = LIMITS.workflows.maxRunTimeoutMinutes
+export const DEFAULT_RUN_TIMEOUT_MINUTES = LIMITS.workflows.defaultRunTimeoutMinutes
+export const MAX_GATE_RETRIES = LIMITS.workflows.maxGateRetries
+export const MAX_STEP_FILES = LIMITS.workflows.maxStepFiles
 /** How many times a review may send the work back to be fixed. */
-export const MAX_REVIEW_ROUNDS = 3
+export const MAX_REVIEW_ROUNDS = LIMITS.workflows.maxReviewRounds
 
 const stepIdSchema = z
   .string()

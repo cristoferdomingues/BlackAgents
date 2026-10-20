@@ -180,6 +180,8 @@ Order when several are set — the most specific wins: **step → agent → work
 
 A YouTube link becomes a caption transcript. Chat attaches it like a file. **Skills → New** can draft the body from it and keeps a `## Sources` section. See [YouTube Sources](../specs/youtube-sources.md).
 
+**Watch video (2026-10-20):** an opt-in switch sends the link to a **Video** task model (Gemini through OpenRouter). It adds timed notes on what the video shows, and works even when there are no captions.
+
 ### OKF knowledge · shipped (2026-10-15)
 
 Durable facts are OKF 0.2 concepts, separate from memory notes. Full note: [Knowledge (OKF)](../architecture/knowledge-okf.md).

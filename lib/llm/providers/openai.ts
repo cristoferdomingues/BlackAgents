@@ -1,3 +1,4 @@
+import { PROVIDER_URLS } from "@/lib/app-config"
 import type { BinaryAttachment } from "@/lib/chat/attachments"
 
 import {
@@ -223,14 +224,14 @@ export const openAIProvider: LLMProvider = {
   models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
   verify(credentials: LLMCredentials): Promise<void> {
     return verifyOpenAICompatibleConnection(
-      "https://api.openai.com/v1",
+      PROVIDER_URLS.openai,
       credentials.apiKey,
       "OpenAI"
     )
   },
   generate(request: LLMGenerateRequest, credentials: LLMCredentials, signal?: AbortSignal) {
     return openAICompatibleGenerate(
-      "https://api.openai.com/v1",
+      PROVIDER_URLS.openai,
       request,
       credentials.apiKey,
       signal

@@ -1,5 +1,7 @@
 import { ok, fail, handle } from "@/lib/api-response"
+import { resolveScopeParam } from "@/lib/artifacts/scope-request"
 import { chatRequestSchema, prepareChat, runChat } from "@/lib/assistant/chat-service"
+import { readConfig } from "@/lib/config"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import { ProviderError } from "@/lib/llm/types"
 import { LoopAbortedError } from "@/lib/runtime/agent-loop"
@@ -18,7 +20,10 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return fail(parsed.error.issues[0]?.message ?? "Invalid request body")
     }
-    const prepared = await prepareChat(parsed.data)
+    const { currentPath } = await readConfig()
+    const scope = currentPath ? await resolveScopeParam(currentPath, req.url) : { ok: true as const, scope: undefined }
+    if (!scope.ok) return fail(scope.error, scope.status)
+    const prepared = await prepareChat(parsed.data, scope.scope)
     if (!prepared.ok) return fail(prepared.message, prepared.status)
     const chat = prepared.chat
 

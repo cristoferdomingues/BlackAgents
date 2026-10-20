@@ -9,6 +9,7 @@ import type { WorkflowRunTurn } from "@/lib/chat/conversation-history"
 import type { WorkspaceFile } from "@/lib/files/schema"
 import { MAX_STEP_FILES, type Workflow, type WorkflowRun } from "@/lib/workflows/schema"
 import { FilePickerDialog, WorkspaceFileChip } from "@/components/features/files/file-picker"
+import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -29,6 +30,7 @@ export function WorkflowRunCard({
   available: boolean
   onStarted: (runId: string, task: string) => void
 }): React.ReactElement {
+  const { scoped } = useWorkspace()
   const [task, setTask] = React.useState(run.task)
   const [stepFiles, setStepFiles] = React.useState<Record<string, string[]>>(() => {
     const initial: Record<string, string[]> = {}
@@ -64,7 +66,7 @@ export function WorkflowRunCard({
       if (trimmed) payload.task = trimmed
       if (hasFileOverrides) payload.stepFiles = stepFiles
       const data = await apiFetch<{ run: WorkflowRun }>(
-        `/api/workflows/${encodeURIComponent(run.workflow)}/runs`,
+        scoped(`/api/workflows/${encodeURIComponent(run.workflow)}/runs`),
         { method: "POST", body: JSON.stringify(payload) }
       )
       onStarted(data.run.id, trimmed)

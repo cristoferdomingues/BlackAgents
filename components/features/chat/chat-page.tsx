@@ -235,6 +235,7 @@ export function ChatPage({
     byType,
     loading: workspaceLoading,
     loadingArtifacts,
+    scoped,
   } = useWorkspace()
   const [meta, setMeta] = React.useState<ProvidersState | null>(null)
   const [metaLoading, setMetaLoading] = React.useState(true)
@@ -443,12 +444,12 @@ export function ChatPage({
 
   const loadWorkflows = React.useCallback(async (): Promise<void> => {
     try {
-      const data = await apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
+      const data = await apiFetch<{ workflows: WorkflowListItem[] }>(scoped("/api/workflows"))
       setWorkflows(data.workflows)
     } catch {
       setWorkflows([])
     }
-  }, [])
+  }, [scoped])
 
   React.useEffect(() => {
     if (!workspace?.path) {
@@ -456,7 +457,7 @@ export function ChatPage({
       return
     }
     let cancelled = false
-    apiFetch<{ workflows: WorkflowListItem[] }>("/api/workflows")
+    apiFetch<{ workflows: WorkflowListItem[] }>(scoped("/api/workflows"))
       .then((data) => {
         if (!cancelled) setWorkflows(data.workflows)
       })
@@ -473,7 +474,7 @@ export function ChatPage({
     return () => {
       cancelled = true
     }
-  }, [workspace?.path])
+  }, [workspace?.path, scoped])
 
   React.useEffect(() => {
     const prefill = sessionStorage.getItem("black-agents:prefill-chat")
@@ -689,7 +690,7 @@ export function ChatPage({
         error: null,
       }
       await streamPost(
-        "/api/chat",
+        scoped("/api/chat"),
         {
           provider,
           model,

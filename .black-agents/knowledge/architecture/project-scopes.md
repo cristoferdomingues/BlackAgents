@@ -81,6 +81,15 @@ gap this section used to flag. `Step "<id>": agent "<name>" was not found` from 
 now means the agent truly is not visible in that scope (wrong whitelist or typo), not that the
 backend forgot to look.
 
+## Chat in a project
+
+The chat page sends `scoped("/api/chat")`, and the route resolves `?scope=` with `resolveScopeParam` before
+`prepareChat(request, scope)`. With a scope, the persona lookup (`findArtifact`), the turn's artifact scan
+(`@mentions`, Jev, links), `buildSystemContext(scope)` (artifact, workflow and knowledge registries plus an
+"Active project" section that says listed items are already saved), and the persona's
+`loadKnowledgeContext(root, scope)` all see what the project sees. The `@` menu's workflow list, and the
+chat's workflow draft and run cards, call `/api/workflows*` through `scoped()` too.
+
 ## Not scoped yet
 
 - **Scheduled triggers**: `WorkflowRunner.tick()` only enumerates workspace-wide `listWorkflows(root)` — an
@@ -88,7 +97,9 @@ backend forgot to look.
   started manually with `?scope=`.
 - **Per-step MCP servers**: a step's toolset only loads the workspace-wide `.black-agents/mcp.json`
   (`buildToolset`/`loadMcpRuntimeTools`), not a project's own MCP whitelist.
-- Chat, the assistant context, the graph route, and the MCP settings panel still use the whole workspace.
+- **Chat MCP tools**: like workflow steps, chat loads only the workspace-wide MCP servers.
+- **Knowledge drafts from chat** go to the workspace knowledge Inbox (knowledge routes take no `?scope=`).
+- The graph route and the MCP settings panel still use the whole workspace.
 
 ## Key files
 

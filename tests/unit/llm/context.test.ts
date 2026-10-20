@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 
 import {
   buildAgentPersonaContext,
+  buildProjectSection,
   buildSystemContext,
 } from "@/lib/llm/context"
 import { DEFAULT_STANDARDS_MD } from "@/lib/standards/default-standards"
@@ -167,5 +168,20 @@ describe("buildSystemContext", () => {
         relativePath: ".cursor/rules/test-rule.mdc",
       })
     ).toThrow("Persona context requires an agent artifact")
+  })
+})
+
+describe("buildProjectSection", () => {
+  it("names the project and what it inherits", () => {
+    const section = buildProjectSection({ id: "study", name: "Study", inherits: ["skills", "workflows"] })
+    expect(section).toContain('project "Study" (id: study)')
+    expect(section).toContain("It also sees these workspace items: skills, workflows.")
+    expect(section).toContain("do not ask the user to save it again")
+  })
+
+  it("says so when the project inherits nothing", () => {
+    expect(buildProjectSection({ id: "study", name: "Study", inherits: [] })).toContain(
+      "It does not see any workspace items."
+    )
   })
 })

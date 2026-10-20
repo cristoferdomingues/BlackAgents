@@ -30,7 +30,7 @@ export function WorkflowDraftCard({
   fixDisabled?: boolean
 }): React.ReactElement {
   const router = useRouter()
-  const { byType } = useWorkspace()
+  const { byType, scoped } = useWorkspace()
   const agents = withBuiltinArtifacts(byType("agent")).filter((a) => a.type === "agent")
   const agentNames = new Set(agents.map((a) => a.name))
   const missing = [...new Set(workflow.steps.map((s) => s.agent).filter((a) => !agentNames.has(a)))]
@@ -45,12 +45,12 @@ export function WorkflowDraftCard({
     setError(null)
     try {
       if (exists) {
-        await apiFetch(`/api/workflows/${encodeURIComponent(workflow.name)}`, {
+        await apiFetch(scoped(`/api/workflows/${encodeURIComponent(workflow.name)}`), {
           method: "PUT",
           body: JSON.stringify(workflow),
         })
       } else {
-        await apiFetch("/api/workflows", { method: "POST", body: JSON.stringify(workflow) })
+        await apiFetch(scoped("/api/workflows"), { method: "POST", body: JSON.stringify(workflow) })
       }
       setSaved(true)
       toast.success(exists ? "Workflow updated" : "Workflow created")

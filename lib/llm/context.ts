@@ -14,7 +14,22 @@ import { MAX_WORKFLOW_STEPS } from "../workflows/schema"
 import { listWorkflows } from "../workflows/store"
 import { listConcepts } from "../knowledge/store"
 import type { OkfConcept } from "../knowledge/parse"
+import { loadProjectScope, type ProjectScope } from "../artifacts/projects"
 import type { Artifact } from "../artifacts/types"
+
+/** Tells the model which project is active, so saved items are not mistaken for unsaved ones. */
+export function buildProjectSection(project: Pick<ProjectScope, "id" | "name" | "inherits">): string {
+  const inherits =
+    project.inherits.length > 0
+      ? `It also sees these workspace items: ${project.inherits.join(", ")}.`
+      : "It does not see any workspace items."
+  return `## Active project
+
+The user is working in the project "${project.name}" (id: ${project.id}). ${inherits}
+The artifacts, workflows and knowledge listed below are what this project sees; they are already saved. An item listed below exists — do not ask the user to save it again. New artifacts and workflows the user saves from this chat go into this project.
+
+`
+}
 
 /** How to use the built-in workspace tools; shared by the assistant and agent personas. */
 export const WORKSPACE_TOOLS_GUIDE = `## Working in the workspace
@@ -47,8 +62,9 @@ When you ask the user to pick from a fixed set of answers (a quiz, a decision, a
  * Assembles the system context for the chat assistant: the authoring standards,
  * a registry of the artifacts already in the active workspace, and the draft
  * protocol the assistant must follow when proposing a new artifact.
+ * With `scope`, the registries are the active project's (plus what it inherits).
  */
-export async function buildSystemContext(): Promise<string> {
+export async function buildSystemContext(scope?: string): Promise<string> {
   const standards = await loadStandards()
 
   const config = await readConfig()
@@ -56,13 +72,16 @@ export async function buildSystemContext(): Promise<string> {
   let workflowRegistry = "No workspace is selected yet."
   let filesRegistry = "No workspace is selected yet."
   let knowledgeRegistry = `${KNOWLEDGE_CONTEXT_HEADING}\n\nNo workspace is selected yet.`
+  let projectSection = ""
   if (config.currentPath) {
-    const [artifacts, workflows, files, concepts] = await Promise.all([
-      scanWorkspace(config.currentPath),
-      listWorkflows(config.currentPath).catch(() => []),
+    const [artifacts, workflows, files, concepts, project] = await Promise.all([
+      scanWorkspace(config.currentPath, scope),
+      listWorkflows(config.currentPath, scope).catch(() => []),
       listWorkspaceFiles(config.currentPath).catch(() => []),
-      listConcepts(config.currentPath).catch(() => []),
+      listConcepts(config.currentPath, scope).catch(() => []),
+      scope ? loadProjectScope(config.currentPath, scope) : Promise.resolve(null),
     ])
+    if (project?.ok) projectSection = buildProjectSection(project.project)
     knowledgeRegistry = buildKnowledgeContext(concepts)
     workflowRegistry =
       workflows.length === 0
@@ -102,7 +121,7 @@ ${WORKSPACE_TOOLS_GUIDE}
 
 Do not write .git, .cursor, .claude, .black-agents, or .agents with file tools; save artifacts through the draft, bundle, or workflow protocols below.
 
-## Authoring standards
+${projectSection}## Authoring standards
 
 ${standards.content}
 

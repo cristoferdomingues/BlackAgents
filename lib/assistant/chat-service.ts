@@ -101,8 +101,9 @@ function lastUserMessage(messages: ChatRequest["messages"]): string {
  * the artifacts loaded for this turn (mentions / Jev / links), the agent's
  * brain notes, and the toolset. Order matters: cheap validation first, MCP
  * servers are only started once credentials are known to be usable.
+ * `scope` is the active project id (already validated by the route).
  */
-export async function prepareChat(request: ChatRequest): Promise<PrepareResult> {
+export async function prepareChat(request: ChatRequest, scope?: string): Promise<PrepareResult> {
   if (!isProviderId(request.provider)) return { ok: false, message: "Unknown provider", status: 400 }
   if (!getProvider(request.provider)) return { ok: false, message: "Unknown provider", status: 400 }
 
@@ -114,7 +115,7 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
     persona = draft
   } else if (request.agent) {
     const agent =
-      (root ? await findArtifact(root, "agent", request.agent) : null) ??
+      (root ? await findArtifact(root, "agent", request.agent, scope) : null) ??
       findBuiltinArtifact("agent", request.agent)
     if (!agent) return { ok: false, message: `Agent "${request.agent}" was not found`, status: 404 }
     persona = agent
@@ -178,7 +179,7 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   }
 
   const [workspaceArtifacts, resolved, settings] = await Promise.all([
-    root ? scanWorkspace(root) : Promise.resolve([] as Artifact[]),
+    root ? scanWorkspace(root, scope) : Promise.resolve([] as Artifact[]),
     loadDecisionClient(),
     settingsPromise,
   ])
@@ -189,10 +190,10 @@ export async function prepareChat(request: ChatRequest): Promise<PrepareResult> 
   const message = lastUserMessage(request.messages)
   const selection = await selectTurnArtifacts({ message, all, persona, resolved })
 
-  const sections = [persona ? buildAgentPersonaContext(persona) : await buildSystemContext()]
+  const sections = [persona ? buildAgentPersonaContext(persona) : await buildSystemContext(scope)]
   if (draft && draft.type !== "agent") sections.push(composeDraftPrompt(draft))
   if (selection.prompt) sections.push(selection.prompt)
-  if (persona && root) sections.push(await loadKnowledgeContext(root))
+  if (persona && root) sections.push(await loadKnowledgeContext(root, scope))
   if (root) {
     const fileMentions = new Set<string>()
     for (const msg of request.messages) {

@@ -75,7 +75,11 @@ test.describe("sync", () => {
     await expect(list).toHaveCount(0)
 
     await page.getByRole("button", { name: "Keep this change" }).click()
-    await expect(page.getByText("Kept the Cursor version of reviewer.")).toBeVisible()
+    const keptToast = page.getByText("Kept the Cursor version of reviewer.")
+    await expect(keptToast).toBeVisible()
+    // The toast stack sits bottom-right and can cover the row's own buttons;
+    // let it clear so the click below lands on "Overwrite", not the toast.
+    await expect(keptToast).toBeHidden({ timeout: 8_000 })
     await page.getByRole("button", { name: "Overwrite" }).click()
     await expect(page.getByText("Exported 1 file.")).toBeVisible()
 

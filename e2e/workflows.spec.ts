@@ -286,7 +286,7 @@ test.describe("workflows", () => {
     await page.getByRole("combobox", { name: "Agent" }).click()
     await page.getByRole("option", { name: "planner" }).click()
     await page.getByRole("radio", { name: /Read and write/ }).click()
-    await expect(page.getByLabel("Allow file writes without asking")).toBeVisible()
+    await expect(page.getByLabel("Allow safe changes without asking")).toBeVisible()
 
     await page.getByRole("button", { name: "Add a step at the end" }).click()
     await expect(first).toHaveAttribute("aria-expanded", "false")

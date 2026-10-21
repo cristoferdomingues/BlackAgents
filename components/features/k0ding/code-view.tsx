@@ -7,8 +7,14 @@ import { json } from "@codemirror/lang-json"
 import { markdown } from "@codemirror/lang-markdown"
 import { yaml } from "@codemirror/lang-yaml"
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github"
+import { EditorView } from "@codemirror/view"
 import { useTheme } from "next-themes"
 import type { Extension } from "@codemirror/state"
+
+const fillParent = EditorView.theme({
+  "&": { height: "100%" },
+  ".cm-scroller": { overflow: "auto" },
+})
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), {
   ssr: false,
@@ -40,15 +46,16 @@ export function CodeView({
 }): React.ReactElement {
   const { resolvedTheme } = useTheme()
   return (
-    <div className="h-full min-h-0">
+    <div className="h-full min-h-0 overflow-hidden [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto">
       <CodeMirror
         value={content}
         editable={editable}
         readOnly={!editable}
         onChange={onChange}
         theme={resolvedTheme === "light" ? githubLight : githubDark}
-        extensions={languageFor(path)}
+        extensions={[fillParent, ...languageFor(path)]}
         height="100%"
+        className="h-full"
         basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: editable }}
       />
     </div>

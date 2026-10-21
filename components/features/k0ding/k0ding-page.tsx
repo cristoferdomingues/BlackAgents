@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Eye, EyeOff, FolderOpen, HelpCircle, Pin, Search, SquareCode } from "lucide-react"
+import { Eye, EyeOff, FolderOpen, HelpCircle, Pin, Search, SquareCode, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch, ApiError } from "@/lib/api"
@@ -231,6 +231,18 @@ export function K0dingPage(): React.ReactElement {
         const message = err instanceof ApiError ? err.message : "Could not open that file"
         setFiles((current) => current.map((file) => (file.path === path ? { path, view: null, error: message } : file)))
       })
+  }
+
+  function closeFile(path: string): void {
+    const remaining = files.filter((file) => file.path !== path)
+    if (activePath === path) {
+      const index = files.findIndex((file) => file.path === path)
+      const neighbor = remaining[index] ?? remaining[index - 1] ?? null
+      setActivePath(neighbor?.path ?? null)
+      setEditing(false)
+      setGitText(null)
+    }
+    setFiles(remaining)
   }
 
   function pinActive(): void {
@@ -516,18 +528,35 @@ export function K0dingPage(): React.ReactElement {
             </div>
           </aside>
 
-          <section className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center gap-1 overflow-x-auto border-b px-2">
-              {files.map((file) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  className={`shrink-0 border-b-2 px-2 py-2 text-xs ${activePath === file.path ? "border-primary" : "border-transparent text-muted-foreground"}`}
-                  onClick={() => setActivePath(file.path)}
-                >
-                  {file.path.slice(file.path.lastIndexOf("/") + 1)}
-                </button>
-              ))}
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex items-center border-b">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2">
+              {files.map((file) => {
+                const name = file.path.slice(file.path.lastIndexOf("/") + 1)
+                return (
+                  <div
+                    key={file.path}
+                    className={`flex shrink-0 items-center border-b-2 ${activePath === file.path ? "border-primary" : "border-transparent text-muted-foreground"}`}
+                  >
+                    <button
+                      type="button"
+                      className="px-2 py-2 text-xs"
+                      onClick={() => setActivePath(file.path)}
+                    >
+                      {name}
+                    </button>
+                    <button
+                      type="button"
+                      className="mr-1 rounded p-1 hover:bg-accent"
+                      aria-label={`Close ${name}`}
+                      onClick={() => closeFile(file.path)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )
+              })}
+              </div>
               {active?.view && !active.view.secret ? (
                 <Button size="sm" variant="ghost" className="ml-auto" onClick={pinActive}>
                   <Pin className="h-3.5 w-3.5" />

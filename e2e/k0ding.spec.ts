@@ -26,13 +26,23 @@ test("opens a code folder and reads a file", async ({ page }) => {
     route.fulfill({
       json: {
         success: true,
-        data: { entries: [{ name: "index.ts", path: "src/index.ts", kind: "file", secret: false }] },
+        data: {
+          entries: [
+            { name: "index.ts", path: "src/index.ts", kind: "file", secret: false },
+            { name: "long.ts", path: "src/long.ts", kind: "file", secret: false },
+          ],
+        },
       },
     })
   )
-  await page.route("**/api/k0ding/roots/server/file**", (route) =>
-    route.fulfill({ json: { success: true, data: file } })
-  )
+  await page.route("**/api/k0ding/roots/server/file**", (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path")
+    const content =
+      path === "src/long.ts"
+        ? Array.from({ length: 80 }, (_, index) => `scroll-line-${index + 1}`).join("\n")
+        : file.content
+    return route.fulfill({ json: { success: true, data: { ...file, path: path ?? file.path, content } } })
+  })
   await page.route("**/api/k0ding/sessions**", (route) =>
     route.fulfill({ json: { success: true, data: { session: null } } })
   )
@@ -54,8 +64,21 @@ test("opens a code folder and reads a file", async ({ page }) => {
   await page.goto("/k0ding")
   await page.getByLabel("Path to a code folder").fill("/tmp/server")
   await page.getByRole("button", { name: "Open" }).click()
-  await page.getByRole("button", { name: "index.ts" }).click()
+  await page.getByRole("button", { name: "index.ts", exact: true }).click()
   await expect(page.getByText("export const hi = 1")).toBeVisible()
+  await page.getByRole("button", { name: "long.ts", exact: true }).click()
+  const scroller = page.locator(".cm-scroller")
+  await expect.poll(async () => scroller.evaluate((el) => el.scrollHeight > el.clientHeight + 20)).toBe(true)
+  await scroller.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await expect(page.getByText("scroll-line-80")).toBeVisible()
+  await page.getByRole("button", { name: "Close long.ts" }).click()
+  await expect(page.getByRole("button", { name: "Close long.ts" })).toHaveCount(0)
+  await expect(page.getByText("export const hi = 1")).toBeVisible()
+  await page.getByRole("button", { name: "Close index.ts" }).click()
+  await expect(page.getByText("Open a file from the tree")).toBeVisible()
+  await page.getByRole("button", { name: "index.ts", exact: true }).click()
   await page.getByRole("button", { name: "Project tools" }).click()
   await page.getByLabel("Project notes").fill("# Stack\nTypeScript")
   await page.getByRole("button", { name: "Save notes" }).click()

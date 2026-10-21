@@ -75,10 +75,12 @@ In the app. The microphone is recorded on every system. Computer sound is record
 
 ### Phase 3 — Nice to have
 
-- Real speaker names (a diarization model, or the user names "Speaker 1, 2" once).
-- Offer to start when a call app opens (Zoom, Teams, a Meet tab).
-- Search across meetings; "What did we decide about X?" in chat.
-- Link action items to workflows (for example, create a task).
+In the app.
+
+- The user names each speaker once ("me", "others", or "Speaker 1"). Later audio keeps that name. There is no separate diarization model.
+- When Zoom, Teams, Skype, FaceTime, Webex, or a Google Meet window is open, the page offers to start listening. It does not start by itself.
+- Search on the Meetings page looks through titles, notes, and the transcript. Chat can answer from the decisions and tasks. The full transcript is not sent with every chat.
+- Each action item can open a workflow draft. Nothing is saved until the user saves it in the workflow builder.
 
 ## Capturing computer sound
 

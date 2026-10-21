@@ -1,8 +1,10 @@
+const { execFile } = require("node:child_process")
 const path = require("node:path")
 const {
   app,
   BrowserWindow,
   Menu,
+  Notification,
   Tray,
   desktopCapturer,
   dialog,
@@ -19,6 +21,7 @@ const {
   isSafeExternalUrl,
   waitForServer,
 } = require("./server-utils.cjs")
+const { detectCallApp } = require("./call-apps.cjs")
 const { allowsMeetingPermission, systemAudioMode } = require("./capture.cjs")
 const { trayIconPath, trayMenuTemplate } = require("./tray.cjs")
 
@@ -138,6 +141,54 @@ function allowMeetingCapture() {
   })
 }
 
+function execText(command, args) {
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: 4000, maxBuffer: 1_000_000 }, (error, stdout) => {
+      resolve(error ? "" : String(stdout))
+    })
+  })
+}
+
+async function readCallLines() {
+  const processes = await execText("ps", ["-ax", "-o", "comm="])
+  if (process.platform !== "darwin") return processes.split(/\r?\n/)
+  const titles = await execText("osascript", [
+    "-e",
+    'tell application "System Events" to get name of every window of (every process whose background only is false)',
+  ])
+  return `${processes}\n${titles}`.split(/\r?\n/)
+}
+
+function offerCallApp(appName) {
+  const visible = BrowserWindow.getAllWindows().filter((window) => window.isVisible())
+  if (visible.length === 0) {
+    const note = new Notification({ title: "BlackAgents", body: `${appName} is open. Start listening?` })
+    note.on("click", () => openListening())
+    note.show()
+    return
+  }
+  for (const window of visible) window.webContents.send("call-app", appName)
+}
+
+function watchCallApps() {
+  let offered = null
+  const tick = () => {
+    void readCallLines().then((lines) => {
+      const appName = detectCallApp(lines)
+      if (!appName) {
+        offered = null
+        return
+      }
+      if (appName === offered) return
+      offered = appName
+      offerCallApp(appName)
+    })
+  }
+  const timer = setInterval(tick, 20_000)
+  if (typeof timer.unref === "function") timer.unref()
+  setTimeout(tick, 4_000)
+}
+
 function openListening() {
   void showOrCreateWindow().then(() => {
     const window = BrowserWindow.getAllWindows()[0]
@@ -223,6 +274,7 @@ if (!hasSingleInstanceLock) {
     .then(() => {
       allowMeetingCapture()
       ipcMain.on("meeting-listening", (_event, on) => setTrayListening(Boolean(on)))
+      watchCallApps()
       createApplicationTray()
       return showOrCreateWindow()
     })

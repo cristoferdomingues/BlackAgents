@@ -26,16 +26,23 @@ import {
   OTHERS_ONLY_MIC,
   PAUSE_EFFECT,
   SAVE_EFFECT,
+  SEARCH_LABEL,
+  SPEAKER_EFFECT,
   STOP_EFFECT,
+  TASK_EFFECT,
+  callAppLine,
   notesLanguageLine,
   savePathLine,
 } from "@/lib/meetings/explain"
 import { knowledgeFilePath } from "@/lib/meetings/notes"
 import { resolveListenChoice } from "@/lib/meetings/models"
+import { searchMeetings } from "@/lib/meetings/search"
 import type { Meeting, MeetingSuggestion } from "@/lib/meetings/schema"
+import { uniqueSpeakers } from "@/lib/meetings/speakers"
+import { actionItemWorkflow, type MeetingTask } from "@/lib/meetings/tasks"
 import { useAssistantProvider } from "@/components/features/editor/use-assistant-provider"
 import { transcribeImportedAudio } from "@/components/features/meetings/import-audio"
-import { useLiveMeeting } from "@/components/features/meetings/live-session"
+import { subscribeCallApp, useLiveMeeting } from "@/components/features/meetings/live-session"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
@@ -87,6 +94,9 @@ export function MeetingsPage(): React.ReactElement {
   const [listenManual, setListenManual] = React.useState(false)
   const [listenDismissed, setListenDismissed] = React.useState(false)
   const [mark, setMark] = React.useState("")
+  const [query, setQuery] = React.useState("")
+  const [callApp, setCallApp] = React.useState<string | null>(null)
+  const [taskPick, setTaskPick] = React.useState<{ meeting: Meeting; item: MeetingTask; agents: string[] } | null>(null)
   const listenAsked = React.useSyncExternalStore(
     (onStore) => {
       window.addEventListener("popstate", onStore)
@@ -145,7 +155,10 @@ export function MeetingsPage(): React.ReactElement {
   }, [workspace, settle])
 
   const meetings = state.kind === "ready" ? state.meetings : []
-  const selected = meetings.find((meeting) => meeting.id === selectedId) ?? meetings[0] ?? null
+  const visible = searchMeetings(meetings, query)
+  const selected = visible.find((meeting) => meeting.id === selectedId) ?? visible[0] ?? null
+
+  React.useEffect(() => subscribeCallApp((app) => setCallApp(app)), [])
   const unsaved = Boolean(selected?.notes && !selected.knowledgeProposalId)
 
   React.useEffect(() => {
@@ -222,6 +235,48 @@ export function MeetingsPage(): React.ReactElement {
       router.push(`/${metaForType(built.draft.type).route}/new`)
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not open a draft")
+    }
+  }
+
+  function openTask(meeting: Meeting, item: MeetingTask, agent: string): void {
+    try {
+      const workflow = actionItemWorkflow(item, agent, meeting.title)
+      sessionStorage.setItem(WORKFLOW_DRAFT_STORAGE_KEY, JSON.stringify(workflow))
+      setTaskPick(null)
+      router.push("/workflows/new")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not open a workflow")
+    }
+  }
+
+  async function makeTask(meeting: Meeting, item: MeetingTask): Promise<void> {
+    try {
+      const artifacts = await apiFetch<Array<{ type: string; name: string }>>("/api/artifacts")
+      const agents = artifacts.filter((artifact) => artifact.type === "agent").map((artifact) => artifact.name)
+      if (agents.length === 0) {
+        toast.error("Add an agent first. A workflow needs an agent to do the task.")
+        return
+      }
+      if (agents.length === 1) {
+        const only = agents[0]
+        if (only) openTask(meeting, item, only)
+        return
+      }
+      setTaskPick({ meeting, item, agents })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load agents")
+    }
+  }
+
+  async function renameSpeaker(meeting: Meeting, from: string, to: string): Promise<void> {
+    try {
+      const next = await apiFetch<Meeting>(`/api/meetings/${meeting.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ renameSpeakers: [{ from, to }] }),
+      })
+      upsert(next)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the name")
     }
   }
 
@@ -328,6 +383,18 @@ export function MeetingsPage(): React.ReactElement {
         </div>
       ) : null}
       {live.error ? <p className="text-sm text-destructive">{live.error}</p> : null}
+      {callApp && live.phase === "idle" ? (
+        <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
+          <p className="text-sm">{callAppLine(callApp)}</p>
+          <Button size="sm" onClick={() => setListenManual(true)}>
+            <Mic className="h-4 w-4" />
+            Start listening
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCallApp(null)}>
+            Not now
+          </Button>
+        </div>
+      ) : null}
 
       {state.kind === "loading" || workspaceLoading ? (
         <div className="space-y-2" aria-busy="true">
@@ -362,8 +429,16 @@ export function MeetingsPage(): React.ReactElement {
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <div className="space-y-2">
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label={SEARCH_LABEL}
+              placeholder="Search notes and decisions"
+            />
+            {visible.length === 0 ? <p className="text-sm text-muted-foreground">No meetings match.</p> : null}
           <ul className="space-y-1">
-            {meetings.map((meeting) => (
+            {visible.map((meeting) => (
               <li key={meeting.id}>
                 <button
                   type="button"
@@ -378,6 +453,7 @@ export function MeetingsPage(): React.ReactElement {
               </li>
             ))}
           </ul>
+          </div>
           {selected ? (
             <MeetingDetail
               meeting={selected}
@@ -389,6 +465,8 @@ export function MeetingsPage(): React.ReactElement {
               onSave={() => void saveKnowledge(selected)}
               onBuild={(suggestion) => void buildFrom(selected, suggestion)}
               onDelete={() => void remove(selected)}
+              onRename={(from, to) => void renameSpeaker(selected, from, to)}
+              onTask={(item) => void makeTask(selected, item)}
               onContinue={
                 selected.status === "interrupted" && live.phase === "idle"
                   ? () => void live.start({ meetingId: selected.id }).catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not continue"))
@@ -399,6 +477,15 @@ export function MeetingsPage(): React.ReactElement {
         </div>
       )}
 
+      <TaskDialog
+        pick={taskPick}
+        onOpenChange={(open) => {
+          if (!open) setTaskPick(null)
+        }}
+        onPick={(agent) => {
+          if (taskPick) openTask(taskPick.meeting, taskPick.item, agent)
+        }}
+      />
       <ListenDialog
         open={live.phase === "idle" && (listenManual || (listenAsked && !listenDismissed))}
         onOpenChange={(open) => {
@@ -412,8 +499,14 @@ export function MeetingsPage(): React.ReactElement {
         onStart={(title) => {
           setListenManual(false)
           setListenDismissed(true)
+          const app = callApp
+          setCallApp(null)
           void live
-            .start({ ...(title ? { title } : {}), ...(project?.id ? { scope: project.id } : {}) })
+            .start({
+              ...(title ? { title } : {}),
+              ...(project?.id ? { scope: project.id } : {}),
+              ...(app ? { app } : {}),
+            })
             .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not start listening"))
         }}
       />
@@ -443,6 +536,8 @@ function MeetingDetail({
   onBuild,
   onDelete,
   onContinue,
+  onRename,
+  onTask,
 }: {
   meeting: Meeting
   onNotes: () => void
@@ -450,6 +545,8 @@ function MeetingDetail({
   onBuild: (suggestion: MeetingSuggestion) => void
   onDelete: () => void
   onContinue?: () => void
+  onRename: (from: string, to: string) => void
+  onTask: (item: MeetingTask) => void
 }): React.ReactElement {
   const notes = meeting.notes
   const file = knowledgeFilePath(meeting)
@@ -461,6 +558,7 @@ function MeetingDetail({
           <Badge variant={meeting.status === "failed" || meeting.status === "interrupted" ? "outline" : "secondary"}>
             {statusText(meeting.status)}
           </Badge>
+          {meeting.app ? <Badge variant="outline">{meeting.app}</Badge> : null}
           {meeting.scope ? <Badge variant="outline">{meeting.scope}</Badge> : null}
         </div>
         {notes ? <p className="text-sm text-muted-foreground">{notesLanguageLine(notes.language)}</p> : null}
@@ -471,10 +569,24 @@ function MeetingDetail({
         <div className="space-y-3 text-sm">
           <p>{notes.summary}</p>
           <NoteList title="Decisions" items={notes.decisions} />
-          <NoteList
-            title="Action items"
-            items={notes.actionItems.map((item) => `${item.owner ? `${item.owner}: ` : ""}${item.task}${item.due ? ` (${item.due})` : ""}`)}
-          />
+          <section>
+            <h3 className="font-medium">Action items</h3>
+            {notes.actionItems.length === 0 ? (
+              <p className="text-muted-foreground">None noted.</p>
+            ) : (
+              <ul className="space-y-2">
+                {notes.actionItems.map((item) => (
+                  <li key={`${item.owner ?? ""}-${item.task}`} className="flex flex-wrap items-center gap-2">
+                    <span>{`${item.owner ? `${item.owner}: ` : ""}${item.task}${item.due ? ` (${item.due})` : ""}`}</span>
+                    <Button size="sm" variant="outline" onClick={() => onTask(item)}>
+                      Make a workflow
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-muted-foreground">{TASK_EFFECT}</p>
+          </section>
           <NoteList title="Open questions" items={notes.openQuestions} />
           <NoteList title="People" items={notes.people} />
         </div>
@@ -492,6 +604,16 @@ function MeetingDetail({
           </Button>
         </div>
       )}
+
+      {uniqueSpeakers(meeting.segments).length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Names</h3>
+          <p className="text-xs text-muted-foreground">{SPEAKER_EFFECT}</p>
+          {uniqueSpeakers(meeting.segments).map((speaker) => (
+            <SpeakerRow key={speaker} speaker={speaker} onRename={onRename} />
+          ))}
+        </div>
+      ) : null}
 
       {meeting.marks && meeting.marks.length > 0 ? (
         <NoteList title="Marks" items={meeting.marks.map((item) => item.text)} />
@@ -570,6 +692,81 @@ function NoteList({ title, items }: { title: string; items: string[] }): React.R
         </ul>
       )}
     </section>
+  )
+}
+
+function SpeakerRow({
+  speaker,
+  onRename,
+}: {
+  speaker: string
+  onRename: (from: string, to: string) => void
+}): React.ReactElement {
+  const [name, setName] = React.useState(speaker)
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onRename(speaker, name.trim())
+      }}
+    >
+      <Input aria-label={`Name for ${speaker}`} value={name} onChange={(event) => setName(event.target.value)} />
+      <Button type="submit" size="sm" variant="outline" disabled={!name.trim() || name.trim() === speaker}>
+        Save name
+      </Button>
+    </form>
+  )
+}
+
+function TaskDialog({
+  pick,
+  onOpenChange,
+  onPick,
+}: {
+  pick: { item: MeetingTask; agents: string[] } | null
+  onOpenChange: (open: boolean) => void
+  onPick: (agent: string) => void
+}): React.ReactElement {
+  return (
+    <Dialog open={Boolean(pick)} onOpenChange={onOpenChange}>
+      <DialogContent key={pick?.agents.join(",")}>
+        <DialogHeader>
+          <DialogTitle>Make a workflow</DialogTitle>
+          <DialogDescription>{TASK_EFFECT}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const chosen = String(new FormData(event.currentTarget).get("agent") ?? "")
+            if (chosen) onPick(chosen)
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="task-agent">Agent</Label>
+            <select
+              id="task-agent"
+              name="agent"
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+              defaultValue={pick?.agents[0]}
+            >
+              {pick?.agents.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">Open draft</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

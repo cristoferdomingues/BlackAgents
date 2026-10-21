@@ -30,11 +30,19 @@ export interface LiveController {
   banner: string | null
   othersMessage: string | null
   error: string | null
-  start: (input: { title?: string; meetingId?: string; scope?: string }) => Promise<void>
+  start: (input: { title?: string; meetingId?: string; scope?: string; app?: string }) => Promise<void>
   pause: () => Promise<void>
   resume: () => Promise<void>
   stop: () => Promise<void>
   addMark: (text: string) => Promise<void>
+}
+
+export function subscribeCallApp(onApp: (app: string) => void): () => void {
+  const bridge = (
+    window as Window & { blackAgentsDesktop?: { onCallApp?: (cb: (app: string) => void) => () => void } }
+  ).blackAgentsDesktop
+  if (!bridge?.onCallApp) return () => undefined
+  return bridge.onCallApp(onApp)
 }
 
 function setTrayListening(on: boolean): void {
@@ -208,7 +216,7 @@ export function useLiveMeeting(onMeeting: (meeting: Meeting) => void, notesModel
   }, [failSession, transcribe])
 
   const start = React.useCallback(
-    async (input: { title?: string; meetingId?: string; scope?: string }): Promise<void> => {
+    async (input: { title?: string; meetingId?: string; scope?: string; app?: string }): Promise<void> => {
       setError(null)
       const info = await apiFetch<DesktopInfo>("/api/desktop").catch(() => ({
         desktop: false,
@@ -223,6 +231,7 @@ export function useLiveMeeting(onMeeting: (meeting: Meeting) => void, notesModel
           body: JSON.stringify({
             ...(input.title ? { title: input.title } : {}),
             ...(input.scope ? { scope: input.scope } : {}),
+            ...(input.app ? { app: input.app } : {}),
           }),
         })
         onMeeting(meeting)

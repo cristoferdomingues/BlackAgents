@@ -17,6 +17,8 @@ import { contextCharsFor } from "@/lib/llm/context-limits"
 import { loadDecisionClient } from "@/lib/decision/client"
 import { composeFilesPrompt, parseFileMentions, resolveWorkspaceFiles } from "@/lib/files"
 import { buildAgentPersonaContext, buildSystemContext, loadKnowledgeContext } from "@/lib/llm/context"
+import { formatMeetingContext } from "@/lib/meetings/search"
+import { listMeetings } from "@/lib/meetings/store"
 import { getVerifiedCredentials, CredentialStateError } from "@/lib/llm/credentials"
 import {
   agentModelLayer,
@@ -218,6 +220,9 @@ export async function prepareChat(request: ChatRequest, scope?: string): Promise
       resolved,
     })
     if (brain) sections.push(brain)
+    const meetings = await listMeetings(root).catch(() => [])
+    const meetingContext = formatMeetingContext(meetings)
+    if (meetingContext) sections.push(meetingContext)
   }
 
   const tools = root

@@ -15,6 +15,7 @@ import {
   type MeetingImport,
 } from "./schema"
 import { MEETING_LIMITS } from "./limits"
+import { renameMeetingSpeakers, withSpeakerNames } from "./speakers"
 
 export const MEETINGS_DIR = ".black-agents/meetings"
 
@@ -142,6 +143,7 @@ export async function startLiveMeeting(root: string, body: unknown, now = new Da
     status: "listening",
     source: "live",
     ...(input.scope ? { scope: input.scope } : {}),
+    ...(input.app ? { app: input.app } : {}),
     segments: [],
   }
   return saveMeeting(root, meeting)
@@ -154,18 +156,23 @@ export async function patchMeeting(root: string, id: string, body: unknown): Pro
   const current = await readMeeting(root, id)
   if (!current) throw new MeetingError("Meeting not found", 404)
   const patch = parsed.data
-  const segments = [...current.segments, ...(patch.appendSegments ?? [])]
+  const named = patch.renameSpeakers ? renameMeetingSpeakers(current, patch.renameSpeakers) : current
+  const segments = [
+    ...named.segments,
+    ...withSpeakerNames(patch.appendSegments ?? [], named.speakerNames),
+  ]
   if (segments.length > MEETING_LIMITS.segments) {
     throw new MeetingError("This meeting is too long.", 400)
   }
-  const marks = [...(current.marks ?? []), ...(patch.appendMarks ?? [])]
+  const marks = [...(named.marks ?? []), ...(patch.appendMarks ?? [])]
   const next: Meeting = {
-    ...current,
+    ...named,
     segments,
     ...(marks.length > 0 ? { marks } : {}),
     ...(patch.status ? { status: patch.status } : {}),
     ...(patch.endedAt ? { endedAt: patch.endedAt } : {}),
     ...(patch.notesCovered !== undefined ? { notesCovered: patch.notesCovered } : {}),
+    ...(patch.app ? { app: patch.app } : {}),
   }
   if (patch.error === null) delete next.error
   else if (patch.error) next.error = patch.error

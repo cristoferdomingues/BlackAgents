@@ -203,7 +203,7 @@ Zip import of a bundle is still deferred. Folder import is what shipped.
 - Scheduled runs work only while the app is open (no background service).
 - Approvals live in memory; a restart drops pending ones (runs are marked interrupted).
 - No parallel steps inside one workflow; steps run in order.
-- **Meeting Secretary**: Import and live listening are in the app. Live listening uses the microphone. Computer sound works on Windows. A Mac still hears only the microphone. See [Meeting Secretary](../specs/meeting-secretary.md).
+- **Meeting Secretary**: Import, live listening, speaker names, search, and a workflow from a task are in the app. Live listening uses the microphone. Computer sound works on Windows. A Mac still hears only the microphone. See [Meeting Secretary](../specs/meeting-secretary.md).
 - **Project scopes are shipped for artifacts, MCP config, workflows, and knowledge** (see [Project Scopes](../architecture/project-scopes.md)). Still open: chat, the assistant context, the workflow runtime, the graph route, and the MCP settings panel do not use the active project yet.
 
 ## Guiding Principles

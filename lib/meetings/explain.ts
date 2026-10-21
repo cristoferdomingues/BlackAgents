@@ -48,6 +48,16 @@ export const STOP_EFFECT = "Stops the recording and writes the final notes."
 
 export const MARK_EFFECT = "Saves a short mark at this moment, like “important”."
 
+export const SEARCH_LABEL = "Search meetings"
+
+export const SPEAKER_EFFECT = "Sets this name on that person in the transcript."
+
+export const TASK_EFFECT = "Opens a workflow draft for this task. Nothing is saved until you press Save."
+
+export function callAppLine(app: string): string {
+  return `${app} is open. You can start listening.`
+}
+
 export const DOCX_MESSAGE = "Word files are not supported yet. Paste the text, or save it as .txt."
 
 export const NO_SPEECH = "No speech was found in this audio."

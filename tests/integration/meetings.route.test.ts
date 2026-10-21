@@ -186,6 +186,32 @@ describe("meetings API", () => {
     expect(unknown.success).toBe(false)
   })
 
+  it("searches notes and renames a speaker", async () => {
+    const created = await bodyOf(
+      await POST(
+        jsonRequest("http://t/api/meetings", "POST", {
+          title: "Standup",
+          text: "We ship on Friday.",
+        })
+      )
+    )
+    const id = String(created.data?.id)
+    const renamed = await bodyOf(
+      await PATCH(
+        jsonRequest(`http://t/api/meetings/${id}`, "PATCH", {
+          renameSpeakers: [{ from: "others", to: "Ana" }],
+        }),
+        { params: Promise.resolve({ id }) }
+      )
+    )
+    expect((renamed.data?.segments as Array<{ speaker: string }>)[0]?.speaker).toBe("Ana")
+
+    const found = await bodyOf(await GET(new Request("http://t/api/meetings?q=friday")))
+    expect(found.data?.meetings).toEqual([expect.objectContaining({ title: "Standup" })])
+    const missed = await bodyOf(await GET(new Request("http://t/api/meetings?q=budget")))
+    expect(missed.data?.meetings).toEqual([])
+  })
+
   it("starts one live meeting and appends a line", async () => {
     const created = await bodyOf(await LIVE(jsonRequest("http://t/api/meetings/live", "POST", { title: "Call" })))
     expect(created.success).toBe(true)

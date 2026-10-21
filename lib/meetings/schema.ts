@@ -70,6 +70,10 @@ export const meetingSchema = z.object({
   source: z.enum(["import", "live"]),
   /** Project id active when the meeting was created. Absent = the workspace. */
   scope: projectIdSchema.optional(),
+  /** Call app, typed or noticed on this computer. */
+  app: z.string().trim().min(1).max(40).optional(),
+  /** Saved names for "me", "others", or any other speaker label. */
+  speakerNames: z.record(z.string().trim().min(1).max(40), z.string().trim().min(1).max(40)).optional(),
   segments: z.array(meetingSegmentSchema).max(MEETING_LIMITS.segments),
   /** How many segments were included the last time notes were written. */
   notesCovered: z.number().int().min(0).optional(),
@@ -96,6 +100,7 @@ export type MeetingImport = z.infer<typeof meetingImportSchema>
 export const meetingLiveSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
   scope: projectIdSchema.optional(),
+  app: z.string().trim().min(1).max(40).optional(),
 })
 
 export const meetingPatchSchema = z.object({
@@ -105,6 +110,17 @@ export const meetingPatchSchema = z.object({
   endedAt: isoDate.optional(),
   error: z.string().trim().min(1).max(500).nullable().optional(),
   notesCovered: z.number().int().min(0).optional(),
+  app: z.string().trim().min(1).max(40).optional(),
+  renameSpeakers: z
+    .array(
+      z.object({
+        from: z.string().trim().min(1).max(40),
+        to: z.string().trim().min(1).max(40),
+      })
+    )
+    .min(1)
+    .max(20)
+    .optional(),
 })
 
 export const meetingNotesRequestSchema = z.object({

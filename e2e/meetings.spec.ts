@@ -65,6 +65,44 @@ test("imports a meeting, shows notes, and sends them to Brain", async ({ page })
   await expect(page.getByRole("link", { name: "Review in Brain" })).toBeVisible()
 })
 
+test("search hides meetings that do not match", async ({ page }) => {
+  await stubWorkspace(page)
+  await stubVerifiedProvider(page)
+  await page.route("**/api/meetings", async (route) => {
+    return route.fulfill({
+      json: {
+        success: true,
+        data: {
+          meetings: [
+            meeting,
+            {
+              ...meeting,
+              id: "33333333-3333-4333-8333-333333333333",
+              title: "Budget",
+              notes: {
+                language: "English",
+                summary: "Cut the budget.",
+                decisions: ["Cut the budget"],
+                actionItems: [],
+                openQuestions: [],
+                people: [],
+                suggestions: [],
+              },
+              status: "ready",
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  await page.goto("/meetings")
+  await expect(page.getByRole("button", { name: "Standup" })).toBeVisible()
+  await page.getByLabel("Search meetings").fill("budget")
+  await expect(page.getByRole("button", { name: "Budget" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Standup" })).toHaveCount(0)
+})
+
 test("asks everyone to agree before it listens", async ({ page }) => {
   await stubWorkspace(page)
   await stubVerifiedProvider(page)

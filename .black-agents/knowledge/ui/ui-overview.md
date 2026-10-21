@@ -51,7 +51,7 @@ The UI follows the [BlackLionFi](../overview/tech-stack.md) component convention
 | approvals | `ApprovalCard` — shows a waiting `write`/`exec` call: Approve, Deny, "remember this exact call" (exec) |
 | workflows | `WorkflowListPage`, `WorkflowBuilder`, `RunView`, `RunStatus`, `PendingApprovalsPanel` — see [Workflows](../architecture/workflows.md) |
 | brain | `BrainPage` — Inbox / Memory / Knowledge / History — see [Second Brain](../architecture/second-brain.md) and [Knowledge (OKF)](../architecture/knowledge-okf.md) |
-| meetings | `MeetingsPage` — start listening, or import a transcript or audio file, review notes, send them to Brain, or open a draft. See [Meeting Secretary](../specs/meeting-secretary.md) |
+| meetings | `MeetingsPage` — start listening, search notes, name speakers, import a transcript or audio file, send notes to Brain, or open a draft. See [Meeting Secretary](../specs/meeting-secretary.md) |
 | providers | `ProvidersPage` — per-provider API-key management (configured badge + last-4), custom base URL |
 | settings | `SettingsPage` — workspaces (add, set-active, remove); **AI** tab (`AiSettingsCard`: max tool turns, Jev, `JevDecisionsCard` levels + recent decisions, task models including **Meeting** Listen and Notes); **MCP** tab (stdio / HTTP / SSE, header list with secret promotion, `McpTrustSelect`); **Browser** tab (`BrowserAutomationCard`: Playwright MCP, record/save, daily bind, **Update flows on heal**, flow secrets — see [Browser Automation](../specs/browser-automation.md)) |
 

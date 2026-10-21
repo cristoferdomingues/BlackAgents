@@ -173,7 +173,7 @@ Import a transcript, write notes, then send them to Brain or open a draft. See [
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| GET | `/api/meetings` | `{ meetings }` for the active workspace. Empty list when no workspace is selected |
+| GET | `/api/meetings` | `{ meetings }` for the active workspace. `?q=` keeps meetings whose notes or transcript contain every word. Empty list when no workspace is selected |
 | POST | `/api/meetings` | Body: `{ title?, scope?, text? }` or `{ segments }` → the stored meeting (**201**). **400** bad input, **412** no workspace |
 | POST | `/api/meetings/[id]/notes` | Writes notes with the Meeting Notes model, or the body `{ provider, model }`. **502** when the model reply is not a valid `meeting` block |
 | POST | `/api/meetings/[id]/knowledge` | Queues a Brain proposal. Does not write the knowledge file. A second call returns `already: true` |

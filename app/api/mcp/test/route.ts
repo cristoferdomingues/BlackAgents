@@ -10,6 +10,9 @@ import {
 import { mcpServerWriteSchema } from "@/lib/mcp/types"
 import { getMcpSecrets } from "@/lib/secrets"
 
+/** A remote connect can use the full 30 second budget before tools are listed. */
+export const maxDuration = 60
+
 /**
  * Test an unsaved MCP server draft.
  * Promotes header/env secrets in memory, merges them with stored MCP secrets,

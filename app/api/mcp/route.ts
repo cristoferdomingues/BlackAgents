@@ -15,6 +15,9 @@ import { readMcpPolicy, trustOf } from "@/lib/mcp/policy"
 import { mcpServerWriteSchema } from "@/lib/mcp/types"
 import { getMcpSecrets, removeMcpSecrets, setMcpSecrets } from "@/lib/secrets"
 
+/** Connect plus tool list can take longer than the old 8 second client limit. */
+export const maxDuration = 60
+
 /**
  * List all configured MCP servers and their available tools for the active workspace.
  */

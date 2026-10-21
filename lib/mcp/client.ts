@@ -28,7 +28,12 @@ const CLIENT_INFO = {
   version: "0.1.0",
 }
 
-const DEFAULT_TIMEOUT_MS = 8_000
+/** Remote MCP setup can sit on an open stream before the session id arrives. */
+export const MCP_CONNECT_TIMEOUT_MS = 30_000
+/** Listing tools is a normal request after the session exists. */
+export const MCP_LIST_TIMEOUT_MS = 15_000
+/** One tool call. Kept apart from the longer connect wait. */
+export const MCP_TOOL_TIMEOUT_MS = 16_000
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -60,7 +65,8 @@ function withTimeout<T>(
 export async function createMcpConnection(
   config: McpServerConfig,
   cwd?: string,
-  secrets?: Record<string, string>
+  secrets?: Record<string, string>,
+  options?: { connectTimeoutMs?: number }
 ): Promise<{ client: Client; transport: Transport }> {
   const client = new Client(CLIENT_INFO, {
     capabilities: {},
@@ -68,6 +74,8 @@ export async function createMcpConnection(
 
   const mcpSecrets = secrets ?? (await getMcpSecrets())
   const resolved = resolveMcpServerSecrets(config, mcpSecrets)
+  const connectTimeoutMs = options?.connectTimeoutMs ?? MCP_CONNECT_TIMEOUT_MS
+  const abort = new AbortController()
 
   const kind = resolveMcpTransport(resolved)
   let transport: Transport
@@ -79,12 +87,12 @@ export async function createMcpConnection(
       )
     }
     const url = new URL(resolved.url)
-    const requestInit = mcpAuthRequestInit(resolved)
-    const options = requestInit ? { requestInit } : undefined
+    const auth = mcpAuthRequestInit(resolved)
+    const requestInit: RequestInit = { ...auth, signal: abort.signal }
     transport =
       kind === "http"
-        ? new StreamableHTTPClientTransport(url, options)
-        : new SSEClientTransport(url, options)
+        ? new StreamableHTTPClientTransport(url, { requestInit })
+        : new SSEClientTransport(url, { requestInit })
   } else if (resolved.command) {
     const launch = prepareStdioLaunch(resolved.command, resolved.env)
     transport = new StdioClientTransport({
@@ -97,7 +105,20 @@ export async function createMcpConnection(
     throw new Error("stdio server needs a command")
   }
 
-  await withTimeout(client.connect(transport), DEFAULT_TIMEOUT_MS, "connecting to server")
+  try {
+    await withTimeout(client.connect(transport), connectTimeoutMs, "connecting to server")
+  } catch (err) {
+    abort.abort()
+    await client.close().catch(() => undefined)
+    await transport.close().catch(() => undefined)
+    const message = err instanceof Error ? err.message : String(err)
+    if (/timed out/i.test(message)) {
+      throw new Error(
+        `Timed out after ${String(connectTimeoutMs)}ms while connecting. The connection was closed. Try again. If the server has an HTTP address, use HTTP instead of SSE.`
+      )
+    }
+    throw err instanceof Error ? err : new Error(message)
+  }
 
   return { client, transport }
 }
@@ -275,7 +296,7 @@ export async function testMcpServer(
 
     const active = session
     const listResult = await active.run(() =>
-      withTimeout(active.client.listTools(), DEFAULT_TIMEOUT_MS, "listing tools")
+      withTimeout(active.client.listTools(), MCP_LIST_TIMEOUT_MS, "listing tools")
     )
 
     const tools: McpTool[] = (listResult.tools ?? []).map((t) => ({
@@ -389,7 +410,7 @@ export async function executeWorkspaceTool(
           name: toolName,
           arguments: args,
         }),
-        DEFAULT_TIMEOUT_MS * 2,
+        MCP_TOOL_TIMEOUT_MS,
         `executing tool "${toolName}" on server "${serverName}"`
       )
     )

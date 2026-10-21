@@ -8,7 +8,7 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function GET(_req: Request, ctx: RouteContext): Promise<Response> {
   return handle(() =>

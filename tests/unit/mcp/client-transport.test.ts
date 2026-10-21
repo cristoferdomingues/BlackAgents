@@ -3,34 +3,45 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-const { httpCalls, sseCalls, stdioCalls } = vi.hoisted(() => ({
-  httpCalls: [] as Array<{ url: string; opts: unknown }>,
-  sseCalls: [] as Array<{ url: string; opts: unknown }>,
+const { httpCalls, sseCalls, stdioCalls, connectState } = vi.hoisted(() => ({
+  httpCalls: [] as Array<{ url: string; opts: { requestInit?: RequestInit } | undefined }>,
+  sseCalls: [] as Array<{ url: string; opts: { requestInit?: RequestInit } | undefined }>,
   stdioCalls: [] as Array<{ command: string; args: string[]; env?: Record<string, string> }>,
+  connectState: {
+    connect: async (): Promise<void> => undefined,
+    clientCloses: 0,
+    transportCloses: 0,
+  },
 }))
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
   Client: class {
-    connect = vi.fn(async () => undefined)
-    close = vi.fn(async () => undefined)
+    connect = vi.fn(() => connectState.connect())
+    close = vi.fn(async () => {
+      connectState.clientCloses += 1
+    })
   },
 }))
 
 vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
   StreamableHTTPClientTransport: class {
-    constructor(url: URL, opts?: unknown) {
+    constructor(url: URL, opts?: { requestInit?: RequestInit }) {
       httpCalls.push({ url: url.toString(), opts })
     }
-    close = async (): Promise<void> => undefined
+    close = async (): Promise<void> => {
+      connectState.transportCloses += 1
+    }
   },
 }))
 
 vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
   SSEClientTransport: class {
-    constructor(url: URL, opts?: unknown) {
+    constructor(url: URL, opts?: { requestInit?: RequestInit }) {
       sseCalls.push({ url: url.toString(), opts })
     }
-    close = async (): Promise<void> => undefined
+    close = async (): Promise<void> => {
+      connectState.transportCloses += 1
+    }
   },
 }))
 
@@ -64,6 +75,9 @@ describe("createMcpConnection", () => {
     httpCalls.length = 0
     sseCalls.length = 0
     stdioCalls.length = 0
+    connectState.connect = async () => undefined
+    connectState.clientCloses = 0
+    connectState.transportCloses = 0
     configDir = await mkdtemp(path.join(tmpdir(), "ba-mcp-conn-"))
     process.env.BLACK_AGENTS_CONFIG_DIR = configDir
   })
@@ -81,12 +95,9 @@ describe("createMcpConnection", () => {
       headers: { Authorization: "Bearer blf_mcp_token" },
     })
 
-    expect(httpCalls).toEqual([
-      {
-        url: "https://app.example/api/mcp",
-        opts: { requestInit: { headers: { Authorization: "Bearer blf_mcp_token" } } },
-      },
-    ])
+    expect(httpCalls[0]?.url).toBe("https://app.example/api/mcp")
+    expect(httpCalls[0]?.opts?.requestInit?.headers).toEqual({ Authorization: "Bearer blf_mcp_token" })
+    expect(httpCalls[0]?.opts?.requestInit?.signal).toBeInstanceOf(AbortSignal)
     expect(sseCalls).toEqual([])
   })
 
@@ -108,9 +119,8 @@ describe("createMcpConnection", () => {
       transport: "sse",
     })
 
-    expect(sseCalls).toEqual([
-      { url: "https://mcp.example.com/sse", opts: undefined },
-    ])
+    expect(sseCalls[0]?.url).toBe("https://mcp.example.com/sse")
+    expect(sseCalls[0]?.opts?.requestInit?.signal).toBeInstanceOf(AbortSignal)
     expect(httpCalls).toEqual([])
   })
 
@@ -161,15 +171,26 @@ describe("createMcpConnection", () => {
       },
     })
 
-    expect(httpCalls).toEqual([
-      {
-        url: "https://api.githubcopilot.com/mcp/",
-        opts: {
-          requestInit: {
-            headers: { Authorization: "Bearer ghp_from_secrets" },
-          },
+    expect(httpCalls[0]?.url).toBe("https://api.githubcopilot.com/mcp/")
+    expect(httpCalls[0]?.opts?.requestInit?.headers).toEqual({ Authorization: "Bearer ghp_from_secrets" })
+  })
+
+  it("closes a connection that never finishes", async () => {
+    connectState.connect = () => new Promise(() => undefined)
+    await expect(
+      createMcpConnection(
+        {
+          ...emptyConfig,
+          url: "https://mcp.example.com/sse",
+          transport: "sse",
         },
-      },
-    ])
+        undefined,
+        undefined,
+        { connectTimeoutMs: 20 }
+      )
+    ).rejects.toThrow(/connection was closed/)
+    expect(connectState.clientCloses).toBe(1)
+    expect(connectState.transportCloses).toBe(1)
+    expect(sseCalls[0]?.opts?.requestInit?.signal?.aborted).toBe(true)
   })
 })

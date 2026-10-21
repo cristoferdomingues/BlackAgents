@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Brain, Eye, Loader2, Mic, NotebookPen, RotateCcw, Video, Zap } from "lucide-react"
+import { Brain, Eye, Loader2, Mic, NotebookPen, RotateCcw, SquareCode, Video, Zap } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CodingModelsPanel } from "@/components/features/settings/coding-models-panel"
 import { MeetingModelsPanel } from "@/components/features/settings/meeting-models-panel"
 
 interface TaskModelsSnapshot {
@@ -67,6 +68,10 @@ export function TaskModelsCard() {
               <NotebookPen className="h-4 w-4" />
               Meeting
             </TabsTrigger>
+            <TabsTrigger value="coding" className="gap-2">
+              <SquareCode className="h-4 w-4" />
+              Coding
+            </TabsTrigger>
           </TabsList>
           {tasks.map((task) => (
             <TabsContent key={task.id} value={task.id} className="pt-3">
@@ -79,6 +84,9 @@ export function TaskModelsCard() {
           ))}
           <TabsContent value="meeting" className="pt-3">
             <MeetingModelsPanel />
+          </TabsContent>
+          <TabsContent value="coding" className="pt-3">
+            <CodingModelsPanel />
           </TabsContent>
         </Tabs>
       </CardContent>

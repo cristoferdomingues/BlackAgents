@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld("blackAgentsDesktop", {
   setListening(on) {
     ipcRenderer.send("meeting-listening", Boolean(on))
   },
+  pickDirectory() {
+    return ipcRenderer.invoke("k0ding:pick-directory")
+  },
   onCallApp(callback) {
     const listener = (_event, app) => callback(String(app))
     ipcRenderer.on("call-app", listener)

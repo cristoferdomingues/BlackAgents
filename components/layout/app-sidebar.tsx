@@ -7,6 +7,7 @@ import {
   FileOutput,
   FolderOpen,
   NotebookPen,
+  SquareCode,
   GitCompare,
   KeyRound,
   LayoutDashboard,
@@ -38,6 +39,7 @@ const topNav: NavItem[] = [
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/files", label: "Files", icon: FolderOpen },
   { href: "/meetings", label: "Meetings", icon: NotebookPen },
+  { href: "/k0ding", label: "K0ding", icon: SquareCode },
   { href: "/brain", label: "Brain", icon: Brain },
 ]
 

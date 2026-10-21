@@ -109,6 +109,41 @@ export async function listDir(absDir: string): Promise<DirEntry[]> {
   }
 }
 
+export interface TypedDirEntry {
+  name: string
+  isDirectory: boolean
+  isSymbolicLink: boolean
+}
+
+/** List a folder and keep symlink entries visible. Throws if the folder cannot be read. */
+export async function listDirTyped(absDir: string): Promise<TypedDirEntry[]> {
+  const entries = await fs.readdir(absDir, { withFileTypes: true })
+  return entries.map((entry) => ({
+    name: entry.name,
+    isDirectory: entry.isDirectory(),
+    isSymbolicLink: entry.isSymbolicLink(),
+  }))
+}
+
+export async function realpathAbs(absPath: string): Promise<string> {
+  return fs.realpath(absPath)
+}
+
+export async function readBytes(absPath: string): Promise<Buffer> {
+  return fs.readFile(absPath)
+}
+
+export interface FileStat {
+  size: number
+  isFile: boolean
+  isDirectory: boolean
+}
+
+export async function statFile(absPath: string): Promise<FileStat> {
+  const stat = await fs.stat(absPath)
+  return { size: stat.size, isFile: stat.isFile(), isDirectory: stat.isDirectory() }
+}
+
 /** Recursively collect file paths (relative to `absDir`). */
 export async function walkFiles(absDir: string): Promise<string[]> {
   const out: string[] = []

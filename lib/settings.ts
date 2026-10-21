@@ -92,6 +92,8 @@ export const aiSettingsSchema = z.object({
       fast: taskChoiceSchema.optional(),
       reasoning: taskChoiceSchema.optional(),
       meeting: meetingModelsSchema.optional(),
+      /** K0ding. When empty, the Assistant model is used. */
+      coding: taskChoiceSchema.optional(),
     })
     .default({}),
   /** Desktop browser flow replay options. */
@@ -135,6 +137,7 @@ export const aiSettingsPatchSchema = z.object({
       fast: taskChoiceSchema.nullable(),
       reasoning: taskChoiceSchema.nullable(),
       meeting: meetingModelsPatchSchema.optional(),
+      coding: taskChoiceSchema.nullable(),
     })
     .partial()
     .optional(),
@@ -175,7 +178,7 @@ function mergeModels(
     if (value === null) delete next[key]
     else next[key] = value
   }
-  for (const key of ["vision", "fast", "reasoning"] as const) {
+  for (const key of ["vision", "fast", "reasoning", "coding"] as const) {
     const value = patch[key]
     if (value === undefined) continue
     if (value === null) delete next[key]

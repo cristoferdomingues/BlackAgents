@@ -89,6 +89,7 @@ verified:
 - [Assisted Artifact Drafting](./specs/assisted-artifact-drafting.md) — Draft the body with the LLM from name + description
 - [YouTube Sources](./specs/youtube-sources.md) — captions as a reference for a new skill and for chat
 - [Meeting Secretary](./specs/meeting-secretary.md) — draft: listen to any call, take notes, save as knowledge or artifacts
+- [K0ding](./specs/k0ding.md) — draft: open a code project, see the tree, ask the LLM, review diffs before writing
 - [Artifact Mentions](./specs/artifact-mentions.md) — `@` to link artifacts, grouped by type
 - [Browser Automation](./specs/browser-automation.md) — Desktop Playwright MCP: record / coach → flows → `browser_run_flow`
 - [Model Routing](./specs/model-routing.md) — different models per agent / step / task kind (umbrella, phases 1–4)

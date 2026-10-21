@@ -274,6 +274,14 @@ if (!hasSingleInstanceLock) {
     .then(() => {
       allowMeetingCapture()
       ipcMain.on("meeting-listening", (_event, on) => setTrayListening(Boolean(on)))
+      ipcMain.handle("k0ding:pick-directory", async () => {
+        const result = await dialog.showOpenDialog({
+          title: "Open a code folder",
+          properties: ["openDirectory"],
+        })
+        if (result.canceled) return null
+        return result.filePaths[0] ?? null
+      })
       watchCallApps()
       createApplicationTray()
       return showOrCreateWindow()

@@ -71,6 +71,55 @@ test.describe("brain", () => {
     await expect(page.getByText("The repo uses pnpm 9")).toBeVisible()
   })
 
+  test("links a new concept only to the related notes you keep", async ({ page }) => {
+    const concept = {
+      id: "c1",
+      kind: "new_concept",
+      title: "Drawdown alerts",
+      rationale: "The user asked the Assistant to save this as durable knowledge.",
+      content: "Alert when portfolio drawdown passes 20 percent.",
+      target: { type: "concept", name: "crypto/drawdown-alerts" },
+      concept: { type: "Protocol", title: "Drawdown alerts", extra: {} },
+      links: [
+        { id: "crypto/portfolio-metrics", title: "Portfolio metrics", reason: "Same tag: crypto" },
+        { id: "crypto/exchange-fees", title: "Exchange fees", reason: "Both talk about: portfolio" },
+      ],
+      source: { kind: "assistant", signal: "feedback" },
+      decision: { by: "feedback" },
+      status: "pending",
+      createdAt: "2026-10-21T15:00:00.000Z",
+    }
+    let approved = false
+    let decision: unknown
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            proposals: approved ? [{ ...concept, status: "approved" }] : [concept],
+            workspaceNotes: [],
+            agents: [],
+          },
+        },
+      })
+    )
+    await page.route("**/api/brain/proposals/c1", async (route) => {
+      decision = route.request().postDataJSON()
+      approved = true
+      await route.fulfill({ json: { success: true, data: { proposal: { ...concept, status: "approved" } } } })
+    })
+
+    await page.goto("/brain")
+    await expect(page.getByText("Link to related notes")).toBeVisible()
+    await expect(page.getByText("2 other notes get a link back to this one.")).toBeVisible()
+    await page.getByRole("checkbox", { name: /Exchange fees/ }).uncheck()
+    await expect(page.getByText("1 other note gets a link back to this one.")).toBeVisible()
+    await page.getByRole("button", { name: "Approve" }).click()
+
+    await expect(page.getByText("The inbox is empty", { exact: true })).toBeVisible()
+    expect(decision).toEqual({ action: "approve", edits: { links: ["crypto/portfolio-metrics"] } })
+  })
+
   test("explains how it works once, then remembers it was closed", async ({ page }) => {
     await page.route("**/api/brain", (route) =>
       route.fulfill({ json: { success: true, data: { proposals: [], workspaceNotes: [], agents: [] } } })

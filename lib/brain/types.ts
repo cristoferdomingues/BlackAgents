@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { nameSchema } from "../artifacts/schemas"
+import type { ConceptLink } from "../knowledge/related"
 import type { OkfConceptFrontmatter } from "../knowledge/schema"
 
 /**
@@ -73,6 +74,8 @@ export interface BrainProposal {
   /** Note text, or the full new markdown body for skill/rule kinds. */
   content: string
   description?: string
+  /** Saved concepts that look related. The user picks which ones to link on approve. */
+  links?: ConceptLink[]
   source: {
     kind: FeedbackSignal["source"] | "import" | "memory" | "assistant" | "meeting"
     signal: FeedbackSignal["kind"]
@@ -107,6 +110,8 @@ export const proposalDecisionSchema = z.object({
     .object({
       content: z.string().min(1).max(20_000).optional(),
       description: z.string().trim().min(1).max(500).optional(),
+      /** Concept ids to link both ways. Only ids the proposal suggested are used. */
+      links: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
     })
     .optional(),
 })

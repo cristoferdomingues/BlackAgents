@@ -272,7 +272,7 @@ See [Workflows](../architecture/workflows.md).
 |--------|-------|---------|
 | GET | `/api/brain` | `{ proposals, workspaceNotes, agents }` |
 | POST | `/api/brain/feedback` | Body: `{ source: chat\|run, kind?: feedback\|self, agent?, rating?: up\|down, comment?, userMessage, reply, … }` → `recorded` or `proposed` |
-| POST | `/api/brain/proposals/[id]` | Body: `{ action: approve\|reject, edits?: { content?, description? } }` → `{ proposal }`; 404 / 409 |
+| POST | `/api/brain/proposals/[id]` | Body: `{ action: approve\|reject, edits?: { content?, description?, links? } }` → `{ proposal }`; 404 / 409. `links` (concept proposals only) are ids picked from `proposal.links`; approve adds them under `## Related` and writes a link back into each one. Ids not suggested are ignored |
 | POST | `/api/brain/promote` | Body: `{ id, type, content, title?, description? }` → `{ proposalId, title, kind }` (201). Queues the inbox item. Does not write the knowledge file |
 
 ## Knowledge

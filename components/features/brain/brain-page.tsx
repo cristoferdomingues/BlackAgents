@@ -26,6 +26,10 @@ import {
   approveEffect,
   KIND_HELP,
   KIND_LABEL,
+  LINKS_HELP,
+  LINKS_TITLE,
+  NO_LINKS,
+  linksEffect,
   MEMORY_BUDGET_CHARS,
   memoryUsage,
   proposalOrigin,
@@ -561,8 +565,15 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
   const [content, setContent] = React.useState(proposal.content)
   const [description, setDescription] = React.useState(proposal.description ?? "")
   const [busy, setBusy] = React.useState<"approve" | "reject" | null>(null)
+  const suggestions = proposal.links ?? []
+  const [linkIds, setLinkIds] = React.useState<string[]>(() => suggestions.map((link) => link.id))
   const isReverification = proposal.kind === "reverify_concept"
   const isArtifact = proposal.kind !== "memory_note" && !isReverification
+  const isConceptWrite = proposal.kind === "new_concept" || proposal.kind === "update_concept"
+
+  function toggleLink(id: string, on: boolean): void {
+    setLinkIds((current) => (on ? [...current.filter((item) => item !== id), id] : current.filter((item) => item !== id)))
+  }
 
   async function decide(action: "approve" | "reject"): Promise<void> {
     setBusy(action)
@@ -575,6 +586,7 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
                 isArtifact && description.trim() && description !== proposal.description
                   ? description.trim()
                   : undefined,
+              links: isConceptWrite && linkIds.length > 0 ? linkIds : undefined,
             }
           : undefined
       await apiFetch(`/api/brain/proposals/${encodeURIComponent(proposal.id)}`, {
@@ -647,6 +659,38 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
             <p className="text-xs text-muted-foreground">You can edit this before you approve.</p>
           </div>
         )}
+        {isConceptWrite ? (
+          <fieldset className="space-y-2 rounded-md border p-3">
+            <legend className="px-1 text-xs font-medium">{LINKS_TITLE}</legend>
+            {suggestions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{NO_LINKS}</p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">{LINKS_HELP}</p>
+                <ul className="space-y-2">
+                  {suggestions.map((link) => (
+                    <li key={link.id}>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={linkIds.includes(link.id)}
+                          onChange={(e) => toggleLink(link.id, e.target.checked)}
+                        />
+                        <span className="min-w-0 space-y-0.5">
+                          <span className="block font-medium">{link.title}</span>
+                          <span className="block text-xs text-muted-foreground">{link.reason}</span>
+                          <code className="block truncate text-xs text-muted-foreground">{link.id}</code>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">{linksEffect(linkIds.length)}</p>
+              </>
+            )}
+          </fieldset>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             onClick={() => void decide("approve")}

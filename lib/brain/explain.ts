@@ -24,6 +24,19 @@ export const KIND_HELP: Record<ProposalKind, string> = {
   reverify_concept: "Asks you to confirm that an existing knowledge concept is still correct.",
 }
 
+export const LINKS_TITLE = "Link to related notes"
+
+export const LINKS_HELP =
+  "These saved notes look related. Approve adds a link to each checked note under Related, and a link back inside that note."
+
+export const NO_LINKS = "No related notes were found in the saved knowledge."
+
+/** What Approve does to the other notes, in plain words. */
+export function linksEffect(count: number): string {
+  if (count === 0) return "No other note will change."
+  return count === 1 ? "1 other note gets a link back to this one." : `${count} other notes get a link back to this one.`
+}
+
 /** One sentence: what happens on Approve. */
 export function approveEffect(proposal: Pick<BrainProposal, "kind" | "agent" | "target">): string {
   const who = proposal.agent ? `the ${proposal.agent} agent` : "every agent"

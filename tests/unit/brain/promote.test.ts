@@ -99,4 +99,72 @@ describe("memory to concept", () => {
     expect(update.kind).toBe("update_concept")
     expect(update.concept?.verified).toBeUndefined()
   })
+
+  it("suggests related notes and links both ways only for the ones you keep", async () => {
+    for (const input of [
+      {
+        id: "crypto/portfolio-metrics",
+        title: "Portfolio metrics",
+        content: "Portfolio return and drawdown are measured weekly.",
+        tags: ["crypto"],
+      },
+      {
+        id: "crypto/exchange-fees",
+        title: "Exchange fees",
+        content: "Each exchange charges a trade fee. Fees lower the portfolio return.",
+        tags: ["crypto"],
+      },
+    ]) {
+      const queued = await proposeConcept(env.workspace, { ...input, type: "Definition" }, "assistant")
+      await decideProposal(env.workspace, queued.id, { action: "approve" })
+    }
+
+    const proposal = await proposeConcept(
+      env.workspace,
+      {
+        id: "crypto/drawdown-alerts",
+        type: "Protocol",
+        title: "Drawdown alerts",
+        content: "Send an alert when portfolio drawdown passes 20 percent. See Portfolio metrics.",
+        tags: ["crypto"],
+      },
+      "assistant"
+    )
+    const ids = proposal.links?.map((link) => link.id) ?? []
+    expect(ids[0]).toBe("crypto/portfolio-metrics")
+    expect(ids).toContain("crypto/exchange-fees")
+
+    const approved = await decideProposal(env.workspace, proposal.id, {
+      action: "approve",
+      edits: { links: ["crypto/portfolio-metrics", "crypto/not-suggested"] },
+    })
+    expect(approved.content).toContain("## Related\n- [Portfolio metrics](portfolio-metrics.md)")
+
+    const saved = await readConcept(env.workspace, "crypto/drawdown-alerts")
+    expect(saved?.body).toContain("[Portfolio metrics](portfolio-metrics.md)")
+    expect(saved?.body).not.toContain("exchange-fees")
+    const metrics = await readConcept(env.workspace, "crypto/portfolio-metrics")
+    expect(metrics?.body).toContain("## Related\n- [Drawdown alerts](drawdown-alerts.md)")
+    expect(metrics?.frontmatter.verified).toHaveLength(1)
+    const fees = await readConcept(env.workspace, "crypto/exchange-fees")
+    expect(fees?.body).not.toContain("drawdown-alerts")
+  })
+
+  it("adds no links when you approve without choosing any", async () => {
+    const first = await proposeConcept(
+      env.workspace,
+      { id: "crypto/portfolio-metrics", type: "Definition", content: "Portfolio drawdown is weekly.", tags: ["crypto"] },
+      "assistant"
+    )
+    await decideProposal(env.workspace, first.id, { action: "approve" })
+    const second = await proposeConcept(
+      env.workspace,
+      { id: "crypto/drawdown-alerts", type: "Protocol", content: "Alert on portfolio drawdown.", tags: ["crypto"] },
+      "assistant"
+    )
+    expect(second.links?.length).toBeGreaterThan(0)
+    await decideProposal(env.workspace, second.id, { action: "approve" })
+    expect((await readConcept(env.workspace, "crypto/drawdown-alerts"))?.body).not.toContain("## Related")
+    expect((await readConcept(env.workspace, "crypto/portfolio-metrics"))?.body).not.toContain("## Related")
+  })
 })

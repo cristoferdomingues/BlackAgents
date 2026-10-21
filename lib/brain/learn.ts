@@ -15,6 +15,7 @@ import {
   type ResolvedDecisionClient,
 } from "@/lib/decision/client"
 import { checkConceptStandards } from "@/lib/knowledge/checks"
+import { addRelatedLinks, relatedInputOf, suggestConceptLinks } from "@/lib/knowledge/related"
 import { KnowledgePathError, listConcepts, readConcept, writeConcept } from "@/lib/knowledge/store"
 import type { OkfConceptFrontmatter } from "@/lib/knowledge/schema"
 import { isProviderId } from "@/lib/llm/registry"
@@ -304,15 +305,28 @@ function stamp(now: Date): string {
 async function applyConcept(
   root: string,
   proposal: BrainProposal,
-  body: string,
+  draftBody: string,
   description: string | undefined,
-  now: Date
-): Promise<void> {
+  now: Date,
+  linkIds: readonly string[] = []
+): Promise<string> {
   const target = proposal.target
   const incoming = proposal.concept
   if (!target || target.type !== "concept" || !incoming) {
     throw new ProposalError("The proposal has no concept", 400)
   }
+  const suggested = new Set((proposal.links ?? []).map((link) => link.id))
+  const related = []
+  for (const id of new Set(linkIds)) {
+    if (id === target.name || !suggested.has(id)) continue
+    const concept = await readConcept(root, id).catch(() => null)
+    if (concept) related.push(concept)
+  }
+  const body = addRelatedLinks(
+    target.name,
+    draftBody,
+    related.map((concept) => ({ id: concept.id, title: concept.frontmatter.title ?? concept.id }))
+  )
   const existing = await readConcept(root, target.name)
   if (proposal.kind === "new_concept" && existing) {
     throw new ProposalError(`The concept "${target.name}" already exists`, 409)
@@ -347,12 +361,35 @@ async function applyConcept(
   }
   try {
     await writeConcept(root, { id: target.name, frontmatter: next, body })
+    const backLink = [{ id: target.name, title: next.title ?? target.name }]
+    for (const concept of related) {
+      const linked = addRelatedLinks(concept.id, concept.body, backLink)
+      if (linked !== concept.body) {
+        await writeConcept(root, { id: concept.id, frontmatter: concept.frontmatter, body: linked })
+      }
+    }
   } catch (err) {
     if (err instanceof KnowledgePathError) throw new ProposalError(err.message, 400)
     throw err
   }
   proposal.concept = next
   proposal.description = next.description
+  return body
+}
+
+/** Related saved concepts for a concept proposal. Never fails the proposal. */
+export async function conceptLinkSuggestions(
+  root: string,
+  input: { id: string; title?: string; description?: string; tags?: string[]; body: string },
+  concepts?: Awaited<ReturnType<typeof listConcepts>>
+): Promise<BrainProposal["links"]> {
+  try {
+    const saved = concepts ?? (await listConcepts(root))
+    const links = suggestConceptLinks(input, saved.map(relatedInputOf))
+    return links.length > 0 ? links : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export interface ConceptProposalInput {
@@ -383,7 +420,8 @@ export async function proposeConcept(
     if (err instanceof KnowledgePathError) return null
     throw err
   })
-  const knownIds = (await listConcepts(root)).map((concept) => concept.id)
+  const saved = await listConcepts(root)
+  const knownIds = saved.map((concept) => concept.id)
   const issues = checkConceptStandards({
     id: input.id,
     type: input.type,
@@ -417,6 +455,11 @@ export async function proposeConcept(
     generated: existing?.frontmatter.generated ?? { by: generatedBy, at: stamp(now) },
   }
   delete frontmatter.verified
+  const links = await conceptLinkSuggestions(
+    root,
+    { id: input.id, title, description: frontmatter.description, tags: frontmatter.tags, body: content },
+    saved
+  )
   const proposal: BrainProposal = {
     id: randomUUID(),
     kind: existing ? "update_concept" : "new_concept",
@@ -426,6 +469,7 @@ export async function proposeConcept(
     rationale,
     content,
     description: frontmatter.description,
+    ...(links ? { links } : {}),
     source: { kind: origin, signal: "feedback" },
     decision: { by: "feedback" },
     status: "pending",
@@ -577,6 +621,7 @@ export async function decideProposal(
   } else {
     const content = input.edits?.content ?? proposal.content
     const description = input.edits?.description ?? proposal.description
+    let applied = content
     if (proposal.kind === "memory_note") {
       await appendNote(root, proposal.agent, content, now)
     } else if (proposal.kind === "reverify_concept") {
@@ -598,7 +643,7 @@ export async function decideProposal(
         body: existing.body,
       })
     } else if (proposal.kind === "new_concept" || proposal.kind === "update_concept") {
-      await applyConcept(root, proposal, content, description, now)
+      applied = await applyConcept(root, proposal, content, description, now, input.edits?.links)
     } else {
       const target = proposal.target
       const spec = KIND_TARGET[proposal.kind]
@@ -628,7 +673,7 @@ export async function decideProposal(
       }
     }
     proposal.status = "approved"
-    proposal.content = content
+    proposal.content = applied
     proposal.description = description
   }
 

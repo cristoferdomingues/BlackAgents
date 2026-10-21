@@ -4,6 +4,8 @@ import {
   approveEffect,
   KIND_HELP,
   KIND_LABEL,
+  LINKS_HELP,
+  linksEffect,
   MEMORY_BUDGET_CHARS,
   memoryUsage,
   proposalOrigin,
@@ -14,6 +16,15 @@ import { LEARNING_ACTIONS, type BrainProposal } from "@/lib/brain/types"
 function source(overrides: Partial<BrainProposal["source"]> = {}): BrainProposal["source"] {
   return { kind: "chat", signal: "feedback", ...overrides }
 }
+
+describe("related links copy", () => {
+  it("says which other notes change", () => {
+    expect(LINKS_HELP).toContain("link back")
+    expect(linksEffect(0)).toBe("No other note will change.")
+    expect(linksEffect(1)).toBe("1 other note gets a link back to this one.")
+    expect(linksEffect(3)).toBe("3 other notes get a link back to this one.")
+  })
+})
 
 describe("labels and help", () => {
   it("has a label and help text for every proposal kind", () => {

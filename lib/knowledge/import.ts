@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import path from "node:path"
 
+import { conceptLinkSuggestions } from "../brain/learn"
 import { listProposals, saveProposal } from "../brain/store"
 import type { BrainProposal } from "../brain/types"
 import { checkDirectory, normalizeWorkspaceInput, readText, walkFiles } from "../fs-service"
@@ -89,6 +90,13 @@ export async function queueConcept(workspaceRoot: string, bundlePath: string, id
   }
 
   const now = new Date().toISOString()
+  const links = await conceptLinkSuggestions(workspaceRoot, {
+    id,
+    title: parsed.concept.frontmatter.title,
+    description: parsed.concept.frontmatter.description,
+    tags: parsed.concept.frontmatter.tags,
+    body: parsed.concept.body,
+  })
   const proposal: BrainProposal = {
     id: randomUUID(),
     kind: "new_concept",
@@ -98,6 +106,7 @@ export async function queueConcept(workspaceRoot: string, bundlePath: string, id
     rationale: "From an OKF bundle. Approve it to save the concept.",
     content: parsed.concept.body,
     description: parsed.concept.frontmatter.description,
+    ...(links ? { links } : {}),
     source: { kind: "import", signal: "feedback" },
     decision: { by: "feedback" },
     status: "pending",
@@ -186,7 +195,7 @@ export async function previewObsidianVault(workspaceRoot: string, vaultPath: str
   }
 }
 
-function queueProposal(workspaceRoot: string, draft: ObsidianDraft, now: string): BrainProposal {
+function queueProposal(draft: ObsidianDraft, now: string, links: BrainProposal["links"]): BrainProposal {
   return {
     id: randomUUID(),
     kind: "new_concept",
@@ -196,6 +205,7 @@ function queueProposal(workspaceRoot: string, draft: ObsidianDraft, now: string)
     rationale: "From an Obsidian vault. Approve it to save the concept.",
     content: draft.body,
     description: draft.description,
+    ...(links ? { links } : {}),
     source: { kind: "import", signal: "feedback" },
     decision: { by: "feedback" },
     status: "pending",
@@ -215,6 +225,7 @@ export async function queueObsidianConcepts(
   const drafts = convertObsidianNotes(await readVaultNotes(vaultPath), new Date())
   const byId = new Map(drafts.map((draft) => [draft.id, draft]))
   const saved = await savedIndex(workspaceRoot)
+  const concepts = await listConcepts(workspaceRoot)
   const queued: ObsidianQueueResult["queued"] = []
   const skipped: ObsidianQueueResult["skipped"] = []
 
@@ -246,7 +257,18 @@ export async function queueObsidianConcepts(
       }
       throw err
     }
-    const proposal = queueProposal(workspaceRoot, draft, new Date().toISOString())
+    const links = await conceptLinkSuggestions(
+      workspaceRoot,
+      {
+        id: draft.id,
+        title: draft.title,
+        description: draft.description,
+        tags: draft.frontmatter.tags,
+        body: draft.body,
+      },
+      concepts
+    )
+    const proposal = queueProposal(draft, new Date().toISOString(), links)
     await saveProposal(workspaceRoot, proposal)
     saved.pendingIds.add(draft.id)
     const source = draft.frontmatter.sources?.[0]?.resource

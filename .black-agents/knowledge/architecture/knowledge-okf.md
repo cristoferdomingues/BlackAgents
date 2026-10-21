@@ -69,6 +69,16 @@ No `verified` means unverified. Only a `human:` actor means human-reviewed.
 
 A second queue of an id that is already saved returns **409**.
 
+## Related-note links (`lib/knowledge/related.ts`)
+
+When any concept proposal is made (assistant, memory promote, meeting notes, OKF or Obsidian import), `suggestConceptLinks` compares it with the saved concepts and stores up to 5 in `proposal.links` with a plain reason.
+
+- Score: TF-IDF cosine of words (title and tags ×3, description ×2, body ×1), +0.15 per shared tag, +0.3 when one names the other's title or already links to it. Minimum 0.12. No model call.
+- Words are accent-folded, stop words (en/pt/es) dropped, lightly stemmed.
+- The Inbox shows each link with a checkbox, all checked. On approve, checked ids go in `edits.links`.
+- `applyConcept` adds them to the new note's `## Related` section and writes a link back into each related note. All inside the human approval.
+- Ids not in `proposal.links`, or no longer saved, are skipped. Notes saved before this feature get no suggestions until a new related note arrives.
+
 ## What the assistant sees
 
 `buildSystemContext()` adds one line per concept: id, title, description. Bodies are not in the prompt. The model reads one file with `fs_read` at `.black-agents/knowledge/<id>.md`.

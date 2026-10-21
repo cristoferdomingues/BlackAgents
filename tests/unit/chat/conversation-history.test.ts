@@ -239,3 +239,21 @@ describe("conversation memory in history", () => {
     expect(getConversation(restored, "c1")?.messages).toHaveLength(2)
   })
 })
+
+describe("conversation usage", () => {
+  const turns = [{ role: "user" as const, content: "hi" }]
+  const usage = { inputTokens: 10, outputTokens: 2, calls: 1, pricedCalls: 1, costUsd: 0.001, estimated: false }
+
+  it("stores the session usage and drops a broken one", () => {
+    const store = upsertConversation(EMPTY_CONVERSATIONS_STORE, { id: "c1", messages: turns, usage })
+    expect(store.conversations[0].usage).toEqual(usage)
+    const empty = upsertConversation(EMPTY_CONVERSATIONS_STORE, { id: "c2", messages: turns, usage: { ...usage, calls: 0 } })
+    expect(empty.conversations[0]).not.toHaveProperty("usage")
+    const parsed = parseConversationsStore({
+      activeId: "c1",
+      conversations: [{ ...store.conversations[0], usage: { inputTokens: -5 } }],
+    })
+    expect(parsed.conversations[0].messages).toHaveLength(1)
+    expect(parsed.conversations[0].usage).toBeUndefined()
+  })
+})

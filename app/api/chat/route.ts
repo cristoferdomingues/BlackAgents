@@ -3,6 +3,7 @@ import { resolveScopeParam } from "@/lib/artifacts/scope-request"
 import { chatRequestSchema, prepareChat, runChat } from "@/lib/assistant/chat-service"
 import { readConfig } from "@/lib/config"
 import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
+import { modelPrice } from "@/lib/llm/pricing"
 import { ProviderError } from "@/lib/llm/types"
 import { AgentContextLimitError, LoopAbortedError } from "@/lib/runtime/agent-loop"
 import { createRegistryApprover, denyAllApprover } from "@/lib/runtime/ask-user"
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
       }
     }
 
+    const price = modelPrice(chat.provider.id, chat.model, chat.credentials)
     return sseResponse(async (send, signal) => {
       send("context", {
         artifacts: chat.selection.artifacts,
@@ -62,6 +64,7 @@ export async function POST(req: Request) {
           source: chat.modelSource,
           ...(chat.modelTask ? { task: chat.modelTask } : {}),
         },
+        price: await price,
       })
       try {
         const result = await runChat(chat, {

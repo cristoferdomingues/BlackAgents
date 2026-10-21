@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { conversationMemorySchema } from "@/lib/chat/memory"
+import { modelPriceSchema, tokenUsageSchema } from "@/lib/chat/usage"
 
 /**
  * Schemas for the chat SSE events (isomorphic). The client parses each event
@@ -49,6 +50,12 @@ export const chatContextEventSchema = z.object({
   artifacts: z.array(turnArtifactSchema).default([]),
   /** A bad model object is ignored so the rest of the event still applies. */
   model: chatContextModelSchema.optional().catch(undefined),
+  /** US dollars per million tokens; `null` when unknown. A bad price counts as unknown. */
+  price: modelPriceSchema.nullable().optional().catch(null),
+})
+/** One model call finished. `usage` is missing when the provider does not report it. */
+export const chatLlmResponseEventSchema = z.object({
+  usage: tokenUsageSchema.optional().catch(undefined),
 })
 export const chatTokenEventSchema = z.object({ content: z.string() })
 export const chatThinkingEventSchema = z.object({ turn: z.number().optional(), content: z.string() })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { applyChatEvent, EMPTY_LIVE } from "@/lib/assistant/live-turn"
+import { applyChatEvent, applyUsageEvent, EMPTY_LIVE, type UsageTracker } from "@/lib/assistant/live-turn"
+import { EMPTY_SESSION_USAGE } from "@/lib/chat/usage"
 
 const approval = {
   id: "a1",
@@ -74,5 +75,27 @@ describe("memory folding status", () => {
     expect(
       applyChatEvent(folding, { event: "tool_call", data: { id: "t1", tool: "fs_read", server: "builtin" } }).folding
     ).toBe(false)
+  })
+})
+
+describe("applyUsageEvent", () => {
+  it("prices each model call with the price from the context event", () => {
+    let tracker: UsageTracker = { usage: EMPTY_SESSION_USAGE, price: null }
+    tracker = applyUsageEvent(tracker, { event: "llm_response", data: { usage: { inputTokens: 100, outputTokens: 10 } } })
+    expect(tracker.usage).toMatchObject({ calls: 1, pricedCalls: 0 })
+    tracker = applyUsageEvent(tracker, {
+      event: "context",
+      data: { artifacts: [], price: { inputPerMTok: 1_000, outputPerMTok: 2_000, source: "openrouter" } },
+    })
+    tracker = applyUsageEvent(tracker, { event: "llm_response", data: { usage: { inputTokens: 100, outputTokens: 10 } } })
+    expect(tracker.usage).toMatchObject({ calls: 2, pricedCalls: 1, inputTokens: 200, costUsd: 0.12 })
+  })
+
+  it("ignores events without usage and bad prices", () => {
+    const start = { usage: EMPTY_SESSION_USAGE, price: null }
+    expect(applyUsageEvent(start, { event: "llm_response", data: { turn: 1 } })).toBe(start)
+    expect(applyUsageEvent(start, { event: "token", data: { content: "x" } })).toBe(start)
+    const bad = applyUsageEvent(start, { event: "context", data: { artifacts: [], price: { inputPerMTok: -1 } } })
+    expect(bad.price).toBeNull()
   })
 })

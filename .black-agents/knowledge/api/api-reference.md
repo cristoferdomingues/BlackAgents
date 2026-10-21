@@ -152,7 +152,7 @@ Keys persist in `~/.black-agents/secrets.json` (written `0600`) via `lib/secrets
 
 The route reads the key **server-side** from `secrets.json`, builds the system context (standards + artifact registry + loaded artifacts + [memory notes](../architecture/second-brain.md) + protocols) and runs the [agent loop](../architecture/agent-runtime-approvals.md). Missing-credential cases return **412**; upstream provider errors keep their status.
 
-- **SSE** (`Accept: text/event-stream`): events `context`, `token`, `tool_call`, `approval_required`, `approval_resolved`, `tool_result`, `done`, `error` (see [LLM Integration](../architecture/llm-integration.md)). `context.model` is `{ provider, model, source, task? }`.
+- **SSE** (`Accept: text/event-stream`): events `context`, `token`, `llm_response`, `tool_call`, `approval_required`, `approval_resolved`, `tool_result`, `done`, `error` (see [LLM Integration](../architecture/llm-integration.md)). `context.model` is `{ provider, model, source, task? }`; `context.price` is `{ inputPerMTok, outputPerMTok, source }` or `null`; `llm_response.usage` holds token counts.
 - **JSON** (other callers): `{ content, model, toolExecutions?, artifacts }`. Gated tool calls are denied.
 - `agent` = chat as that workspace agent (its tools, MCP servers, linked artifacts, brain, and optional model/task choice). An unverified agent provider returns **412**.
 - `allowWrites` = auto-approve `write` calls for this message; `exec` still asks.

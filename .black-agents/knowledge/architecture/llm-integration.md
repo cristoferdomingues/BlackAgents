@@ -88,13 +88,18 @@ Extra sections added per turn:
 
 | Event | Payload |
 |-------|---------|
-| `context` | the artifacts loaded for this turn |
+| `context` | the artifacts loaded for this turn, the model, and `price` (USD per million tokens, or `null`) |
+| `llm_response` | one model call finished; `usage: { inputTokens, outputTokens }` when the provider reports it |
 | `token` | text (whole-turn chunks; no token-by-token streaming yet) |
 | `tool_call` / `tool_result` | each tool call and its (truncated) result |
 | `approval_required` / `approval_resolved` | a write/exec call waiting for the user |
 | `memory_folding` | older messages are being summarized before the reply |
 | `done` | final content, draft, bundle, `stoppedAtLimit`, and `memory` when older messages are covered |
 | `error` | message |
+
+## Session cost (`lib/chat/usage.ts`, `lib/llm/pricing.ts`)
+
+The server looks up a price for the chat model before the reply: the live OpenRouter `/models` price when Custom points at openrouter.ai (cached 1 h), else a small list-price table for OpenAI and Anthropic (an estimate). The browser adds each `llm_response` to the session total (`applyUsageEvent`), so a stopped or failed reply still counts. The total is saved with the conversation in localStorage and shown as a header badge ("15k tokens · ~$0.08"). Calls with no known price show "at least" or "price unknown". Jev, voice, video, and memory folds are not counted.
 
 ## Long chats (`lib/chat/memory.ts`, `lib/assistant/conversation-memory.ts`)
 

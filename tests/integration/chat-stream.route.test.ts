@@ -77,6 +77,25 @@ afterEach(async () => {
 })
 
 describe("POST /api/chat streaming", () => {
+  it("sends the model price and the tokens of each model call", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "Hi." } }],
+          usage: { prompt_tokens: 1200, completion_tokens: 80 },
+        }),
+      })
+    )
+    const { events } = parseSseFrames(await (await POST(streamRequest({}))).text())
+    expect(events[0].data).toMatchObject({ price: { inputPerMTok: 0.15, outputPerMTok: 0.6, source: "list" } })
+    const response = events.find((e) => e.event === "llm_response")
+    expect(response?.data).toMatchObject({ usage: { inputTokens: 1200, outputTokens: 80 } })
+    expect(JSON.stringify(events)).not.toContain("sk-valid")
+  })
+
   it("streams context, waits for approval, then writes and finishes", async () => {
     const fetchMock = vi
       .fn()

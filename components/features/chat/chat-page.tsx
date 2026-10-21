@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ArrowUp,
   Bot,
+  Coins,
   FileImage,
   FileText,
   FolderOpen,
@@ -87,7 +88,14 @@ import {
   chatDoneEventSchema,
   chatErrorEventSchema,
 } from "@/lib/assistant/chat-events"
-import { applyChatEvent, EMPTY_LIVE, type LiveTurn } from "@/lib/assistant/live-turn"
+import {
+  applyChatEvent,
+  applyUsageEvent,
+  EMPTY_LIVE,
+  type LiveTurn,
+  type UsageTracker,
+} from "@/lib/assistant/live-turn"
+import { EMPTY_SESSION_USAGE, usageDetail, usageLabel, type SessionUsage } from "@/lib/chat/usage"
 import type { TurnArtifact } from "@/lib/assistant/turn-artifacts"
 import type { AiSettings } from "@/lib/settings"
 import { useWorkspace } from "@/components/providers/workspace-provider"
@@ -254,6 +262,7 @@ export function ChatPage({
   const [mcpToolsCount, setMcpToolsCount] = React.useState<number>(0)
   const [turns, setTurns] = React.useState<Turn[]>([])
   const [memory, setMemory] = React.useState<ConversationMemory | null>(null)
+  const [usage, setUsage] = React.useState<SessionUsage>(EMPTY_SESSION_USAGE)
   const [conversationId, setConversationId] = React.useState(() => createConversationId())
   const [recentConversations, setRecentConversations] = React.useState<StoredConversation[]>([])
   const [historyReady, setHistoryReady] = React.useState(false)
@@ -363,6 +372,7 @@ export function ChatPage({
       if (pathChanged) {
         setTurns([])
         setMemory(null)
+        setUsage(EMPTY_SESSION_USAGE)
         setInput("")
         setFiles([])
         setLive(EMPTY_LIVE)
@@ -382,11 +392,13 @@ export function ChatPage({
       setConversationId(active.id)
       setTurns(active.messages)
       setMemory(active.memory ?? null)
+      setUsage(active.usage ?? EMPTY_SESSION_USAGE)
     } else if (pathChanged) {
       const id = createConversationId()
       setConversationId(id)
       setTurns([])
       setMemory(null)
+      setUsage(EMPTY_SESSION_USAGE)
       writeConversationsStore(path, setActiveConversation(store, id))
     } else if (previousPath === undefined) {
       writeConversationsStore(path, setActiveConversation(store, conversationIdRef.current))
@@ -564,7 +576,8 @@ export function ChatPage({
   function saveTurns(
     nextTurns: Turn[],
     scope?: { path: string; id: string },
-    nextMemory: ConversationMemory | null = memory
+    nextMemory: ConversationMemory | null = memory,
+    nextUsage: SessionUsage = usage
   ): void {
     const path = scope?.path || workspacePath
     const id = scope?.id || conversationIdRef.current
@@ -576,6 +589,7 @@ export function ChatPage({
       provider,
       model,
       memory: nextMemory,
+      usage: nextUsage,
     })
     writeConversationsStore(path, nextStore)
     if (path === workspacePathRef.current) setRecentConversations(nextStore.conversations)
@@ -695,6 +709,7 @@ export function ChatPage({
     const controller = new AbortController()
     replyAbortRef.current = controller
     let current = EMPTY_LIVE
+    let tracker: UsageTracker = { usage, price: null }
     try {
       const outcome: { final: Turn | null; error: string | null; memory: ConversationMemory | null } = {
         final: null,
@@ -734,6 +749,9 @@ export function ChatPage({
             outcome.error = parsed.success ? parsed.data.message : "The assistant failed"
             return
           }
+          const tracked = applyUsageEvent(tracker, event)
+          if (tracked.usage !== tracker.usage && stillThisChat()) setUsage(tracked.usage)
+          tracker = tracked
           current = applyChatEvent(current, event)
           if (current.model) setResolvedModel({ agentKey, model: current.model })
           setLive(current)
@@ -750,7 +768,7 @@ export function ChatPage({
         setTurns(finalized)
         setMemory(nextMemory)
       }
-      saveTurns(finalized, scope, nextMemory)
+      saveTurns(finalized, scope, nextMemory, tracker.usage)
       finished = true
     } catch (err) {
       if (controller.signal.aborted) {
@@ -764,15 +782,19 @@ export function ChatPage({
           }
           const finalized = [...next, stopped]
           if (stillThisChat()) setTurns(finalized)
-          saveTurns(finalized, scope)
-        } else if (stillThisChat()) {
-          setTurns((t) => t.slice(0, -1))
-          setInput(content)
-          setFiles(sentFiles)
+          saveTurns(finalized, scope, undefined, tracker.usage)
+        } else {
+          saveTurns(turns, scope, undefined, tracker.usage)
+          if (stillThisChat()) {
+            setTurns((t) => t.slice(0, -1))
+            setInput(content)
+            setFiles(sentFiles)
+          }
         }
         return
       }
       toast.error(err instanceof Error ? err.message : "The assistant failed")
+      saveTurns(turns, scope, undefined, tracker.usage)
       if (stillThisChat()) {
         setTurns((t) => t.slice(0, -1))
         setInput(content)
@@ -818,6 +840,7 @@ export function ChatPage({
     setConversationId(id)
     setTurns([])
     setMemory(null)
+    setUsage(EMPTY_SESSION_USAGE)
     setInput("")
     setFiles([])
     setLive(EMPTY_LIVE)
@@ -846,6 +869,7 @@ export function ChatPage({
     setConversationId(convo.id)
     setTurns(convo.messages)
     setMemory(convo.memory ?? null)
+    setUsage(convo.usage ?? EMPTY_SESSION_USAGE)
     setInput("")
     setFiles([])
     setLive(EMPTY_LIVE)
@@ -1062,6 +1086,7 @@ export function ChatPage({
               </Badge>
             </Link>
           ) : null}
+          {usage.calls > 0 ? <SessionUsageBadge usage={usage} /> : null}
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-initial">
           {historyVisible && recentConversations.length > 0 ? (
@@ -1826,5 +1851,29 @@ function AttachmentChip({
         </button>
       ) : null}
     </span>
+  )
+}
+
+function SessionUsageBadge({ usage }: { usage: SessionUsage }): React.ReactElement {
+  const label = usageLabel(usage)
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          tabIndex={0}
+          aria-label={`This chat used ${label}`}
+          className="cursor-default gap-1 text-xs font-normal tabular-nums text-muted-foreground"
+        >
+          <Coins className="h-3 w-3" aria-hidden />
+          {label}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs space-y-1">
+        {usageDetail(usage).map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </TooltipContent>
+    </Tooltip>
   )
 }

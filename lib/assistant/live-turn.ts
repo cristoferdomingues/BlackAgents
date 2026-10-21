@@ -5,6 +5,7 @@ import {
   chatApprovalResolvedEventSchema,
   chatContextEventSchema,
   type ChatContextModel,
+  chatLlmResponseEventSchema,
   chatThinkingEventSchema,
   chatTokenEventSchema,
   chatToolCallEventSchema,
@@ -12,6 +13,7 @@ import {
 } from "./chat-events"
 import { addReasoning, addToolCall, completeToolCall, type ThinkingStep } from "./thinking"
 import type { TurnArtifact } from "./turn-artifacts"
+import { addCall, type ModelPrice, type SessionUsage } from "../chat/usage"
 
 /** The assistant reply while it is still streaming. */
 export interface LiveTurn {
@@ -70,4 +72,24 @@ export function applyChatEvent(live: LiveTurn, { event, data }: SseEvent): LiveT
     default:
       return live
   }
+}
+
+/** The session total, plus the price the server sent for this reply. */
+export interface UsageTracker {
+  usage: SessionUsage
+  price: ModelPrice | null
+}
+
+/** Add one model call to the session total. Other events change nothing. */
+export function applyUsageEvent(tracker: UsageTracker, { event, data }: SseEvent): UsageTracker {
+  if (event === "context") {
+    const parsed = chatContextEventSchema.safeParse(data)
+    return parsed.success ? { ...tracker, price: parsed.data.price ?? null } : tracker
+  }
+  if (event === "llm_response") {
+    const parsed = chatLlmResponseEventSchema.safeParse(data)
+    if (!parsed.success || !parsed.data.usage) return tracker
+    return { ...tracker, usage: addCall(tracker.usage, parsed.data.usage, tracker.price) }
+  }
+  return tracker
 }

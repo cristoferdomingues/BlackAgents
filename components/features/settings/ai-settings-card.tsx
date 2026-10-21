@@ -5,6 +5,7 @@ import { Brain, CheckCircle2, Loader2, Plug, Trash2, TriangleAlert } from "lucid
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { LIMITS } from "@/lib/app-config"
 import { DEFAULT_CUTOFF_LEVELS } from "@/lib/decision/cutoffs"
 import type { AiSettings, JevOpenRouterKeySource, JevProviderPreference } from "@/lib/settings"
 import {
@@ -148,8 +149,9 @@ export function AiSettingsCard() {
   }
 
   const jev = data.settings.jev
+  const maxToolTurns = LIMITS.agentLoop.maxTurns
   const turnsValue = Number(turns)
-  const turnsValid = Number.isInteger(turnsValue) && turnsValue >= 1 && turnsValue <= 20
+  const turnsValid = Number.isInteger(turnsValue) && turnsValue >= 1 && turnsValue <= maxToolTurns
   const showTypeSafeKey = jev.provider === "auto" || jev.provider === "direct"
   const showOpenRouterKey = jev.provider === "auto" || jev.provider === "openrouter"
 
@@ -165,12 +167,12 @@ export function AiSettingsCard() {
         <CardContent className="space-y-4">
           <div className="flex items-end gap-2">
             <div className="space-y-1">
-              <Label htmlFor="max-tool-turns">Tool-call limit per reply (1–20)</Label>
+              <Label htmlFor="max-tool-turns">Tool-call limit per reply (1–{maxToolTurns})</Label>
               <Input
                 id="max-tool-turns"
                 type="number"
                 min={1}
-                max={20}
+                max={maxToolTurns}
                 value={turns}
                 onChange={(e) => setTurns(e.target.value)}
                 className="w-32"

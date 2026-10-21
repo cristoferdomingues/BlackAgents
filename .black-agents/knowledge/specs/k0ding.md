@@ -16,8 +16,8 @@ status: draft
 > [!abstract] One-liner
 > K0ding opens a code project on your computer (for example, an MCP server you are building). You see the file tree, open files to read them, and type what you want in a prompt box. The LLM reads the code and proposes changes. You see each change as a diff and approve it before any file is written.
 
-> [!important] Phase 1 and Phase 2 are built
-> You can open a folder, read files, ask the model, and approve each change. Phase 3 (run a command, git, edit by hand) and Phase 4 (rules, project notes, try the MCP server) are still a plan.
+> [!important] Phase 1, Phase 2, and Phase 3 are built
+> You can open a folder, read files, ask the model, and approve each change. You can run a command, see git changes, and edit a file by hand. Phase 4 (rules, project notes, try the MCP server) is still a plan.
 
 ## Why a new module
 

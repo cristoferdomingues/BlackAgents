@@ -3,7 +3,7 @@ import { getProvider } from "@/lib/llm/registry"
 import { getVerifiedCredentials } from "@/lib/llm/credentials"
 import { runAgentLoop, LoopAbortedError } from "@/lib/runtime/agent-loop"
 import { createApprovalPolicy } from "@/lib/runtime/approval-policy"
-import { denyAllApprover } from "@/lib/runtime/ask-user"
+import { createRegistryApprover } from "@/lib/runtime/ask-user"
 import { codingTools, type CodingBuffer } from "@/lib/runtime/tools/code"
 import type { SseSend } from "@/lib/sse"
 import { readAiSettings } from "@/lib/settings"
@@ -53,6 +53,9 @@ export async function runCodingTurn(input: {
   const buffer: CodingBuffer = { root: input.codeRoot, changes: [...input.session.changes] }
   const tools = codingTools(buffer)
   const settings = await readAiSettings()
+  const policy = createApprovalPolicy(false, false)
+  for (const key of input.session.allowedCalls) policy.allowedCalls.add(key)
+  const allowedCalls = (): string[] => [...policy.allowedCalls]
   try {
     const result = await runAgentLoop({
       provider: input.provider,
@@ -63,8 +66,17 @@ export async function runCodingTurn(input: {
       tools,
       maxTurns: settings.assistant.maxToolTurns,
       workspaceRoot: input.workspace,
-      policy: createApprovalPolicy(false, false),
-      approve: denyAllApprover,
+      policy,
+      approve: createRegistryApprover({
+        scope: { kind: "chat" },
+        signal: input.signal,
+        onRequest: (request) => {
+          input.send("approval_required", { approval: request })
+        },
+        onResolved: (request, decision) => {
+          input.send("approval_resolved", { id: request.id, approved: decision.approved })
+        },
+      }),
       signal: input.signal,
       onEvent: (event) => {
         if (event.type === "token") input.send("token", { content: event.content })
@@ -82,6 +94,7 @@ export async function runCodingTurn(input: {
       status: "review",
       messages: toStored(result.messages),
       changes: buffer.changes,
+      allowedCalls: allowedCalls(),
     })
   } catch (err) {
     const status = err instanceof LoopAbortedError ? "interrupted" : "failed"
@@ -89,6 +102,7 @@ export async function runCodingTurn(input: {
       ...input.session,
       status,
       changes: buffer.changes,
+      allowedCalls: allowedCalls(),
     }).catch(() => undefined)
     throw err
   }

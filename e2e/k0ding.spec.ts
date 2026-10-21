@@ -36,6 +36,9 @@ test("opens a code folder and reads a file", async ({ page }) => {
   await page.route("**/api/k0ding/sessions**", (route) =>
     route.fulfill({ json: { success: true, data: { session: null } } })
   )
+  await page.route("**/api/k0ding/roots/server/git**", (route) =>
+    route.fulfill({ json: { success: true, data: { git: true, paths: ["src/index.ts"] } } })
+  )
 
   await page.goto("/k0ding")
   await page.getByLabel("Path to a code folder").fill("/tmp/server")

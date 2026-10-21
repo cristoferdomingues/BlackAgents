@@ -10,6 +10,7 @@ export const K0DING_SYSTEM = [
   "Do not read or write secret files (.env, keys, .pem, .npmrc) or anything in .git.",
   "A staged file must be 1 MB or smaller. If it would be bigger, split the change.",
   "Paths are relative to the project root. Do not use .. or an absolute path.",
+  "Use shell_run to run a check such as npm test or npx tsc --noEmit. The command always runs in the project root. Do not commit, push, or change git branches.",
   "When you are done, write a short summary of what you staged. The user reviews every file before it is written.",
 ].join("\n")
 

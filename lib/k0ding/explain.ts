@@ -33,3 +33,12 @@ export const SECRET_NOTE = "This file stays on this computer. It is not sent to 
 
 export const CODING_MODEL_HELP =
   "Runs K0ding. When this is empty, K0ding uses the Assistant model."
+
+export const RUN_EFFECT = "Runs this command in the code folder. You see the output here."
+
+export const CHECK_EFFECT =
+  "After Apply all, this command runs. If it fails, the output goes back to the model."
+
+export const EDIT_EFFECT = "Saves your edit. If the file changed on disk, it is not overwritten."
+
+export const GIT_NOTE = "Git is read only here. K0ding does not commit, push, or change branches."

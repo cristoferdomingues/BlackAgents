@@ -2,8 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { GET as GIT } from "@/app/api/k0ding/roots/[id]/git/route"
 import { POST as APPLY } from "@/app/api/k0ding/sessions/[id]/apply/route"
-import { GET as FILE } from "@/app/api/k0ding/roots/[id]/file/route"
+import { GET as READ_FILE, POST as SAVE_FILE } from "@/app/api/k0ding/roots/[id]/file/route"
+import { POST as RUN } from "@/app/api/k0ding/roots/[id]/run/route"
 import { GET as TREE } from "@/app/api/k0ding/roots/[id]/tree/route"
 import { GET as ROOTS, POST as ADD } from "@/app/api/k0ding/roots/route"
 import { POST as START } from "@/app/api/k0ding/sessions/route"
@@ -46,7 +48,7 @@ describe("k0ding folders", () => {
     expect(names).toContain("src")
     expect(names).not.toContain("node_modules")
     const file = await bodyOf(
-      await FILE(new Request(`http://t/api/k0ding/roots/${id}/file?path=src/index.ts`), { params: Promise.resolve({ id }) })
+      await READ_FILE(new Request(`http://t/api/k0ding/roots/${id}/file?path=src/index.ts`), { params: Promise.resolve({ id }) })
     )
     expect(file.data?.content).toBe("export const hi = 1\n")
   })
@@ -54,7 +56,7 @@ describe("k0ding folders", () => {
   it("rejects a path that leaves the folder", async () => {
     const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
     const id = String(created.data?.id)
-    const escaped = await FILE(new Request(`http://t/api/k0ding/roots/${id}/file?path=../package.json`), {
+    const escaped = await READ_FILE(new Request(`http://t/api/k0ding/roots/${id}/file?path=../package.json`), {
       params: Promise.resolve({ id }),
     })
     expect(escaped.status).toBe(400)
@@ -141,5 +143,55 @@ describe("k0ding review", () => {
     )
     expect(applied.success).toBe(true)
     expect(await readFile(path.join(code, "src", "next.ts"), "utf8")).toBe("export const next = 2\n")
+  })
+})
+
+describe("k0ding commands and edits", () => {
+  it("runs a command in the code folder and blocks git commit", async () => {
+    const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
+    const id = String(created.data?.id)
+    const ran = await bodyOf(
+      await RUN(jsonRequest(`http://t/api/k0ding/roots/${id}/run`, "POST", { command: "node -e \"process.stdout.write('ok')\"" }), {
+        params: Promise.resolve({ id }),
+      })
+    )
+    expect(ran.success).toBe(true)
+    expect(ran.data?.stdout).toBe("ok")
+    expect(ran.data?.exitCode).toBe(0)
+    const blocked = await RUN(jsonRequest(`http://t/api/k0ding/roots/${id}/run`, "POST", { command: "git commit -m hi" }), {
+      params: Promise.resolve({ id }),
+    })
+    expect(blocked.status).toBe(400)
+    const body = await bodyOf(blocked)
+    expect(body.error).toMatch(/does not commit/)
+  })
+
+  it("refuses a save when the hash is stale", async () => {
+    const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
+    const id = String(created.data?.id)
+    const opened = await bodyOf(
+      await READ_FILE(new Request(`http://t/api/k0ding/roots/${id}/file?path=src/index.ts`), { params: Promise.resolve({ id }) })
+    )
+    const hash = String(opened.data?.hash)
+    const saved = await bodyOf(
+      await SAVE_FILE(
+        jsonRequest(`http://t/api/k0ding/roots/${id}/file`, "POST", { path: "src/index.ts", content: "export const hi = 2\n", hash }),
+        { params: Promise.resolve({ id }) }
+      )
+    )
+    expect(saved.data?.content).toBe("export const hi = 2\n")
+    const stale = await SAVE_FILE(
+      jsonRequest(`http://t/api/k0ding/roots/${id}/file`, "POST", { path: "src/index.ts", content: "export const hi = 3\n", hash }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(stale.status).toBe(409)
+  })
+
+  it("returns git status without failing when the folder is not a repo", async () => {
+    const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
+    const id = String(created.data?.id)
+    const status = await bodyOf(await GIT(new Request(`http://t/api/k0ding/roots/${id}/git`), { params: Promise.resolve({ id }) }))
+    expect(status.success).toBe(true)
+    expect(status.data?.git).toBe(false)
   })
 })

@@ -6,13 +6,17 @@ import { toast } from "sonner"
 
 import { apiFetch, ApiError } from "@/lib/api"
 import {
+  CHECK_EFFECT,
+  EDIT_EFFECT,
+  GIT_NOTE,
   K0DING_INTRO,
   K0DING_STEPS,
   K0DING_TITLE,
   OPEN_EFFECT,
   SECRET_NOTE,
 } from "@/lib/k0ding/explain"
-import type { CodeRoot, CodingSessionView, FileView } from "@/lib/k0ding/schema"
+import type { CodeRoot, CodingSessionView, CommandResult, FileView } from "@/lib/k0ding/schema"
+import type { ApprovalRequest } from "@/lib/runtime/types"
 import { streamPost, type SseEvent } from "@/lib/sse-client"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { useAssistantProvider } from "@/components/features/editor/use-assistant-provider"
@@ -37,6 +41,12 @@ type DesktopBridge = { pickDirectory?: () => Promise<string | null> }
 function desktopBridge(): DesktopBridge | undefined {
   if (typeof window === "undefined") return undefined
   return (window as Window & { blackAgentsDesktop?: DesktopBridge }).blackAgentsDesktop
+}
+
+function isApprovalEvent(data: unknown): data is { approval: ApprovalRequest } {
+  if (!data || typeof data !== "object" || !("approval" in data)) return false
+  const approval = (data as { approval?: ApprovalRequest }).approval
+  return Boolean(approval && typeof approval.id === "string" && typeof approval.summary === "string")
 }
 
 interface OpenFile {
@@ -66,6 +76,12 @@ export function K0dingPage(): React.ReactElement {
   const [activity, setActivity] = React.useState<string[]>([])
   const [live, setLive] = React.useState("")
   const [running, setRunning] = React.useState(false)
+  const [changed, setChanged] = React.useState<string[]>([])
+  const [approval, setApproval] = React.useState<ApprovalRequest | null>(null)
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState("")
+  const [gitText, setGitText] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
   const abortRef = React.useRef<AbortController | null>(null)
   const introDismissed = React.useSyncExternalStore(subscribeNoop, () => window.localStorage.getItem(INTRO_KEY) === "1", () => true)
   const [introOverride, setIntroOverride] = React.useState<boolean | null>(null)
@@ -89,9 +105,24 @@ export function K0dingPage(): React.ReactElement {
 
   React.useEffect(() => {
     if (!rootId) return
+    let cancelled = false
     apiFetch<{ session: CodingSessionView | null }>(`/api/k0ding/sessions?rootId=${rootId}`)
-      .then((data) => setSession(data.session))
-      .catch(() => setSession(null))
+      .then((data) => {
+        if (!cancelled) setSession(data.session)
+      })
+      .catch(() => {
+        if (!cancelled) setSession(null)
+      })
+    apiFetch<{ paths: string[] }>(`/api/k0ding/roots/${rootId}/git`)
+      .then((data) => {
+        if (!cancelled) setChanged(data.paths)
+      })
+      .catch(() => {
+        if (!cancelled) setChanged([])
+      })
+    return () => {
+      cancelled = true
+    }
   }, [rootId])
 
   React.useEffect(() => {
@@ -173,6 +204,8 @@ export function K0dingPage(): React.ReactElement {
   }
 
   function openFile(path: string): void {
+    setEditing(false)
+    setGitText(null)
     setActivePath(path)
     setFiles((current) => (current.some((file) => file.path === path) ? current : [...current, { path, view: null, error: null }]))
     if (!rootId) return
@@ -234,11 +267,82 @@ export function K0dingPage(): React.ReactElement {
     if (event.event === "error" && event.data && typeof event.data === "object" && "message" in event.data) {
       toast.error(String((event.data as { message?: unknown }).message ?? "The model could not run"))
     }
+    if (event.event === "approval_required" && isApprovalEvent(event.data)) {
+      setApproval(event.data.approval)
+    }
+    if (event.event === "approval_resolved") setApproval(null)
     if (event.event === "done" && event.data && typeof event.data === "object" && "session" in event.data) {
       const next = (event.data as { session: CodingSessionView }).session
       setSession(next)
       setActivity([])
       setLive("")
+      setApproval(null)
+    }
+  }
+
+  async function runCommand(command: string): Promise<CommandResult | null> {
+    if (!rootId) return null
+    try {
+      return await apiFetch<CommandResult>(`/api/k0ding/roots/${rootId}/run`, {
+        method: "POST",
+        body: JSON.stringify({ command }),
+      })
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not run that command")
+      return null
+    }
+  }
+
+  async function afterApply(next: CodingSessionView, all: boolean): Promise<void> {
+    if (rootId) {
+      apiFetch<{ paths: string[] }>(`/api/k0ding/roots/${rootId}/git`)
+        .then((data) => setChanged(data.paths))
+        .catch(() => setChanged([]))
+    }
+    if (!all || !rootId) return
+    const root = roots?.find((item) => item.id === rootId)
+    if (!root?.checkCommand) return
+    if (next.changes.some((change) => change.state === "pending" || change.state === "conflict")) return
+    const result = await runCommand(root.checkCommand)
+    if (!result) return
+    if (result.exitCode === 0) {
+      toast.success("Check command passed")
+      return
+    }
+    const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 12_000)
+    toast.error("The check command failed. Asking the model to fix it.")
+    void send(`The check command failed:\n${root.checkCommand}\n\n${output}`)
+  }
+
+  async function saveEdit(): Promise<void> {
+    if (!rootId || !active?.view?.hash) return
+    setSaving(true)
+    try {
+      const view = await apiFetch<FileView>(`/api/k0ding/roots/${rootId}/file`, {
+        method: "POST",
+        body: JSON.stringify({ path: active.path, content: draft, hash: active.view.hash }),
+      })
+      setFiles((current) => current.map((file) => (file.path === active.path ? { path: active.path, view, error: null } : file)))
+      setEditing(false)
+      toast.success("File saved")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not save the file")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function showGitDiff(): Promise<void> {
+    if (!rootId || !activePath) return
+    if (gitText !== null) {
+      setGitText(null)
+      return
+    }
+    try {
+      const data = await apiFetch<{ diff: string }>(`/api/k0ding/roots/${rootId}/git?path=${encodeURIComponent(activePath)}`)
+      setGitText(data.diff)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not read the git diff")
     }
   }
 
@@ -333,6 +437,12 @@ export function K0dingPage(): React.ReactElement {
                 </Button>
               ) : null}
               <p className="text-[11px] text-muted-foreground">{OPEN_EFFECT}</p>
+              {rootId && roots?.find((item) => item.id === rootId) ? (
+                <CheckCommand
+                  root={(roots ?? []).find((item) => item.id === rootId) as CodeRoot}
+                  onSaved={(saved) => setRoots((current) => (current ?? []).map((item) => (item.id === saved.id ? saved : item)))}
+                />
+              ) : null}
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
@@ -376,7 +486,7 @@ export function K0dingPage(): React.ReactElement {
                   ))}
                 </ul>
               ) : rootId ? (
-                <FileTree key={`${rootId}:${showHidden ? "all" : "clean"}`} rootId={rootId} showHidden={showHidden} activePath={activePath} onOpen={openFile} />
+                <FileTree key={`${rootId}:${showHidden ? "all" : "clean"}`} rootId={rootId} showHidden={showHidden} activePath={activePath} changed={changed} onOpen={openFile} />
               ) : null}
             </div>
           </aside>
@@ -399,6 +509,16 @@ export function K0dingPage(): React.ReactElement {
                   Pin
                 </Button>
               ) : null}
+              {active?.view?.content !== null && active?.view ? (
+                editing ? (
+                  <Button size="sm" disabled={saving} onClick={() => void saveEdit()}>Save</Button>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={() => { setDraft(active.view?.content ?? ""); setEditing(true); setGitText(null) }}>Edit</Button>
+                )
+              ) : null}
+              {active ? (
+                <Button size="sm" variant="ghost" onClick={() => void showGitDiff()}>{gitText !== null ? "Code" : "Git diff"}</Button>
+              ) : null}
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               {!active ? (
@@ -412,8 +532,19 @@ export function K0dingPage(): React.ReactElement {
               ) : (
                 <div className="flex h-full min-h-0 flex-col">
                   {active.view.secret ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{SECRET_NOTE}</p> : null}
+                  {editing ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{EDIT_EFFECT}</p> : null}
+                  {gitText !== null ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{GIT_NOTE}</p> : null}
                   <div className="min-h-0 flex-1">
-                    <CodeView path={active.path} content={active.view.content ?? ""} />
+                    {gitText !== null ? (
+                      <pre className="h-full overflow-auto p-3 text-xs">{gitText}</pre>
+                    ) : (
+                      <CodeView
+                        path={active.path}
+                        content={editing ? draft : active.view.content ?? ""}
+                        editable={editing}
+                        onChange={setDraft}
+                      />
+                    )}
                   </div>
                 </div>
               )}
@@ -433,6 +564,9 @@ export function K0dingPage(): React.ReactElement {
                 onSend={(prompt) => void send(prompt)}
                 onStop={() => abortRef.current?.abort()}
                 onSession={setSession}
+                onApplied={(next, all) => void afterApply(next, all)}
+                onRun={runCommand}
+                approval={approval}
               />
             ) : (
               <p className="p-4 text-sm text-muted-foreground">Open a folder before you ask the model to change code.</p>
@@ -472,6 +606,38 @@ export function K0dingPage(): React.ReactElement {
           </ul>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function CheckCommand({ root, onSaved }: { root: CodeRoot; onSaved: (root: CodeRoot) => void }): React.ReactElement {
+  const [value, setValue] = React.useState(root.checkCommand ?? "")
+
+  async function save(): Promise<void> {
+    const next = value.trim()
+    if (next === (root.checkCommand ?? "")) return
+    try {
+      const saved = await apiFetch<CodeRoot>(`/api/k0ding/roots/${root.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ checkCommand: next.length > 0 ? next : null }),
+      })
+      onSaved(saved)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not save the check command")
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <Input
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={() => void save()}
+        placeholder="npm run type-check"
+        aria-label="Check command"
+        className="h-8"
+      />
+      <p className="text-[11px] text-muted-foreground">{CHECK_EFFECT}</p>
     </div>
   )
 }

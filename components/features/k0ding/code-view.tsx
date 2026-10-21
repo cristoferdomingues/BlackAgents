@@ -26,19 +26,30 @@ function languageFor(filePath: string): Extension[] {
   return []
 }
 
-/** Read-only code view. The user edits only by approving a staged change. */
-export function CodeView({ path, content }: { path: string; content: string }): React.ReactElement {
+/** Code view. Editing is off until the user presses Edit. */
+export function CodeView({
+  path,
+  content,
+  editable = false,
+  onChange,
+}: {
+  path: string
+  content: string
+  editable?: boolean
+  onChange?: (value: string) => void
+}): React.ReactElement {
   const { resolvedTheme } = useTheme()
   return (
     <div className="h-full min-h-0">
       <CodeMirror
         value={content}
-        editable={false}
-        readOnly
+        editable={editable}
+        readOnly={!editable}
+        onChange={onChange}
         theme={resolvedTheme === "light" ? githubLight : githubDark}
         extensions={languageFor(path)}
         height="100%"
-        basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+        basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: editable }}
       />
     </div>
   )

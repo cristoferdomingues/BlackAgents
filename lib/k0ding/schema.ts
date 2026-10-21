@@ -16,6 +16,8 @@ export const codeRootSchema = z.object({
   path: z.string().min(1).max(1_000),
   label: z.string().trim().min(1).max(K0DING_LIMITS.maxLabelChars),
   hidden: z.array(z.string().trim().min(1).max(80)).max(K0DING_LIMITS.maxHidden).default([]),
+  /** Runs after Apply all. When it fails, the output goes back to the model. */
+  checkCommand: z.string().trim().min(1).max(500).optional(),
 })
 export type CodeRoot = z.infer<typeof codeRootSchema>
 
@@ -32,8 +34,12 @@ export const patchRootSchema = z
   .object({
     label: z.string().trim().min(1).max(K0DING_LIMITS.maxLabelChars).optional(),
     hidden: z.array(z.string().trim().min(1).max(80)).max(K0DING_LIMITS.maxHidden).optional(),
+    checkCommand: z.string().trim().min(1).max(500).nullable().optional(),
   })
-  .refine((value) => value.label !== undefined || value.hidden !== undefined, "Nothing to update")
+  .refine(
+    (value) => value.label !== undefined || value.hidden !== undefined || value.checkCommand !== undefined,
+    "Nothing to update"
+  )
 
 export const treeQuerySchema = z.object({
   dir: z.string().max(500).default(""),
@@ -124,6 +130,8 @@ export const codingSessionSchema = z.object({
   model: codingModelSchema,
   messages: z.array(storedMessageSchema).max(K0DING_LIMITS.maxSessionMessages),
   changes: z.array(stagedChangeSchema).max(100),
+  /** Exact shell calls the user allowed for the rest of this session. */
+  allowedCalls: z.array(z.string().min(1).max(2_000)).max(50).default([]),
 })
 export type CodingSession = z.infer<typeof codingSessionSchema>
 
@@ -153,6 +161,25 @@ export const followUpSchema = z.object({
 export const pathsBodySchema = z.object({
   paths: z.array(z.string().trim().min(1).max(500)).min(1).max(100),
 })
+
+export const runCommandSchema = z.object({
+  command: z.string().trim().min(1).max(8_000),
+})
+
+export const saveFileSchema = z.object({
+  path: z.string().trim().min(1).max(500),
+  content: z.string().max(K0DING_LIMITS.maxFileBytes),
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+})
+
+export const commandResultSchema = z.object({
+  exitCode: z.number().int().nullable(),
+  stdout: z.string(),
+  stderr: z.string(),
+  timedOut: z.boolean(),
+  truncated: z.boolean(),
+})
+export type CommandResult = z.infer<typeof commandResultSchema>
 
 export function sessionView(session: CodingSession): CodingSessionView {
   const summary =

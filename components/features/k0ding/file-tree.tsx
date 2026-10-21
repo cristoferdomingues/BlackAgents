@@ -12,15 +12,21 @@ interface FileTreeProps {
   rootId: string
   showHidden: boolean
   activePath: string | null
+  changed?: readonly string[]
   onOpen: (path: string) => void
 }
 
-export function FileTree({ rootId, showHidden, activePath, onOpen }: FileTreeProps): React.ReactElement {
+export function FileTree({ rootId, showHidden, activePath, changed = [], onOpen }: FileTreeProps): React.ReactElement {
   return (
     <div className="p-1">
-      <TreeDir rootId={rootId} dir="" showHidden={showHidden} activePath={activePath} onOpen={onOpen} depth={0} />
+      <TreeDir rootId={rootId} dir="" showHidden={showHidden} activePath={activePath} changed={changed} onOpen={onOpen} depth={0} />
     </div>
   )
+}
+
+function isChanged(path: string, kind: "dir" | "file", changed: readonly string[]): boolean {
+  if (kind === "file") return changed.includes(path)
+  return changed.some((item) => item === path || item.startsWith(`${path}/`))
 }
 
 function TreeDir({
@@ -28,6 +34,7 @@ function TreeDir({
   dir,
   showHidden,
   activePath,
+  changed = [],
   onOpen,
   depth,
 }: FileTreeProps & { dir: string; depth: number }): React.ReactElement {
@@ -76,6 +83,9 @@ function TreeDir({
                   <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-90")} />
                   <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{entry.name}</span>
+                  {isChanged(entry.path, "dir", changed) ? (
+                    <span aria-hidden className="ml-auto h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  ) : null}
                 </Button>
                 {expanded ? (
                   <TreeDir
@@ -83,6 +93,7 @@ function TreeDir({
                     dir={entry.path}
                     showHidden={showHidden}
                     activePath={activePath}
+                    changed={changed}
                     onOpen={onOpen}
                     depth={depth + 1}
                   />
@@ -101,6 +112,9 @@ function TreeDir({
               >
                 {entry.secret ? <Lock className="h-3.5 w-3.5 shrink-0" /> : <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{entry.name}</span>
+                {isChanged(entry.path, "file", changed) ? (
+                  <span aria-hidden className="ml-auto h-2 w-2 shrink-0 rounded-full bg-primary" />
+                ) : null}
               </Button>
             )}
           </li>

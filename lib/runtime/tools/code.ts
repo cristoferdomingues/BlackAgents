@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { pathExists, readText, statFile } from "@/lib/fs-service"
+import { runCodeCommand } from "@/lib/k0ding/shell"
 import {
   dropPending,
   pendingChange,
@@ -17,6 +18,7 @@ import { isSecretPath } from "@/lib/k0ding/secrets"
 
 import type { RuntimeTool, ToolOutcome } from "../types"
 import { toolArgsError } from "./args"
+import { SHELL_DEFAULT_TIMEOUT_MS, SHELL_MAX_TIMEOUT_MS } from "./shell"
 
 /** Mutable change set for one K0ding turn. Tools stage here and never write. */
 export interface CodingBuffer {
@@ -51,6 +53,10 @@ const editArgs = z.object({
   newText: z.string().max(K0DING_LIMITS.maxFileBytes),
 })
 const deleteArgs = z.object({ path: relPath })
+const shellToolArgs = z.object({
+  command: z.string().trim().min(1).max(8_000),
+  timeoutMs: z.number().int().min(1_000).max(SHELL_MAX_TIMEOUT_MS).optional(),
+})
 
 function invalid(error: z.ZodError): ToolOutcome {
   return { error: toolArgsError(error) }
@@ -257,6 +263,43 @@ export function codingTools(buffer: CodingBuffer): RuntimeTool[] {
           return { result: `Staged delete of ${parsed.data.path}. Nothing is removed until the user applies it.` }
         } catch (err) {
           return { error: err instanceof Error ? err.message : "Could not stage that delete" }
+        }
+      },
+    }),
+    tool({
+      name: "shell_run",
+      risk: "exec",
+      timeoutMs: SHELL_MAX_TIMEOUT_MS + 5_000,
+      description:
+        "Run a command in the code folder and return its exit code, stdout, and stderr. " +
+        "The working directory is always the project root. Do not start dev servers or watch mode. " +
+        "Git commit, push, and branch changes are refused. The user approves every new command.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "One command line, for example npm test" },
+          timeoutMs: { type: "number", description: `Default ${SHELL_DEFAULT_TIMEOUT_MS}` },
+        },
+        required: ["command"],
+      },
+      summarize: (args) => `$ ${String(args.command ?? "")}`,
+      async execute(args, ctx): Promise<ToolOutcome> {
+        const parsed = shellToolArgs.safeParse(args)
+        if (!parsed.success) return invalid(parsed.error)
+        try {
+          const result = await runCodeCommand(root.path, parsed.data.command, {
+            ...(parsed.data.timeoutMs ? { timeoutMs: parsed.data.timeoutMs } : {}),
+            ...(ctx.signal ? { signal: ctx.signal } : {}),
+          })
+          const error =
+            result.exitCode === 0
+              ? undefined
+              : result.timedOut
+                ? "Command timed out"
+                : `Command exited with code ${String(result.exitCode)}`
+          return { result, ...(error ? { error } : {}) }
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : "Could not run that command" }
         }
       },
     }),

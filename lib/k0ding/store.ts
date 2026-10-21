@@ -127,11 +127,14 @@ export async function updateCodeRoot(
   const index = roots.findIndex((root) => root.id === id)
   const current = roots[index]
   if (!current || index < 0) throw new K0dingError("Code folder not found", 404)
-  const next = codeRootSchema.parse({
+  const nextInput = {
     ...current,
     ...(parsed.data.label ? { label: parsed.data.label } : {}),
     ...(parsed.data.hidden ? { hidden: parsed.data.hidden } : {}),
-  })
+  }
+  if (parsed.data.checkCommand === null) delete nextInput.checkCommand
+  else if (parsed.data.checkCommand) nextInput.checkCommand = parsed.data.checkCommand
+  const next = codeRootSchema.parse(nextInput)
   const copy = [...roots]
   copy[index] = next
   await writeRoots(workspace, scope, copy)

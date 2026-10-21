@@ -1,8 +1,8 @@
 import { composeArtifactPrompt, linkedArtifacts } from "@/lib/assistant/turn-artifacts"
 import { withBuiltinArtifacts } from "@/lib/artifacts/builtin"
 import type { Artifact } from "@/lib/artifacts/types"
-import type { ResolvedDecisionClient } from "@/lib/decision/client"
-import { evaluateStepGate, STEP_GATE_MIN_CONFIDENCE } from "@/lib/decision/classify-workflow"
+import { cutoffFor, recordDecision, type ResolvedDecisionClient } from "@/lib/decision/client"
+import { evaluateStepGate } from "@/lib/decision/classify-workflow"
 import { looksLikeAuthFailure } from "@/lib/browser/classify"
 import { parseFileMentions, resolveWorkspaceFiles, type WorkspaceFile } from "@/lib/files"
 import { buildAgentPersonaContext, loadKnowledgeContext } from "@/lib/llm/context"
@@ -773,8 +773,19 @@ async function decideGate(params: {
     output: params.step.output ?? "",
     isLastStep: params.isLast,
   })
-  if (decision.kind === "decided" && decision.confidence >= STEP_GATE_MIN_CONFIDENCE) {
-    return { decision: decision.label, by: "jev", confidence: decision.confidence }
+  const cutoff = cutoffFor(params.resolved, "stepGate")
+  if (decision.kind === "decided") {
+    const acted = decision.confidence >= cutoff
+    recordDecision(params.resolved, {
+      kind: "stepGate",
+      choice: decision.label,
+      score: decision.confidence,
+      cutoff,
+      outcome: acted ? "acted" : "below",
+    })
+    if (acted) return { decision: decision.label, by: "jev", confidence: decision.confidence }
+  } else if (decision.kind === "error") {
+    recordDecision(params.resolved, { kind: "stepGate", choice: "error", score: null, cutoff, outcome: "error" })
   }
   return { decision: "continue", by: "default" }
 }

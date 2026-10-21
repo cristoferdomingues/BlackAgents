@@ -4,6 +4,7 @@ import { z } from "zod"
 
 import { LIMITS } from "./app-config"
 import { configDir } from "./config"
+import { DEFAULT_CUTOFF_LEVELS, jevCutoffLevelSchema } from "./decision/cutoffs"
 import { providerIdSchema } from "./llm/provider-id"
 
 /**
@@ -17,6 +18,22 @@ export type JevProviderPreference = z.infer<typeof jevProviderPreferenceSchema>
 /** Where Jev gets its OpenRouter key when the OpenRouter path is used. */
 export const jevOpenRouterKeySourceSchema = z.enum(["reuse", "dedicated"])
 export type JevOpenRouterKeySource = z.infer<typeof jevOpenRouterKeySourceSchema>
+
+const jevCutoffLevelsSchema = z.object({
+  artifactRouting: jevCutoffLevelSchema.default(DEFAULT_CUTOFF_LEVELS.artifactRouting),
+  skillSuggest: jevCutoffLevelSchema.default(DEFAULT_CUTOFF_LEVELS.skillSuggest),
+  stepGate: jevCutoffLevelSchema.default(DEFAULT_CUTOFF_LEVELS.stepGate),
+  learning: jevCutoffLevelSchema.default(DEFAULT_CUTOFF_LEVELS.learning),
+})
+
+const jevCutoffLevelsPatchSchema = z
+  .object({
+    artifactRouting: jevCutoffLevelSchema,
+    skillSuggest: jevCutoffLevelSchema,
+    stepGate: jevCutoffLevelSchema,
+    learning: jevCutoffLevelSchema,
+  })
+  .partial()
 
 const taskModelIdSchema = z.string().trim().min(1, "Choose a model").max(200)
 
@@ -43,6 +60,8 @@ export const aiSettingsSchema = z.object({
        * Default `reuse` preserves the previous “share Custom OpenRouter key” behavior.
        */
       openRouterKeySource: jevOpenRouterKeySourceSchema.default("reuse"),
+      /** How sure Jev must be before the app uses its answer, per decision. */
+      cutoffs: jevCutoffLevelsSchema.default({}),
     })
     .default({}),
   /**
@@ -86,6 +105,7 @@ export const aiSettingsPatchSchema = z.object({
       enabled: z.boolean(),
       provider: jevProviderPreferenceSchema,
       openRouterKeySource: jevOpenRouterKeySourceSchema,
+      cutoffs: jevCutoffLevelsPatchSchema,
     })
     .partial()
     .optional(),
@@ -150,7 +170,7 @@ export async function updateAiSettings(patch: AiSettingsPatch): Promise<AiSettin
   const current = await readAiSettings()
   const next = aiSettingsSchema.parse({
     assistant: { ...current.assistant, ...patch.assistant },
-    jev: { ...current.jev, ...patch.jev },
+    jev: { ...current.jev, ...patch.jev, cutoffs: { ...current.jev.cutoffs, ...patch.jev?.cutoffs } },
     models: mergeModels(current.models, patch.models),
     browser: { ...current.browser, ...patch.browser },
   })

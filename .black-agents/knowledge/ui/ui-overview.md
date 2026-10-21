@@ -52,7 +52,7 @@ The UI follows the [BlackLionFi](../overview/tech-stack.md) component convention
 | workflows | `WorkflowListPage`, `WorkflowBuilder`, `RunView`, `RunStatus`, `PendingApprovalsPanel` — see [Workflows](../architecture/workflows.md) |
 | brain | `BrainPage` — Inbox / Memory / Knowledge / History — see [Second Brain](../architecture/second-brain.md) and [Knowledge (OKF)](../architecture/knowledge-okf.md) |
 | providers | `ProvidersPage` — per-provider API-key management (configured badge + last-4), custom base URL |
-| settings | `SettingsPage` — workspaces (add, set-active, remove); **AI** tab (`AiSettingsCard`: max tool turns, Jev, task models); **MCP** tab (stdio / HTTP / SSE, header list with secret promotion, `McpTrustSelect`); **Browser** tab (`BrowserAutomationCard`: Playwright MCP, record/save, daily bind, **Update flows on heal**, flow secrets — see [Browser Automation](../specs/browser-automation.md)) |
+| settings | `SettingsPage` — workspaces (add, set-active, remove); **AI** tab (`AiSettingsCard`: max tool turns, Jev, `JevDecisionsCard` levels + recent decisions, task models); **MCP** tab (stdio / HTTP / SSE, header list with secret promotion, `McpTrustSelect`); **Browser** tab (`BrowserAutomationCard`: Playwright MCP, record/save, daily bind, **Update flows on heal**, flow secrets — see [Browser Automation](../specs/browser-automation.md)) |
 
 ## The Editor
 

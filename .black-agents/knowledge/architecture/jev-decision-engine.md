@@ -38,19 +38,25 @@ verified:
 
 - Every `evaluate*` function **never throws**. It returns `unavailable` | `error` | a decided result.
 - Background calls use a 2 s timeout and no retries. Skill suggest and each trigger probe use **3.5 s** and no retries, because the user is waiting on them.
-- Act on a routing label only at confidence **≥ 0.85**. A skill pick counts only at **≥ 0.80**.
-- Skip work only at confidence **≥ 0.95** and `noul ≤ 0.05`.
+- Four decisions use a **level** the user picks in **Settings → AI → Jev decisions**: Careful (0.90), Balanced (0.85, default), or Eager (0.70). They live in `settings.json` as `jev.cutoffs` (`artifactRouting`, `skillSuggest`, `stepGate`, `learning`). Levels and values are in `lib/decision/cutoffs.ts`; callers read them with `cutoffFor(resolved, kind)`.
+- Skip work only at confidence **≥ 0.95** and `noul ≤ 0.05`. This one is fixed.
+
+## Decision Log
+
+Each real Jev call is recorded with `recordDecision(resolved, …)`: the kind, Jev's answer label, the score, the level used, and the outcome (`acted`, `below`, `pass`, `error`). It never holds chat text. Only `loadDecisionClient()` attaches the file sink, so tests with `fakeJev` write nothing. Skill trigger probes are not recorded.
+
+The log is `~/.black-agents/jev-decisions.json`, capped at 200 entries (oldest drop first). `GET /api/settings/ai/jev-decisions` lists it newest first; `DELETE` empties it. The Settings screen shows, for each level, how many recent answers it would use.
 
 ## Where Jev Decides
 
 | Decision | File | Question | Acts when |
 |----------|------|----------|-----------|
-| Artifacts for a chat turn | `classify-artifacts.ts` | pick one of ≤ 40 candidates | ≥ 0.85, only if the user did not mention any |
-| Workflow step gate | `classify-workflow.ts` | `continue` / `retry` / `stop` | ≥ 0.85, else continue |
+| Artifacts for a chat turn | `classify-artifacts.ts` | pick one of ≤ 40 candidates | level (default 0.85), only if the user did not mention any |
+| Workflow step gate | `classify-workflow.ts` | `continue` / `retry` / `stop` | level (default 0.85), else continue |
 | Schedule preflight | `classify-workflow.ts` | `skip` / `run` + "new work?" noul | skip only at ≥ 0.95 and noul ≤ 0.05 |
-| What to learn | `classify-learning.ts` | one of 6 actions + importance score 0–3 | ≥ 0.85 and importance ≥ 2 |
+| What to learn | `classify-learning.ts` | one of 6 actions + importance score 0–3 | level (default 0.85) and importance ≥ 2 |
 | Brain notes relevance | `classify-learning.ts` | one noul per note (≤ 12) | noul ≥ 0.5 |
-| Which skill fits a task | `skill-suggest.ts` | one of ≤ 40 skills, or `NONE` | ≥ 0.80, else no skill |
+| Which skill fits a task | `skill-suggest.ts` | one of ≤ 40 skills, or `NONE` | level (default 0.85), else no skill |
 | Is this skill description safe? | `skill-suggest.ts` | the same choice, once per probe | see below |
 
 ## Artifact Selection per Chat Turn (`lib/assistant/turn-artifacts.ts`)
@@ -66,7 +72,7 @@ The chat shows them as "Context:" badges (`mention` / `auto` / `linked`).
 
 Jev only reads the **description**. A good one says what the skill does, then **Use when …** with words a person would type.
 
-**Suggest** (`POST /api/skills/suggest`) asks which saved skill fits one task. Labels are `S0`… plus `NONE`. A weak match under 0.80, or `NONE`, means no skill. The Skills page box is **Which skill fits?**
+**Suggest** (`POST /api/skills/suggest`) asks which saved skill fits one task. Labels are `S0`… plus `NONE`. A match under the skill level, or `NONE`, means no skill. The Skills page box is **Which skill fits?**
 
 **Check trigger** (`POST /api/skills/eval`) tests one skill, including a draft that is not saved yet. The draft replaces a saved skill of the same name. Default probes:
 

@@ -29,7 +29,7 @@ import type { ResolvedDecisionClient } from "@/lib/decision/client"
 import { newRun } from "@/lib/workflows/executor"
 import { workflowSchema } from "@/lib/workflows/schema"
 
-import { choiceAnswer, fakeJev } from "../../helpers/jev"
+import { choiceAnswer, fakeJev, loggedJev } from "../../helpers/jev"
 import { scriptedProvider } from "../../helpers/runtime"
 import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
 
@@ -148,6 +148,25 @@ describe("processSignal", () => {
     const [proposal] = await listProposals(env.workspace)
     expect(proposal).toMatchObject({ kind: "memory_note", agent: "coder", status: "pending", decision: { by: "feedback" } })
     expect(d.provider.requests[0].messages[0].content).toContain("We use pnpm, not npm")
+  })
+
+  it("records learning answers against the user's level", async () => {
+    const answer = (action: string, confidence: number, importance: number, cutoff?: number) =>
+      loggedJev(
+        { action: choiceAnswer(action, confidence), importance: { type: "score", score: importance, confidence: 0.9, probabilities: {} } },
+        cutoff === undefined ? undefined : { learning: cutoff }
+      )
+    const unimportant = answer("memory_note", 0.95, 1)
+    await processSignal(env.workspace, signal(), deps("", unimportant))
+    expect(unimportant.records[0]).toMatchObject({ kind: "learning", outcome: "pass", choice: "memory_note (importance 1)" })
+
+    const unsure = answer("new_rule", 0.88, 3, 0.9)
+    expect(await processSignal(env.workspace, signal(), deps("", unsure))).toMatchObject({ kind: "recorded" })
+    expect(unsure.records[0]).toMatchObject({ outcome: "below", score: 0.88, cutoff: 0.9 })
+
+    const failing = loggedJev(new Error("down"))
+    await processSignal(env.workspace, signal({ rating: "up" }), deps("", failing))
+    expect(failing.records[0]).toMatchObject({ kind: "learning", outcome: "error", score: null })
   })
 
   it("follows Jev: skip unimportant, draft important", async () => {

@@ -8,8 +8,6 @@ import {
   type ResolvedDecisionClient,
 } from "./client"
 
-/** Apply a Jev pick only when Jev is at least this sure. */
-export const ARTIFACT_ROUTING_MIN_CONFIDENCE = 0.85
 /** Most artifacts offered to Jev in one call. */
 export const MAX_ROUTING_CANDIDATES = 40
 const NONE_LABEL = "NONE"

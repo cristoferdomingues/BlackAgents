@@ -8,8 +8,7 @@ import {
   type ResolvedDecisionClient,
 } from "./client"
 
-/** Act on a learning decision only at this confidence and importance. */
-export const LEARNING_MIN_CONFIDENCE = 0.85
+/** Act on a learning decision only at this importance (the confidence cutoff is a user setting). */
 export const LEARNING_MIN_IMPORTANCE = 2
 /** A note is relevant to a task when its noul is at least this. */
 export const NOTE_RELEVANCE_MIN_NOUL = 0.5

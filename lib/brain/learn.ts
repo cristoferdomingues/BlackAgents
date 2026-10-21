@@ -7,12 +7,13 @@ import { nameSchema } from "@/lib/artifacts/schemas"
 import { ArtifactStoreError, createArtifact, updateArtifact } from "@/lib/artifacts/store"
 import type { Artifact } from "@/lib/artifacts/types"
 import { linkedArtifacts } from "@/lib/assistant/turn-artifacts"
+import { evaluateLearning, LEARNING_MIN_IMPORTANCE } from "@/lib/decision/classify-learning"
 import {
-  evaluateLearning,
-  LEARNING_MIN_CONFIDENCE,
-  LEARNING_MIN_IMPORTANCE,
-} from "@/lib/decision/classify-learning"
-import { loadDecisionClient, type ResolvedDecisionClient } from "@/lib/decision/client"
+  cutoffFor,
+  loadDecisionClient,
+  recordDecision,
+  type ResolvedDecisionClient,
+} from "@/lib/decision/client"
 import { checkConceptStandards } from "@/lib/knowledge/checks"
 import { KnowledgePathError, listConcepts, readConcept, writeConcept } from "@/lib/knowledge/store"
 import type { OkfConceptFrontmatter } from "@/lib/knowledge/schema"
@@ -197,12 +198,21 @@ export async function processSignal(
     skills: all.filter((a) => a.type === "skill").map((a) => a.name),
     rules: all.filter((a) => a.type === "rule").map((a) => a.name),
   })
+  const cutoff = cutoffFor(resolved, "learning")
+  if (learning.kind === "error") {
+    recordDecision(resolved, { kind: "learning", choice: "error", score: null, cutoff, outcome: "error" })
+  }
   if (learning.kind === "decided") {
-    if (
-      learning.action === "nothing" ||
-      learning.confidence < LEARNING_MIN_CONFIDENCE ||
-      learning.importance < LEARNING_MIN_IMPORTANCE
-    ) {
+    const matters = learning.action !== "nothing" && learning.importance >= LEARNING_MIN_IMPORTANCE
+    const acted = matters && learning.confidence >= cutoff
+    recordDecision(resolved, {
+      kind: "learning",
+      choice: learning.action === "nothing" ? "nothing" : `${learning.action} (importance ${learning.importance})`,
+      score: learning.confidence,
+      cutoff,
+      outcome: acted ? "acted" : matters ? "below" : "pass",
+    })
+    if (!acted) {
       return recorded(root, signal, "Jev found nothing important to keep", now)
     }
     action = learning.action

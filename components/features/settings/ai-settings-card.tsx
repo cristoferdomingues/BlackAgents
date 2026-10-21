@@ -5,6 +5,7 @@ import { Brain, CheckCircle2, Loader2, Plug, Trash2, TriangleAlert } from "lucid
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
+import { DEFAULT_CUTOFF_LEVELS } from "@/lib/decision/cutoffs"
 import type { AiSettings, JevOpenRouterKeySource, JevProviderPreference } from "@/lib/settings"
 import {
   ACTION,
@@ -15,6 +16,7 @@ import {
   FILE_WRITES_OFF,
   TERM_JEV,
 } from "@/lib/settings/explain"
+import { JevDecisionsCard } from "@/components/features/settings/jev-decisions-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -432,6 +434,13 @@ export function AiSettingsCard() {
           <p className="text-xs text-muted-foreground">{ACTION.testJev}</p>
         </CardContent>
       </Card>
+
+      <JevDecisionsCard
+        jevEnabled={jev.enabled}
+        levels={{ ...DEFAULT_CUTOFF_LEVELS, ...jev.cutoffs }}
+        saving={busy !== null}
+        onLevelChange={(kind, level) => save({ jev: { cutoffs: { [kind]: level } } })}
+      />
     </div>
   )
 }

@@ -8,6 +8,15 @@ import {
   type JevProviderPreference,
 } from "@/lib/settings"
 
+import {
+  cutoffValues,
+  DEFAULT_CUTOFFS,
+  type DecisionRecord,
+  type JevCutoffs,
+  type TunableDecision,
+} from "./cutoffs"
+import { appendDecision } from "./log"
+
 /**
  * Jev (TypeSafe "System One") is an optional, fast classifier. Only files in
  * `lib/decision/` import the SDK; callers use `evaluate*()` helpers that never
@@ -29,6 +38,10 @@ export interface DecisionCredentials {
 export interface ResolvedDecisionClient {
   provider: DecisionProvider
   client: TypeSafeClient
+  /** User cutoffs from settings; missing ones use the defaults. */
+  cutoffs?: Partial<JevCutoffs>
+  /** Where decisions are recorded. Absent in tests, so nothing is written. */
+  log?: (record: DecisionRecord) => void
 }
 
 export const OPENROUTER_BASE_URL = PROVIDER_URLS.openRouter
@@ -124,9 +137,31 @@ export async function getDecisionCredentials(): Promise<DecisionCredentials> {
 /** Resolve once per request; `null` means Jev is off or has no key. */
 export async function loadDecisionClient(): Promise<ResolvedDecisionClient | null> {
   try {
-    return resolveDecisionClient(await getDecisionCredentials())
+    const [credentials, settings] = await Promise.all([getDecisionCredentials(), readAiSettings()])
+    const resolved = resolveDecisionClient(credentials)
+    if (!resolved) return null
+    return {
+      ...resolved,
+      cutoffs: cutoffValues(settings.jev.cutoffs),
+      log: (record) => {
+        void appendDecision({ ...record, at: new Date().toISOString(), provider: resolved.provider })
+      },
+    }
   } catch {
     return null
+  }
+}
+
+export function cutoffFor(resolved: ResolvedDecisionClient | null, kind: TunableDecision): number {
+  return resolved?.cutoffs?.[kind] ?? DEFAULT_CUTOFFS[kind]
+}
+
+/** Record one Jev call. Never throws, so logging cannot break a decision. */
+export function recordDecision(resolved: ResolvedDecisionClient | null, record: DecisionRecord): void {
+  try {
+    resolved?.log?.(record)
+  } catch {
+    // the log is best effort
   }
 }
 

@@ -2,11 +2,8 @@ import { matchBuiltinTopicArtifacts } from "@/lib/artifacts/builtin"
 import { extractReferences } from "@/lib/artifacts/graph"
 import { MENTION_TOKEN_RE } from "@/lib/artifacts/mentions"
 import type { Artifact, ArtifactType } from "@/lib/artifacts/types"
-import {
-  ARTIFACT_ROUTING_MIN_CONFIDENCE,
-  evaluateArtifactRouting,
-} from "@/lib/decision/classify-artifacts"
-import type { ResolvedDecisionClient } from "@/lib/decision/client"
+import { evaluateArtifactRouting } from "@/lib/decision/classify-artifacts"
+import { cutoffFor, recordDecision, type ResolvedDecisionClient } from "@/lib/decision/client"
 
 export const MAX_TURN_ARTIFACTS = 5
 export const TURN_ARTIFACT_PROMPT_BUDGET = 24_000
@@ -129,7 +126,7 @@ ${JSON.stringify(item, null, 2)}
 /**
  * Pick which artifacts go into this turn's context:
  * 1. explicit mentions win;
- * 2. otherwise Jev picks one (only at ≥0.85 confidence; fail-open);
+ * 2. otherwise Jev picks one (only at the user's artifact cutoff; fail-open);
  * 3. then the linked skills/rules of what was picked (and of the persona).
  * At most 5 artifacts. Without Jev, chat keeps today's behavior.
  */
@@ -159,19 +156,36 @@ export async function selectTurnArtifacts(params: {
       candidates: all.map((a) => ({ type: a.type, name: a.name, description: a.description })),
       resolved: params.resolved,
     })
+    const cutoff = cutoffFor(params.resolved, "artifactRouting")
     if (decision.kind === "picked") {
       const target = all.find((a) => a.type === decision.type && a.name === decision.name)
-      if (target && decision.confidence >= ARTIFACT_ROUTING_MIN_CONFIDENCE) {
+      const acted = Boolean(target) && decision.confidence >= cutoff
+      if (target && acted) {
         seeds.push(target)
         chosen.push({ type: target.type, name: target.name, source: "auto" })
         jev = "picked"
       } else {
         jev = "low-confidence"
       }
+      recordDecision(params.resolved, {
+        kind: "artifactRouting",
+        choice: `${decision.type}: ${decision.name}`,
+        score: decision.confidence,
+        cutoff,
+        outcome: acted ? "acted" : "below",
+      })
     } else if (decision.kind === "none") {
       jev = "none"
+      recordDecision(params.resolved, {
+        kind: "artifactRouting",
+        choice: "none",
+        score: decision.confidence,
+        cutoff,
+        outcome: "pass",
+      })
     } else if (decision.kind === "error") {
       jev = "error"
+      recordDecision(params.resolved, { kind: "artifactRouting", choice: "error", score: null, cutoff, outcome: "error" })
     }
   }
 

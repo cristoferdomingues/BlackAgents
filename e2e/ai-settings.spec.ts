@@ -229,7 +229,7 @@ test("saves a vision model for a provider and lists who uses it", async ({ page 
   await expect(page.getByText("Not used yet")).toBeVisible()
 
   await page.getByRole("tab", { name: "Vision" }).click()
-  await page.getByRole("button", { name: "Clear" }).click()
+  await page.getByRole("button", { name: "Clear", exact: true }).click()
   await expect(page.getByText("Cleared the Vision model")).toBeVisible()
   expect(puts).toContainEqual({ models: { vision: null } })
 })

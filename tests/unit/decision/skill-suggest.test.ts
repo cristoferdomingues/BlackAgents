@@ -12,7 +12,7 @@ import {
   suggestSkill,
 } from "@/lib/decision/skill-suggest"
 
-import { choiceAnswer, fakeJev } from "../../helpers/jev"
+import { choiceAnswer, fakeJev, loggedJev } from "../../helpers/jev"
 
 const review = {
   name: "code-review",
@@ -96,6 +96,30 @@ describe("suggestSkill", () => {
         resolved: fakeJev(new Error("timeout")),
       })
     ).toEqual({ kind: "error", message: "timeout" })
+  })
+
+  it("uses the user's skill level and records real suggestions only", async () => {
+    const eager = loggedJev({ skill: choiceAnswer("S0", 0.75) }, { skillSuggest: 0.7 })
+    expect(await suggestSkill({ prompt: "review", skills: [review], resolved: eager })).toMatchObject({ kind: "picked" })
+    expect(eager.records).toEqual([
+      { kind: "skillSuggest", choice: "code-review", score: 0.75, cutoff: 0.7, outcome: "acted" },
+    ])
+
+    const balanced = loggedJev({ skill: choiceAnswer("S0", 0.75) })
+    expect(await suggestSkill({ prompt: "review", skills: [review], resolved: balanced })).toMatchObject({ kind: "none" })
+    expect(balanced.records[0]).toMatchObject({ outcome: "below", cutoff: 0.85 })
+
+    const none = loggedJev({ skill: choiceAnswer("NONE", 0.9) })
+    await suggestSkill({ prompt: "hi", skills: [review], resolved: none })
+    expect(none.records[0]).toMatchObject({ choice: "none", outcome: "pass" })
+
+    const odd = loggedJev({ skill: choiceAnswer("S9", 0.9) })
+    await suggestSkill({ prompt: "hi", skills: [review], resolved: odd })
+    expect(odd.records[0]).toMatchObject({ outcome: "error" })
+
+    const probe = loggedJev({ skill: choiceAnswer("S0", 0.95) })
+    await evaluateSkillTriggers({ skill: review, catalog: [], resolved: probe })
+    expect(probe.records).toEqual([])
   })
 })
 

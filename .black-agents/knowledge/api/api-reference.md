@@ -217,8 +217,10 @@ Electron / `BLACK_AGENTS_DESKTOP=1` only. Without the desktop gate, setup and re
 | Method | Route | Purpose |
 |--------|-------|---------|
 | GET | `/api/settings/ai` | `maxToolTurns` + Jev status (`enabled`, `provider`, key configured/last4 — never the key) |
-| PUT | `/api/settings/ai` | Update turns, Jev on/off, provider, Jev key, and task models. Voice is `id \| null`; Vision/Fast/Reasoning are `{ provider, model } \| null` |
+| PUT | `/api/settings/ai` | Update turns, Jev on/off, provider, Jev key, Jev levels (`jev.cutoffs`, partial), and task models. Voice is `id \| null`; Vision/Fast/Reasoning are `{ provider, model } \| null` |
 | GET | `/api/settings/ai/models?task=<task>&provider=<id>` | Models that fit Voice, Vision, Fast, or Reasoning; chat tasks also return verified provider choices, `saved`, and `effective`. 400 unknown task/provider |
+| GET | `/api/settings/ai/jev-decisions` | Recent [Jev](../architecture/jev-decision-engine.md) decisions, newest first, and the cap (`max`). Labels and scores only |
+| DELETE | `/api/settings/ai/jev-decisions` | Empty the decision list. Levels stay |
 | POST | `/api/settings/ai/jev-test` | One test call to [Jev](../architecture/jev-decision-engine.md); 412 not set up, 502 Jev error |
 
 ## Skill Suggest and Trigger Check

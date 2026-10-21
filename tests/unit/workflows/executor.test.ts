@@ -13,7 +13,7 @@ import { executeRun, newRun, type ExecutorDeps } from "@/lib/workflows/executor"
 import { resolveRunLlm, type ResolvedLlm } from "@/lib/workflows/llm"
 import { workflowSchema, type Workflow, type WorkflowRun } from "@/lib/workflows/schema"
 
-import { choiceAnswer, fakeJev } from "../../helpers/jev"
+import { choiceAnswer, fakeJev, loggedJev } from "../../helpers/jev"
 import { call, fakeTool, scriptedProvider } from "../../helpers/runtime"
 import { makeTempEnv, seedArtifact, seedProject, type TempEnv } from "../../helpers/workspace"
 
@@ -205,6 +205,23 @@ describe("executeRun", () => {
     expect(run.status).toBe("succeeded")
     expect(run.steps[1].status).toBe("skipped")
     expect(run.report).toContain("Stopped early")
+  })
+
+  it("uses the user's step level and records the gate decision", async () => {
+    const wf = workflow({ steps: [{ id: "plan", agent: "planner", gate: true }, { id: "build", agent: "builder" }] })
+    const careful = loggedJev({ next: choiceAnswer("stop", 0.88) }, { stepGate: 0.9 })
+    const run = await executeRun(
+      start(wf),
+      wf,
+      deps(scriptedProvider([{ content: "plan" }, { content: "built" }]), { jev: careful }),
+      new AbortController().signal
+    )
+    expect(run.steps[1].status).toBe("succeeded")
+    expect(careful.records[0]).toEqual({ kind: "stepGate", choice: "stop", score: 0.88, cutoff: 0.9, outcome: "below" })
+
+    const failing = loggedJev(new Error("boom"))
+    await executeRun(start(wf), wf, deps(scriptedProvider([{ content: "a" }, { content: "b" }]), { jev: failing }), new AbortController().signal)
+    expect(failing.records[0]).toMatchObject({ kind: "stepGate", outcome: "error", score: null, cutoff: 0.85 })
   })
 
   it("sends a rejected review back to the fix step, then accepts the next review", async () => {

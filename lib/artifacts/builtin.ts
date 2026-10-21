@@ -145,7 +145,7 @@ Each step in \`steps\` runs one workspace agent in an isolated turn:
 - \`mcpServers\`: Optional override of MCP server names (e.g. \`["browser"]\`). Defaults to the agent's frontmatter \`mcpServers\`; an agent with no list gets every workspace server. \`[]\` means no MCP.
 - \`allowWrites\`: Boolean (default \`false\`). When \`true\`, write-tier MCP tools, \`fs_write\` and \`fs_edit\` auto-approve during this step (\`shell_run\` and protected paths still ask for approval).
 - \`maxTurns\`: \`1..100\` tool turns per step (default \`30\`). Building or changing code needs many turns: use 30 or more for implementation steps.
-- \`gate\`: Boolean (default \`false\`). When \`true\` and **Jev** is enabled in **Settings → AI**, Jev evaluates the step output (\`continue\`, \`retry\`, or \`stop\`) at \`>= 0.8\` confidence. If \`retry\`, the step re-runs up to \`limits.maxRetries\` with reviewer feedback.
+- \`gate\`: Boolean (default \`false\`). When \`true\` and **Jev** is enabled in **Settings → AI**, Jev evaluates the step output (\`continue\`, \`retry\`, or \`stop\`) when its score reaches the **Check a workflow step** level in **Settings → AI → Jev decisions** (default 85%). If \`retry\`, the step re-runs up to \`limits.maxRetries\` with reviewer feedback.
 - \`review\` + \`onReject\`: A review step ends with \`VERDICT: approve\` or \`VERDICT: reject\`. \`onReject: { "step": "<id>", "maxRounds": 1..3 }\` sends a reject to that step (the defects are quoted as data), then runs this review again. \`maxRounds\` is how many fix passes are allowed. When the rounds run out, the run fails.
 - \`repair\`: Boolean (default \`false\`). The line skips this step until a review's \`onReject.step\` names it. A repair step cannot also be a review.
 - \`login\`: Boolean (default \`false\`). Turn this on when the step must sign in to a website. The builder shows **Username** and **Password** fields. Those values are saved as secrets (\`browser.<workflow>.<step>.username\` and \`.password\`) and are never written into the workflow file. If they are missing when the step runs, the run pauses on **Needs login**, shows the same two fields, and then continues that step. The agent calls \`browser_fill_login\` with the secret ids. If the user already signed in in the browser window, they can choose **I already signed in**.
@@ -284,7 +284,7 @@ Follow the \`workflow-guardrails\` rule and \`browser-automation-guardrails\` ru
 - **Providers (\`/providers\`):** Configure and live-verify API keys for **OpenAI**, **Anthropic**, or **Custom** (OpenAI-compatible / OpenRouter / local). Keys live in \`~/.black-agents/secrets.json\`.
 - **Models by Task (**Settings → AI**):** Assign dedicated provider+model pairs to \`task:fast\`, \`task:reasoning\`, \`task:vision\`, and \`task:voice\`. Agents and workflow steps can set \`model: "task:reasoning"\` (or \`task:fast\`, \`task:vision\`) instead of hardcoding a model ID.
 - **Jev Decision Engine (**Settings → AI → Jev**):** Fast System-1 classifier used for:
-  - Automatic artifact routing in Assistant (\`>= 0.85\` confidence).
+  - Automatic artifact routing in Assistant (at the **Pick a file for the chat** level in **Settings → AI → Jev decisions**, default 85%).
   - Skill trigger evaluation on the Skills page.
   - Workflow step quality gates (\`gate: true\`, deciding \`continue\`, \`retry\`, or \`stop\`).
   - Second Brain learning classification.

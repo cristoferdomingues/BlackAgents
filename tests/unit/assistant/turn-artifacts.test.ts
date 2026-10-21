@@ -9,7 +9,7 @@ import {
 } from "@/lib/assistant/turn-artifacts"
 import type { Artifact, ArtifactType } from "@/lib/artifacts/types"
 
-import { choiceAnswer, fakeJev } from "../../helpers/jev"
+import { choiceAnswer, fakeJev, loggedJev } from "../../helpers/jev"
 
 function art(type: ArtifactType, name: string, body = ""): Artifact {
   return { type, name, platform: "cursor", description: `${name} desc`, frontmatter: {}, body, relativePath: "" }
@@ -88,6 +88,26 @@ describe("selectTurnArtifacts", () => {
     expect(none.jev).toBe("none")
     const broken = await selectTurnArtifacts({ message: "x", all, resolved: fakeJev(new Error("down")) })
     expect(broken).toMatchObject({ artifacts: [], jev: "error" })
+  })
+
+  it("uses the user's artifact level and records each answer", async () => {
+    const eager = loggedJev({ artifact: choiceAnswer("C0", 0.75) }, { artifactRouting: 0.7 })
+    expect((await selectTurnArtifacts({ message: "x", all, resolved: eager })).jev).toBe("picked")
+    expect(eager.records).toEqual([
+      { kind: "artifactRouting", choice: "agent: reviewer", score: 0.75, cutoff: 0.7, outcome: "acted" },
+    ])
+
+    const balanced = loggedJev({ artifact: choiceAnswer("C0", 0.75) })
+    expect((await selectTurnArtifacts({ message: "x", all, resolved: balanced })).jev).toBe("low-confidence")
+    expect(balanced.records[0]).toMatchObject({ outcome: "below", cutoff: 0.85 })
+
+    const none = loggedJev({ artifact: choiceAnswer("NONE", 0.9) })
+    await selectTurnArtifacts({ message: "x", all, resolved: none })
+    expect(none.records[0]).toMatchObject({ choice: "none", outcome: "pass" })
+
+    const broken = loggedJev(new Error("down"))
+    await selectTurnArtifacts({ message: "x", all, resolved: broken })
+    expect(broken.records[0]).toMatchObject({ choice: "error", score: null, outcome: "error" })
   })
 
   it("keeps today's behavior when Jev is off", async () => {

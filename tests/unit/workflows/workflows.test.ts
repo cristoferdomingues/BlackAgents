@@ -21,7 +21,7 @@ import {
   saveWorkflow,
 } from "@/lib/workflows/store"
 
-import { choiceAnswer, fakeJev } from "../../helpers/jev"
+import { choiceAnswer, fakeJev, loggedJev } from "../../helpers/jev"
 import { makeTempEnv, type TempEnv } from "../../helpers/workspace"
 
 function wf(overrides: Partial<Record<string, unknown>> = {}): Workflow {
@@ -318,5 +318,23 @@ describe("workflow decisions", () => {
     expect((await evaluateWorkflowPreflight({ ...preflight, resolved: changed })).kind).toBe("run")
     expect((await evaluateWorkflowPreflight({ ...preflight, resolved: null })).kind).toBe("unavailable")
     expect((await evaluateWorkflowPreflight({ ...preflight, resolved: fakeJev(new Error("x")) })).kind).toBe("error")
+  })
+
+  it("records preflight answers at the fixed 95% level", async () => {
+    const outcomes: string[] = []
+    for (const [noulScore, label, confidence] of [
+      [0.01, "skip", 0.99],
+      [0.01, "skip", 0.9],
+      [0.5, "run", 0.9],
+    ] as const) {
+      const jev = loggedJev({ actionRequired: { type: "noul", noul: noulScore }, next: choiceAnswer(label, confidence) })
+      await evaluateWorkflowPreflight({ ...preflight, resolved: jev })
+      expect(jev.records[0]).toMatchObject({ kind: "preflight", choice: label, cutoff: 0.95 })
+      outcomes.push(jev.records[0].outcome)
+    }
+    expect(outcomes).toEqual(["acted", "below", "pass"])
+    const failing = loggedJev(new Error("x"))
+    await evaluateWorkflowPreflight({ ...preflight, resolved: failing })
+    expect(failing.records[0]).toMatchObject({ outcome: "error", score: null })
   })
 })

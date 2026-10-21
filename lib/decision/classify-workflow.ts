@@ -3,14 +3,10 @@ import { choice, noul } from "@typesafe-ai/sdk"
 import {
   DECISION_REQUEST_OPTIONS,
   decisionErrorMessage,
+  recordDecision,
   type ResolvedDecisionClient,
 } from "./client"
-
-/** Act on a step-gate label only at this confidence. */
-export const STEP_GATE_MIN_CONFIDENCE = 0.85
-/** Skip a scheduled run only when Jev is this sure and sees no action needed. */
-export const PREFLIGHT_SKIP_CONFIDENCE = 0.95
-export const PREFLIGHT_ACTION_NOUL_MAX = 0.05
+import { PREFLIGHT_ACTION_NOUL_MAX, PREFLIGHT_SKIP_CONFIDENCE } from "./cutoffs"
 
 const STATE_TEXT_MAX = 4_000
 const GATE_LABELS = ["continue", "retry", "stop"] as const
@@ -119,15 +115,24 @@ export async function evaluateWorkflowPreflight(params: {
     )
     const noulScore = result.answers.actionRequired.noul
     const next = result.answers.next
-    if (
-      next.choice === "skip" &&
-      next.confidence >= PREFLIGHT_SKIP_CONFIDENCE &&
-      noulScore <= PREFLIGHT_ACTION_NOUL_MAX
-    ) {
+    const log = { kind: "preflight", choice: next.choice, score: next.confidence, cutoff: PREFLIGHT_SKIP_CONFIDENCE } as const
+    if (next.choice !== "skip") {
+      recordDecision(params.resolved, { ...log, outcome: "pass" })
+    } else if (next.confidence >= PREFLIGHT_SKIP_CONFIDENCE && noulScore <= PREFLIGHT_ACTION_NOUL_MAX) {
+      recordDecision(params.resolved, { ...log, outcome: "acted" })
       return { kind: "skip", confidence: next.confidence, noul: noulScore, model: result.model }
+    } else {
+      recordDecision(params.resolved, { ...log, outcome: "below" })
     }
     return { kind: "run", confidence: next.confidence, noul: noulScore }
   } catch (err) {
+    recordDecision(params.resolved, {
+      kind: "preflight",
+      choice: "error",
+      score: null,
+      cutoff: PREFLIGHT_SKIP_CONFIDENCE,
+      outcome: "error",
+    })
     return { kind: "error", message: decisionErrorMessage(err, "Jev preflight failed") }
   }
 }

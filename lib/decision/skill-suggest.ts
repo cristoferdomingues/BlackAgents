@@ -1,12 +1,12 @@
 import { choice } from "@typesafe-ai/sdk"
 
 import {
+  cutoffFor,
   decisionErrorMessage,
+  recordDecision,
   type ResolvedDecisionClient,
 } from "@/lib/decision/client"
-
-/** A positive prompt must reach this confidence to count as a real trigger. */
-export const SKILL_TRIGGER_MIN_CONFIDENCE = 0.8
+import type { DecisionOutcome } from "@/lib/decision/cutoffs"
 const MAX_SKILLS = 40
 const DESCRIPTION_MAX_CHARS = 500
 const PROMPT_MAX_CHARS = 2_000
@@ -132,6 +132,8 @@ export async function suggestSkill(params: {
   prompt: string
   skills: SkillCandidate[]
   resolved: ResolvedDecisionClient | null
+  /** False for trigger tests, which are not real decisions. */
+  record?: boolean
 }): Promise<SkillSuggestion> {
   const skills = params.skills
     .filter((skill) => skill.name.trim() && skill.description.trim())
@@ -149,6 +151,11 @@ export async function suggestSkill(params: {
   })
   criteria[NONE_LABEL] = "None of the listed skills are needed for this prompt."
 
+  const cutoff = cutoffFor(params.resolved, "skillSuggest")
+  const record = (choice: string, score: number | null, outcome: DecisionOutcome): void => {
+    if (params.record === false) return
+    recordDecision(params.resolved, { kind: "skillSuggest", choice, score, cutoff, outcome })
+  }
   const started = Date.now()
   try {
     const result = await params.resolved.client.systemOne(
@@ -174,15 +181,23 @@ export async function suggestSkill(params: {
       elapsedMs,
       candidates: skills.length,
     }
-    if (answer.choice === NONE_LABEL || answer.confidence < SKILL_TRIGGER_MIN_CONFIDENCE) {
+    if (answer.choice === NONE_LABEL) {
+      record("none", answer.confidence, "pass")
       return { kind: "none", ...base }
     }
     const picked = /^S\d+$/.test(answer.choice) ? skills[Number(answer.choice.slice(1))] : undefined
     if (!picked) {
+      record("error", null, "error")
       return { kind: "error", message: `Unknown skill label: ${answer.choice}` }
     }
+    if (answer.confidence < cutoff) {
+      record(picked.name, answer.confidence, "below")
+      return { kind: "none", ...base }
+    }
+    record(picked.name, answer.confidence, "acted")
     return { kind: "picked", name: picked.name, ...base }
   } catch (err) {
+    record("error", null, "error")
     return { kind: "error", message: decisionErrorMessage(err, "Jev skill suggestion failed") }
   }
 }
@@ -216,7 +231,7 @@ export async function evaluateSkillTriggers(params: {
 
   const probes: SkillProbe[] = []
   for (const prompt of positive) {
-    const suggestion = await suggestSkill({ prompt, skills: catalog, resolved: params.resolved })
+    const suggestion = await suggestSkill({ prompt, skills: catalog, resolved: params.resolved, record: false })
     if (suggestion.kind === "unavailable") return suggestion
     if (suggestion.kind === "error") return suggestion
     const picked = suggestion.kind === "picked" ? suggestion.name : null
@@ -230,7 +245,7 @@ export async function evaluateSkillTriggers(params: {
     })
   }
   for (const prompt of negative) {
-    const suggestion = await suggestSkill({ prompt, skills: catalog, resolved: params.resolved })
+    const suggestion = await suggestSkill({ prompt, skills: catalog, resolved: params.resolved, record: false })
     if (suggestion.kind === "unavailable") return suggestion
     if (suggestion.kind === "error") return suggestion
     const picked = suggestion.kind === "picked" ? suggestion.name : null

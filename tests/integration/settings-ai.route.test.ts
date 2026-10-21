@@ -21,7 +21,12 @@ describe("/api/settings/ai", () => {
     expect(body.data).toEqual({
       settings: {
         assistant: { maxToolTurns: 25, autoApproveFileWrites: false },
-        jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
+        jev: {
+          enabled: false,
+          provider: "auto",
+          openRouterKeySource: "reuse",
+          cutoffs: { artifactRouting: "balanced", skillSuggest: "balanced", stepGate: "balanced", learning: "balanced" },
+        },
         models: {},
         browser: { updateFlowsOnHeal: false, headless: false },
       },
@@ -88,7 +93,23 @@ describe("/api/settings/ai", () => {
     expect((await readSecrets()).jev).toEqual({ openRouterApiKey: "sk-or-jev-only-9999" })
   })
 
+  it("saves one Jev level and keeps the others", async () => {
+    await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jev: { cutoffs: { stepGate: "careful" } } }))
+    const res = await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jev: { cutoffs: { artifactRouting: "eager" } } }))
+    expect((await res.json()).data.settings.jev.cutoffs).toEqual({
+      artifactRouting: "eager",
+      skillSuggest: "balanced",
+      stepGate: "careful",
+      learning: "balanced",
+    })
+    expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jev: { enabled: true } }))).status).toBe(200)
+    expect((await (await GET()).json()).data.settings.jev.cutoffs.stepGate).toBe("careful")
+  })
+
   it("rejects invalid values", async () => {
+    expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jev: { cutoffs: { stepGate: "reckless" } } }))).status).toBe(400)
+    const fixed = await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jev: { cutoffs: { preflight: "eager" } } }))
+    expect((await fixed.json()).data.settings.jev.cutoffs).not.toHaveProperty("preflight")
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { assistant: { maxToolTurns: 101 } }))).status).toBe(400)
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevApiKey: "x" }))).status).toBe(400)
     expect((await PUT(jsonRequest("http://t/api/settings/ai", "PUT", { jevOpenRouterApiKey: "x" }))).status).toBe(400)

@@ -2,6 +2,7 @@ import { fail, handle } from "@/lib/api-response"
 import { CredentialStateError } from "@/lib/llm/credentials"
 import { ProviderError } from "@/lib/llm/types"
 import { K0dingError } from "@/lib/k0ding/errors"
+import { resolveGuidance } from "@/lib/k0ding/guidance"
 import { openCodingProvider, runCodingTurn } from "@/lib/k0ding/run"
 import { followUpSchema, sessionView } from "@/lib/k0ding/schema"
 import { k0dingWorkspace } from "@/lib/k0ding/scope"
@@ -19,16 +20,24 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
       const parsed = followUpSchema.safeParse(await req.json().catch(() => null))
       if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid request", 400)
       const { workspace, scope } = await k0dingWorkspace()
-      const current = await readCodingSession(workspace, (await ctx.params).id)
+      const current = await readCodingSession(workspace, scope, (await ctx.params).id)
       if (!current) throw new K0dingError("Coding session not found", 404)
       if (current.status === "running") throw new K0dingError("This run is still going", 409)
       const root = await requireCodeRoot(workspace, scope, current.rootId)
       const opened = await openCodingProvider(current.model)
       const pending = current.changes.filter((change) => change.state === "pending").map((change) => change.path)
+      const guidance = await resolveGuidance(
+        workspace,
+        scope,
+        parsed.data.guidance,
+        [...current.context, ...pending]
+      )
       const note = pending.length > 0 ? `Staged files still waiting: ${pending.join(", ")}.\n` : ""
       const session = await saveCodingSession(workspace, scope, {
         ...current,
         status: "running",
+        prompts: [...current.prompts, parsed.data.prompt].slice(-50),
+        guidance,
         messages: [...current.messages, { role: "user", content: `${note}Follow-up:\n${parsed.data.prompt}` }],
       })
       return sseResponse(async (send, signal) => {

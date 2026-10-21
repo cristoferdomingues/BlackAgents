@@ -48,6 +48,7 @@ export function PromptPanel({
 }: PromptPanelProps): React.ReactElement {
   const [prompt, setPrompt] = React.useState("")
   const [busyPath, setBusyPath] = React.useState<string | null>(null)
+  const [savedProposal, setSavedProposal] = React.useState<string | null>(null)
   const pending = (session?.changes ?? []).filter((change) => change.state === "pending" || change.state === "conflict")
 
   function send(): void {
@@ -76,6 +77,19 @@ export function PromptPanel({
     setBusyPath(null)
   }
 
+  async function saveNoteProposal(content: string): Promise<void> {
+    try {
+      await apiFetch(`/api/k0ding/roots/${rootId}/notes`, {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      })
+      setSavedProposal(content)
+      toast.success("Project notes saved")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not save project notes")
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
@@ -84,6 +98,14 @@ export function PromptPanel({
         ) : null}
         <RunBox disabled={running} onRun={onRun} />
         {live ? <p className="whitespace-pre-wrap text-sm">{live}</p> : session?.summary ? <p className="whitespace-pre-wrap text-sm">{session.summary}</p> : null}
+        {session?.noteProposal && session.noteProposal !== savedProposal ? (
+          <div className="space-y-2 rounded border p-3">
+            <p className="text-sm font-medium">Project notes draft</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-xs">{session.noteProposal}</pre>
+            <p className="text-xs text-muted-foreground">The model proposed this text. Nothing is saved until you approve it.</p>
+            <Button type="button" size="sm" onClick={() => void saveNoteProposal(session.noteProposal ?? "")}>Save to notes</Button>
+          </div>
+        ) : null}
         {activity.length > 0 ? (
           <ul className="space-y-1 text-xs text-muted-foreground">
             {activity.map((line, index) => (

@@ -16,8 +16,8 @@ status: draft
 > [!abstract] One-liner
 > K0ding opens a code project on your computer (for example, an MCP server you are building). You see the file tree, open files to read them, and type what you want in a prompt box. The LLM reads the code and proposes changes. You see each change as a diff and approve it before any file is written.
 
-> [!important] Phase 1, Phase 2, and Phase 3 are built
-> You can open a folder, read files, ask the model, and approve each change. You can run a command, see git changes, and edit a file by hand. Phase 4 (rules, project notes, try the MCP server) is still a plan.
+> [!important] All four phases are built
+> You can open a folder, read files, ask the model, approve each change, run checks, use project guidance and notes, connect an MCP server, and save the work as a skill or workflow draft.
 
 ## Why a new module
 
@@ -81,7 +81,7 @@ flowchart LR
 - **Git view**: a badge on changed files in the tree, and the git diff for a file. Read only: no commit, push, or branch from K0ding in this phase.
 - **Edit by hand**: a file can be switched to edit mode and saved (same conflict check).
 
-### Phase 4 — Nice to have
+### Phase 4 — Project tools
 
 - **Use my artifacts**: pick an agent, rule, or skill from the workspace to guide the session (for example the `typescript-strict` rule). Rules marked `alwaysApply` and matching `globs` are added by default.
 - **Project memory**: a short `.black-agents/k0ding/<root-id>/notes.md` the LLM can read (stack, commands, folder roles). The user edits it; the LLM can only propose changes to it.

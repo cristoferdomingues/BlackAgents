@@ -2,6 +2,7 @@ import { fail, handle, ok } from "@/lib/api-response"
 import { CredentialStateError } from "@/lib/llm/credentials"
 import { ProviderError } from "@/lib/llm/types"
 import { K0dingError } from "@/lib/k0ding/errors"
+import { resolveGuidance } from "@/lib/k0ding/guidance"
 import { buildTaskMessage } from "@/lib/k0ding/prompt"
 import { resolveCodingModel } from "@/lib/k0ding/resolve"
 import { openCodingProvider, runCodingTurn } from "@/lib/k0ding/run"
@@ -44,11 +45,14 @@ export async function POST(req: Request): Promise<Response> {
       const model = await resolveCodingModel(parsed.data)
       const opened = await openCodingProvider(model)
       const content = await buildTaskMessage(root.path, parsed.data.prompt, parsed.data.context)
+      const guidance = await resolveGuidance(workspace, scope, parsed.data.guidance, parsed.data.context)
       const session = await createCodingSession({
         workspace,
         scope,
         rootId: root.id,
         context: parsed.data.context,
+        prompts: [parsed.data.prompt],
+        guidance,
         model,
         messages: [{ role: "user", content }],
       })

@@ -17,7 +17,7 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
       const parsed = pathsBodySchema.safeParse(await req.json().catch(() => null))
       if (!parsed.success) throw new K0dingError(parsed.error.issues[0]?.message ?? "Pick at least one file")
       const { workspace, scope } = await k0dingWorkspace()
-      const current = await readCodingSession(workspace, (await ctx.params).id)
+      const current = await readCodingSession(workspace, scope, (await ctx.params).id)
       if (!current) throw new K0dingError("Coding session not found", 404)
       const root = await requireCodeRoot(workspace, scope, current.rootId)
       const changes = await applyChanges(root.path, current.changes, parsed.data.paths)

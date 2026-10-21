@@ -9,8 +9,10 @@ import type { SseSend } from "@/lib/sse"
 import { readAiSettings } from "@/lib/settings"
 
 import { K0dingError } from "./errors"
+import { guidancePrompt } from "./guidance"
 import { K0DING_LIMITS } from "./limits"
-import { K0DING_SYSTEM } from "./prompt"
+import { readProjectNotes } from "./notes"
+import { K0DING_SYSTEM, projectNotesPrompt } from "./prompt"
 import type { CodeRoot, CodingSession } from "./schema"
 import { saveCodingSession } from "./sessions"
 
@@ -50,9 +52,16 @@ export async function runCodingTurn(input: {
   send: SseSend
   signal: AbortSignal
 }): Promise<CodingSession> {
-  const buffer: CodingBuffer = { root: input.codeRoot, changes: [...input.session.changes] }
+  const buffer: CodingBuffer = {
+    root: input.codeRoot,
+    changes: [...input.session.changes],
+    ...(input.session.noteProposal ? { noteProposal: input.session.noteProposal } : {}),
+  }
   const tools = codingTools(buffer)
   const settings = await readAiSettings()
+  const notes = await readProjectNotes(input.workspace, input.scope, input.codeRoot.id)
+  const guidance = await guidancePrompt(input.workspace, input.scope, input.session.guidance)
+  const systemContext = [K0DING_SYSTEM, projectNotesPrompt(notes), guidance].filter(Boolean).join("\n\n")
   const policy = createApprovalPolicy(false, false)
   for (const key of input.session.allowedCalls) policy.allowedCalls.add(key)
   const allowedCalls = (): string[] => [...policy.allowedCalls]
@@ -62,7 +71,7 @@ export async function runCodingTurn(input: {
       credentials: input.credentials,
       model: input.session.model.model,
       messages: input.session.messages as ChatMessage[],
-      systemContext: K0DING_SYSTEM,
+      systemContext,
       tools,
       maxTurns: settings.assistant.maxToolTurns,
       workspaceRoot: input.workspace,
@@ -94,6 +103,7 @@ export async function runCodingTurn(input: {
       status: "review",
       messages: toStored(result.messages),
       changes: buffer.changes,
+      ...(buffer.noteProposal ? { noteProposal: buffer.noteProposal } : {}),
       allowedCalls: allowedCalls(),
     })
   } catch (err) {
@@ -102,6 +112,7 @@ export async function runCodingTurn(input: {
       ...input.session,
       status,
       changes: buffer.changes,
+      ...(buffer.noteProposal ? { noteProposal: buffer.noteProposal } : {}),
       allowedCalls: allowedCalls(),
     }).catch(() => undefined)
     throw err

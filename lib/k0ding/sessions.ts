@@ -23,6 +23,8 @@ export async function createCodingSession(input: {
   scope?: string
   rootId: string
   context: string[]
+  prompts: string[]
+  guidance: CodingSession["guidance"]
   model: CodingModel
   messages: CodingSession["messages"]
 }): Promise<CodingSession> {
@@ -32,6 +34,8 @@ export async function createCodingSession(input: {
     createdAt: new Date().toISOString(),
     status: "running",
     context: input.context,
+    prompts: input.prompts,
+    guidance: input.guidance,
     model: input.model,
     messages: input.messages,
     changes: [],
@@ -52,23 +56,13 @@ export async function saveCodingSession(
   return parsed.data
 }
 
-async function findSessionFile(workspace: string, id: string): Promise<string | null> {
-  if (!codingSessionSchema.shape.id.safeParse(id).success) throw new K0dingError("Invalid session id")
-  const dir = resolveInWorkspace(workspace, K0DING_DIR)
-  if (!(await pathExists(dir))) return null
-  const name = `${id}.json`
-  for (const rel of await walkFiles(dir)) {
-    const normalized = rel.split(/[/\\]/).join("/")
-    if (normalized.endsWith(`/sessions/${name}`) || normalized === `sessions/${name}`) {
-      return resolveInWorkspace(workspace, `${K0DING_DIR}/${normalized}`)
-    }
-  }
-  return null
-}
-
-export async function readCodingSession(workspace: string, id: string): Promise<CodingSession | null> {
-  const abs = await findSessionFile(workspace, id)
-  if (!abs) return null
+export async function readCodingSession(
+  workspace: string,
+  scope: string | undefined,
+  id: string
+): Promise<CodingSession | null> {
+  const abs = resolveInWorkspace(workspace, sessionRel(id, scope))
+  if (!(await pathExists(abs))) return null
   const parsed = codingSessionSchema.safeParse(JSON.parse(await readText(abs)) as unknown)
   if (!parsed.success) throw new K0dingError("This coding session is damaged")
   return parsed.data

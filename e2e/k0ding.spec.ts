@@ -39,10 +39,25 @@ test("opens a code folder and reads a file", async ({ page }) => {
   await page.route("**/api/k0ding/roots/server/git**", (route) =>
     route.fulfill({ json: { success: true, data: { git: true, paths: ["src/index.ts"] } } })
   )
+  await page.route("**/api/k0ding/roots/server/notes", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: { content: route.request().method() === "PUT" ? "# Stack\nTypeScript" : "" },
+      },
+    })
+  )
+  await page.route("**/api/k0ding/roots/server/mcp", (route) =>
+    route.fulfill({ json: { success: true, data: { detected: false, packageManager: "npm", scripts: [], existingServer: false } } })
+  )
 
   await page.goto("/k0ding")
   await page.getByLabel("Path to a code folder").fill("/tmp/server")
   await page.getByRole("button", { name: "Open" }).click()
   await page.getByRole("button", { name: "index.ts" }).click()
   await expect(page.getByText("export const hi = 1")).toBeVisible()
+  await page.getByRole("button", { name: "Project tools" }).click()
+  await page.getByLabel("Project notes").fill("# Stack\nTypeScript")
+  await page.getByRole("button", { name: "Save notes" }).click()
+  await expect(page.getByText("Project notes saved")).toBeVisible()
 })

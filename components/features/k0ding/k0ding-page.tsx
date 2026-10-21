@@ -15,7 +15,7 @@ import {
   OPEN_EFFECT,
   SECRET_NOTE,
 } from "@/lib/k0ding/explain"
-import type { CodeRoot, CodingSessionView, CommandResult, FileView } from "@/lib/k0ding/schema"
+import type { CodeRoot, CodingSessionView, CommandResult, FileView, GuidancePick } from "@/lib/k0ding/schema"
 import type { ApprovalRequest } from "@/lib/runtime/types"
 import { streamPost, type SseEvent } from "@/lib/sse-client"
 import { useWorkspace } from "@/components/providers/workspace-provider"
@@ -24,6 +24,7 @@ import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { CodeView } from "@/components/features/k0ding/code-view"
 import { FileTree } from "@/components/features/k0ding/file-tree"
 import { PromptPanel } from "@/components/features/k0ding/prompt-panel"
+import { PhaseFourPanel } from "@/components/features/k0ding/phase-four-panel"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -56,7 +57,7 @@ interface OpenFile {
 }
 
 export function K0dingPage(): React.ReactElement {
-  const { workspace, loading: workspaceLoading, project } = useWorkspace()
+  const { workspace, loading: workspaceLoading, project, artifacts } = useWorkspace()
   const assistant = useAssistantProvider()
   const [roots, setRoots] = React.useState<CodeRoot[] | null>(null)
   const [rootsError, setRootsError] = React.useState<string | null>(null)
@@ -82,11 +83,24 @@ export function K0dingPage(): React.ReactElement {
   const [draft, setDraft] = React.useState("")
   const [gitText, setGitText] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
+  const [guidance, setGuidance] = React.useState<GuidancePick[]>([])
   const abortRef = React.useRef<AbortController | null>(null)
   const introDismissed = React.useSyncExternalStore(subscribeNoop, () => window.localStorage.getItem(INTRO_KEY) === "1", () => true)
   const [introOverride, setIntroOverride] = React.useState<boolean | null>(null)
   const introOpen = introOverride ?? !introDismissed
   const canBrowse = React.useSyncExternalStore(subscribeNoop, () => typeof desktopBridge()?.pickDirectory === "function", () => false)
+
+  function changeRoot(id: string): void {
+    setRootId(id)
+    setFiles([])
+    setActivePath(null)
+    setPinned([])
+    setSession(null)
+    setGuidance([])
+    setEditing(false)
+    setGitText(null)
+    setApproval(null)
+  }
 
   const loadRoots = React.useCallback((): void => {
     apiFetch<{ roots: CodeRoot[] }>("/api/k0ding/roots")
@@ -185,7 +199,7 @@ export function K0dingPage(): React.ReactElement {
         body: JSON.stringify({ path: trimmed }),
       })
       setRoots((current) => [...(current ?? []).filter((item) => item.id !== root.id), root])
-      setRootId(root.id)
+      changeRoot(root.id)
       setFolderPath("")
       toast.success("Folder opened")
     } catch (err) {
@@ -238,11 +252,12 @@ export function K0dingPage(): React.ReactElement {
     setLive("")
     const url = session ? `/api/k0ding/sessions/${session.id}/messages` : "/api/k0ding/sessions"
     const body = session
-      ? { prompt }
+      ? { prompt, guidance }
       : {
           rootId,
           prompt,
           context: pinned,
+          guidance,
           ...(resolved ? { provider: resolved.provider, model: resolved.model } : {}),
         }
     try {
@@ -402,7 +417,7 @@ export function K0dingPage(): React.ReactElement {
           <aside className="flex w-72 shrink-0 flex-col border-r">
             <div className="space-y-2 border-b p-3">
               {roots.length > 0 ? (
-                <Select value={rootId ?? undefined} onValueChange={setRootId}>
+                <Select value={rootId ?? undefined} onValueChange={changeRoot}>
                   <SelectTrigger aria-label="Code folder">
                     <SelectValue placeholder="Choose a folder" />
                   </SelectTrigger>
@@ -438,10 +453,20 @@ export function K0dingPage(): React.ReactElement {
               ) : null}
               <p className="text-[11px] text-muted-foreground">{OPEN_EFFECT}</p>
               {rootId && roots?.find((item) => item.id === rootId) ? (
-                <CheckCommand
-                  root={(roots ?? []).find((item) => item.id === rootId) as CodeRoot}
-                  onSaved={(saved) => setRoots((current) => (current ?? []).map((item) => (item.id === saved.id ? saved : item)))}
-                />
+                <>
+                  <CheckCommand
+                    root={(roots ?? []).find((item) => item.id === rootId) as CodeRoot}
+                    onSaved={(saved) => setRoots((current) => (current ?? []).map((item) => (item.id === saved.id ? saved : item)))}
+                  />
+                  <PhaseFourPanel
+                    key={rootId}
+                    root={(roots ?? []).find((item) => item.id === rootId) as CodeRoot}
+                    session={session}
+                    artifacts={artifacts}
+                    guidance={guidance}
+                    onGuidance={setGuidance}
+                  />
+                </>
               ) : null}
               <div className="flex gap-2">
                 <div className="relative flex-1">

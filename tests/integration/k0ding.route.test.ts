@@ -3,13 +3,17 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { GET as GIT } from "@/app/api/k0ding/roots/[id]/git/route"
+import { GET as MCP_CANDIDATE } from "@/app/api/k0ding/roots/[id]/mcp/route"
+import { GET as NOTES, PUT as SAVE_NOTES } from "@/app/api/k0ding/roots/[id]/notes/route"
 import { POST as APPLY } from "@/app/api/k0ding/sessions/[id]/apply/route"
+import { POST as DRAFT } from "@/app/api/k0ding/sessions/[id]/draft/route"
 import { GET as READ_FILE, POST as SAVE_FILE } from "@/app/api/k0ding/roots/[id]/file/route"
 import { POST as RUN } from "@/app/api/k0ding/roots/[id]/run/route"
 import { GET as TREE } from "@/app/api/k0ding/roots/[id]/tree/route"
 import { GET as ROOTS, POST as ADD } from "@/app/api/k0ding/roots/route"
 import { POST as START } from "@/app/api/k0ding/sessions/route"
 import { latestCodingSession } from "@/lib/k0ding/sessions"
+import { createCodingSession } from "@/lib/k0ding/sessions"
 import { setProviderSecret } from "@/lib/secrets"
 import { jsonRequest, makeTempEnv, seedProject, type TempEnv } from "../helpers/workspace"
 
@@ -193,5 +197,63 @@ describe("k0ding commands and edits", () => {
     const status = await bodyOf(await GIT(new Request(`http://t/api/k0ding/roots/${id}/git`), { params: Promise.resolve({ id }) }))
     expect(status.success).toBe(true)
     expect(status.data?.git).toBe(false)
+  })
+})
+
+describe("k0ding project tools", () => {
+  it("saves project notes and detects an MCP project", async () => {
+    await writeFile(
+      path.join(code, "package.json"),
+      JSON.stringify({
+        devDependencies: { "@modelcontextprotocol/sdk": "^1.0.0" },
+        scripts: { start: "node dist/index.js" },
+      })
+    )
+    const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
+    const id = String(created.data?.id)
+    const saved = await bodyOf(
+      await SAVE_NOTES(jsonRequest(`http://t/api/k0ding/roots/${id}/notes`, "PUT", { content: "# Commands\nnpm test" }), {
+        params: Promise.resolve({ id }),
+      })
+    )
+    expect(saved.data?.content).toContain("npm test")
+    const notes = await bodyOf(
+      await NOTES(new Request(`http://t/api/k0ding/roots/${id}/notes`), { params: Promise.resolve({ id }) })
+    )
+    expect(notes.data?.content).toBe("# Commands\nnpm test")
+    const candidate = await bodyOf(
+      await MCP_CANDIDATE(new Request(`http://t/api/k0ding/roots/${id}/mcp`), { params: Promise.resolve({ id }) })
+    )
+    expect(candidate.data?.detected).toBe(true)
+    expect(candidate.data?.scripts).toEqual(["start"])
+  })
+
+  it("creates a reusable skill draft from raw prompts", async () => {
+    const created = await bodyOf(await ADD(jsonRequest("http://t/api/k0ding/roots", "POST", { path: code })))
+    const id = String(created.data?.id)
+    const session = await createCodingSession({
+      workspace: env.workspace,
+      rootId: id,
+      context: ["src/index.ts"],
+      prompts: ["Add validation"],
+      guidance: [],
+      model: { provider: "openai", model: "gpt-4o-mini" },
+      messages: [
+        { role: "user", content: "EXPANDED FILE CONTENT MUST NOT COPY" },
+        { role: "assistant", content: "Validation added." },
+      ],
+    })
+    const response = await bodyOf(
+      await DRAFT(
+        jsonRequest(`http://t/api/k0ding/sessions/${session.id}/draft`, "POST", {
+          kind: "skill",
+          name: "add-validation",
+        }),
+        { params: Promise.resolve({ id: session.id }) }
+      )
+    )
+    const draft = response.data?.draft as { body?: string }
+    expect(draft.body).toContain("Add validation")
+    expect(draft.body).not.toContain("EXPANDED FILE CONTENT")
   })
 })

@@ -24,6 +24,7 @@ import { SHELL_DEFAULT_TIMEOUT_MS, SHELL_MAX_TIMEOUT_MS } from "./shell"
 export interface CodingBuffer {
   root: CodeRoot
   changes: StagedChange[]
+  noteProposal?: string
 }
 
 const relPath = z
@@ -34,6 +35,7 @@ const relPath = z
   .refine((value) => !value.startsWith("/") && !value.split(/[/\\]/).includes(".."), "Stay inside the code folder")
 
 const listArgs = z.object({ path: z.string().trim().max(500).default(".") })
+const noteArgs = z.object({ content: z.string().max(20_000) })
 const readArgs = z.object({
   path: relPath,
   startLine: z.number().int().min(1).optional(),
@@ -104,6 +106,24 @@ function tool(partial: Omit<RuntimeTool, "server" | "source" | "originalName"> &
 export function codingTools(buffer: CodingBuffer): RuntimeTool[] {
   const root = buffer.root
   return [
+    tool({
+      name: "code_note_propose",
+      risk: "read",
+      description:
+        "Propose replacement project notes. This only stages a note draft. The user must approve it before notes are saved.",
+      parameters: {
+        type: "object",
+        properties: { content: { type: "string", description: "Full proposed Markdown notes, up to 20,000 characters" } },
+        required: ["content"],
+      },
+      summarize: () => "Proposed an update to project notes",
+      async execute(args): Promise<ToolOutcome> {
+        const parsed = noteArgs.safeParse(args)
+        if (!parsed.success) return invalid(parsed.error)
+        buffer.noteProposal = parsed.data.content
+        return { result: "Staged a project notes draft. Nothing was saved; the user must approve it." }
+      },
+    }),
     tool({
       name: "code_list",
       risk: "read",

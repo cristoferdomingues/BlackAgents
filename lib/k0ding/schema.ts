@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { nameSchema } from "@/lib/artifacts/schemas"
 import { providerIdSchema } from "@/lib/llm/provider-id"
 
 import { K0DING_LIMITS } from "./limits"
@@ -111,6 +112,16 @@ export const codingModelSchema = z.object({
 })
 export type CodingModel = z.infer<typeof codingModelSchema>
 
+export const guidanceRefSchema = z.object({
+  type: z.enum(["agent", "rule", "skill"]),
+  name: nameSchema,
+  source: z.enum(["user", "always", "glob"]).default("user"),
+})
+export type GuidanceRef = z.infer<typeof guidanceRefSchema>
+
+export const guidancePickSchema = guidanceRefSchema.pick({ type: true, name: true })
+export type GuidancePick = z.infer<typeof guidancePickSchema>
+
 export const sessionStatusSchema = z.enum([
   "running",
   "review",
@@ -130,6 +141,9 @@ export const codingSessionSchema = z.object({
   model: codingModelSchema,
   messages: z.array(storedMessageSchema).max(K0DING_LIMITS.maxSessionMessages),
   changes: z.array(stagedChangeSchema).max(100),
+  prompts: z.array(z.string().trim().min(1).max(K0DING_LIMITS.maxPromptChars)).max(50).default([]),
+  guidance: z.array(guidanceRefSchema).max(20).default([]),
+  noteProposal: z.string().max(20_000).optional(),
   /** Exact shell calls the user allowed for the rest of this session. */
   allowedCalls: z.array(z.string().min(1).max(2_000)).max(50).default([]),
 })
@@ -143,6 +157,7 @@ export const sessionViewSchema = z.object({
   summary: z.string(),
   model: codingModelSchema,
   changes: z.array(stagedChangeSchema),
+  noteProposal: z.string().max(20_000).optional(),
 })
 export type CodingSessionView = z.infer<typeof sessionViewSchema>
 
@@ -150,12 +165,14 @@ export const startSessionSchema = z.object({
   rootId: codeRootIdSchema,
   prompt: z.string().trim().min(1).max(K0DING_LIMITS.maxPromptChars),
   context: z.array(z.string().trim().min(1).max(500)).max(K0DING_LIMITS.maxContextFiles).default([]),
+  guidance: z.array(guidancePickSchema).max(10).default([]),
   provider: providerIdSchema.optional(),
   model: z.string().trim().min(1).max(200).optional(),
 })
 
 export const followUpSchema = z.object({
   prompt: z.string().trim().min(1).max(K0DING_LIMITS.maxPromptChars),
+  guidance: z.array(guidancePickSchema).max(10).default([]),
 })
 
 export const pathsBodySchema = z.object({
@@ -181,6 +198,32 @@ export const commandResultSchema = z.object({
 })
 export type CommandResult = z.infer<typeof commandResultSchema>
 
+export const projectNotesSchema = z.object({
+  content: z.string().max(20_000),
+})
+
+export const k0dingDraftRequestSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("skill"),
+    name: nameSchema,
+  }),
+  z.object({
+    kind: z.literal("workflow"),
+    name: nameSchema,
+    agent: nameSchema,
+  }),
+])
+
+export const mcpTrySchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^[a-zA-Z0-9_-]+$/, "Use letters, numbers, dashes, or underscores"),
+  script: z.string().trim().min(1).max(100),
+})
+
 export function sessionView(session: CodingSession): CodingSessionView {
   const summary =
     [...session.messages].reverse().find((message) => message.role === "assistant" && message.content.trim())
@@ -193,5 +236,6 @@ export function sessionView(session: CodingSession): CodingSessionView {
     summary,
     model: session.model,
     changes: session.changes,
+    ...(session.noteProposal ? { noteProposal: session.noteProposal } : {}),
   }
 }

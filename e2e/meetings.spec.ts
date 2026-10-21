@@ -64,3 +64,19 @@ test("imports a meeting, shows notes, and sends them to Brain", async ({ page })
   await page.getByRole("button", { name: "Send to Brain" }).click()
   await expect(page.getByRole("link", { name: "Review in Brain" })).toBeVisible()
 })
+
+test("asks everyone to agree before it listens", async ({ page }) => {
+  await stubWorkspace(page)
+  await stubVerifiedProvider(page)
+  await page.route("**/api/meetings", async (route) => {
+    return route.fulfill({ json: { success: true, data: { meetings: [] } } })
+  })
+
+  await page.goto("/meetings")
+  await page.getByRole("button", { name: "Start listening" }).first().click()
+  const dialog = page.getByRole("dialog")
+  const start = dialog.getByRole("button", { name: "Start listening" })
+  await expect(start).toBeDisabled()
+  await dialog.getByRole("checkbox").check()
+  await expect(start).toBeEnabled()
+})

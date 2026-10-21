@@ -33,7 +33,8 @@ export async function generateMeetingNotes(
   meeting: Meeting
 ): Promise<MeetingNotes> {
   const system = notesSystemPrompt()
-  const user = notesUserPrompt(meeting.segments)
+  const covered = meeting.notesCovered ?? 0
+  const user = notesUserPrompt(meeting.segments, covered > 0 ? meeting.notes : undefined, covered)
   let content = await complete(provider, credentials, model, system, user)
   let notes = extractMeetingNotes(content)
   if (!notes) {

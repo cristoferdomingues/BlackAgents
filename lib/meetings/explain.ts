@@ -10,7 +10,7 @@ export const MEETINGS_INTRO =
 export const MEETINGS_STEPS = [
   {
     title: "1. Add a meeting",
-    text: "Paste a transcript, or drop a caption file or an audio file from Meet, Zoom, Teams, or any other app.",
+    text: "Press Start listening during a call, or paste a transcript from Meet, Zoom, Teams, or any other app.",
   },
   {
     title: "2. Read the notes",
@@ -32,6 +32,21 @@ export const BUILD_EFFECT = "Opens a draft in the editor. Nothing is saved until
 export const DELETE_EFFECT = "Deletes this meeting and its transcript from this computer."
 
 export const CONSENT_LABEL = "Everyone in the call agreed to this recording."
+
+export const LIVE_EFFECT =
+  "Records until you press Stop. Notes update during the call. Nothing is saved as knowledge until you send it to Brain."
+
+export const LISTENING_BANNER = "Listening. Your microphone is on."
+
+export const OTHERS_MAC = "Others are not heard on this Mac yet. Only your microphone is recorded."
+
+export const OTHERS_ONLY_MIC = "Only your microphone is recorded."
+
+export const PAUSE_EFFECT = "Pauses the recording. Press Resume to continue the same meeting."
+
+export const STOP_EFFECT = "Stops the recording and writes the final notes."
+
+export const MARK_EFFECT = "Saves a short mark at this moment, like “important”."
 
 export const DOCX_MESSAGE = "Word files are not supported yet. Paste the text, or save it as .txt."
 

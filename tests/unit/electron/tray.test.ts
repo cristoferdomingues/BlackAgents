@@ -25,11 +25,16 @@ describe("desktop tray", () => {
     expect(existsSync(path.join(electronDirectory, "tray.png"))).toBe(true)
   })
 
-  it("offers Open and Quit", () => {
+  it("offers Open, Start listening, and Quit", () => {
     const calls: string[] = []
-    const menu = trayMenuTemplate(() => {
-      calls.push("open")
-    })
+    const menu = trayMenuTemplate(
+      () => {
+        calls.push("open")
+      },
+      () => {
+        calls.push("listen")
+      }
+    )
 
     expect(
       menu.map((item) => {
@@ -37,10 +42,12 @@ describe("desktop tray", () => {
         if ("type" in item) return item.type
         return item.role
       })
-    ).toEqual(["Open", "separator", "quit"])
+    ).toEqual(["Open", "Start listening", "separator", "quit"])
 
     const open = menu[0]
     if (open && "click" in open) open.click()
-    expect(calls).toEqual(["open"])
+    const listen = menu[1]
+    if (listen && "click" in listen) listen.click()
+    expect(calls).toEqual(["open", "listen"])
   })
 })

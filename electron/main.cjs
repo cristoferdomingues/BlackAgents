@@ -1,5 +1,17 @@
 const path = require("node:path")
-const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, utilityProcess } = require("electron")
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  nativeImage,
+  session,
+  shell,
+  utilityProcess,
+} = require("electron")
 const log = require("electron-log/main")
 
 const {
@@ -7,6 +19,7 @@ const {
   isSafeExternalUrl,
   waitForServer,
 } = require("./server-utils.cjs")
+const { allowsMeetingPermission, systemAudioMode } = require("./capture.cjs")
 const { trayIconPath, trayMenuTemplate } = require("./tray.cjs")
 
 let applicationServer = null
@@ -100,10 +113,47 @@ function loadTrayImage() {
   return image
 }
 
+function setTrayListening(on) {
+  if (!tray) return
+  tray.setToolTip(on ? "BlackAgents is listening" : "BlackAgents")
+  if (process.platform === "darwin") tray.setTitle(on ? "Listening" : "")
+}
+
+function allowMeetingCapture() {
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
+    callback(allowsMeetingPermission(permission))
+  })
+  if (systemAudioMode(process.platform) !== "loopback") return
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer
+      .getSources({ types: ["screen"] })
+      .then((sources) => {
+        if (!sources[0]) {
+          callback({})
+          return
+        }
+        callback({ video: sources[0], audio: "loopback" })
+      })
+      .catch(() => callback({}))
+  })
+}
+
+function openListening() {
+  void showOrCreateWindow().then(() => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (window && applicationUrl) void window.loadURL(`${applicationUrl}/meetings?listen=1`)
+  })
+}
+
 function createApplicationTray() {
   tray = new Tray(loadTrayImage())
   tray.setToolTip("BlackAgents")
-  const menu = Menu.buildFromTemplate(trayMenuTemplate(() => void showOrCreateWindow()))
+  const menu = Menu.buildFromTemplate(
+    trayMenuTemplate(
+      () => void showOrCreateWindow(),
+      () => openListening()
+    )
+  )
 
   if (process.platform === "darwin") {
     tray.setIgnoreDoubleClickEvents(true)
@@ -134,6 +184,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   })
 
@@ -170,6 +221,8 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady()
     .then(() => {
+      allowMeetingCapture()
+      ipcMain.on("meeting-listening", (_event, on) => setTrayListening(Boolean(on)))
       createApplicationTray()
       return showOrCreateWindow()
     })

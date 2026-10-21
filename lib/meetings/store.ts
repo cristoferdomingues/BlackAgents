@@ -5,7 +5,16 @@ import { pathExists, readText, removePath, resolveInWorkspace, walkFiles, writeT
 import { ensureLocalStateIgnored } from "@/lib/workflows/store"
 
 import { parseTranscript } from "./transcript"
-import { meetingIdSchema, meetingImportSchema, meetingSchema, type Meeting, type MeetingImport } from "./schema"
+import {
+  meetingIdSchema,
+  meetingImportSchema,
+  meetingLiveSchema,
+  meetingPatchSchema,
+  meetingSchema,
+  type Meeting,
+  type MeetingImport,
+} from "./schema"
+import { MEETING_LIMITS } from "./limits"
 
 export const MEETINGS_DIR = ".black-agents/meetings"
 
@@ -111,4 +120,54 @@ export async function importMeeting(root: string, body: unknown, now = new Date(
     segments,
   }
   return saveMeeting(root, meeting)
+}
+
+/** Start a live meeting with no transcript yet. Only one call can be open. */
+export async function startLiveMeeting(root: string, body: unknown, now = new Date()): Promise<Meeting> {
+  const parsed = meetingLiveSchema.safeParse(body ?? {})
+  if (!parsed.success) throw new MeetingError(parsed.error.issues[0]?.message ?? "Invalid meeting")
+  const input = parsed.data
+  if (input.scope) {
+    const project = await loadProjectScope(root, input.scope)
+    if (!project.ok) throw new MeetingError(project.error)
+  }
+  const open = (await listMeetings(root)).find(
+    (meeting) => meeting.status === "listening" || meeting.status === "paused"
+  )
+  if (open) throw new MeetingError("A meeting is already listening. Stop it first.", 409)
+  const meeting: Meeting = {
+    id: randomUUID(),
+    title: input.title ?? "Live meeting",
+    startedAt: now.toISOString(),
+    status: "listening",
+    source: "live",
+    ...(input.scope ? { scope: input.scope } : {}),
+    segments: [],
+  }
+  return saveMeeting(root, meeting)
+}
+
+/** Append transcript lines or marks, or change the live status. */
+export async function patchMeeting(root: string, id: string, body: unknown): Promise<Meeting> {
+  const parsed = meetingPatchSchema.safeParse(body)
+  if (!parsed.success) throw new MeetingError(parsed.error.issues[0]?.message ?? "Invalid meeting")
+  const current = await readMeeting(root, id)
+  if (!current) throw new MeetingError("Meeting not found", 404)
+  const patch = parsed.data
+  const segments = [...current.segments, ...(patch.appendSegments ?? [])]
+  if (segments.length > MEETING_LIMITS.segments) {
+    throw new MeetingError("This meeting is too long.", 400)
+  }
+  const marks = [...(current.marks ?? []), ...(patch.appendMarks ?? [])]
+  const next: Meeting = {
+    ...current,
+    segments,
+    ...(marks.length > 0 ? { marks } : {}),
+    ...(patch.status ? { status: patch.status } : {}),
+    ...(patch.endedAt ? { endedAt: patch.endedAt } : {}),
+    ...(patch.notesCovered !== undefined ? { notesCovered: patch.notesCovered } : {}),
+  }
+  if (patch.error === null) delete next.error
+  else if (patch.error) next.error = patch.error
+  return saveMeeting(root, next)
 }

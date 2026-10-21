@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { POST as BUILD } from "@/app/api/meetings/[id]/build/route"
 import { POST as KNOWLEDGE } from "@/app/api/meetings/[id]/knowledge/route"
 import { POST as NOTES } from "@/app/api/meetings/[id]/notes/route"
+import { GET as DESKTOP } from "@/app/api/desktop/route"
+import { PATCH } from "@/app/api/meetings/[id]/route"
+import { POST as LIVE } from "@/app/api/meetings/live/route"
 import { GET, POST } from "@/app/api/meetings/route"
 import { listProposals } from "@/lib/brain/store"
 import { setProviderSecret } from "@/lib/secrets"
@@ -181,6 +184,48 @@ describe("meetings API", () => {
       )
     )
     expect(unknown.success).toBe(false)
+  })
+
+  it("starts one live meeting and appends a line", async () => {
+    const created = await bodyOf(await LIVE(jsonRequest("http://t/api/meetings/live", "POST", { title: "Call" })))
+    expect(created.success).toBe(true)
+    expect(created.data?.status).toBe("listening")
+    expect(created.data?.source).toBe("live")
+    const id = String(created.data?.id)
+
+    const again = await bodyOf(await LIVE(jsonRequest("http://t/api/meetings/live", "POST", {})))
+    expect(again.success).toBe(false)
+    expect(again.error).toContain("already listening")
+
+    const patched = await bodyOf(
+      await PATCH(
+        jsonRequest(`http://t/api/meetings/${id}`, "PATCH", {
+          appendSegments: [{ at: 0, speaker: "me", text: "Hello" }],
+          appendMarks: [{ at: 0, text: "important" }],
+        }),
+        { params: Promise.resolve({ id }) }
+      )
+    )
+    expect(patched.success).toBe(true)
+    expect(patched.data?.segments).toEqual([{ at: 0, speaker: "me", text: "Hello" }])
+
+    const stopped = await bodyOf(
+      await PATCH(
+        jsonRequest(`http://t/api/meetings/${id}`, "PATCH", {
+          status: "ready",
+          endedAt: "2026-10-21T16:00:00.000Z",
+          error: null,
+        }),
+        { params: Promise.resolve({ id }) }
+      )
+    )
+    expect(stopped.data?.status).toBe("ready")
+    expect(stopped.data?.error).toBeUndefined()
+  })
+
+  it("says the browser is not the desktop app", async () => {
+    const res = await bodyOf(await DESKTOP())
+    expect(res.data).toMatchObject({ desktop: false })
   })
 
   it("fails when no workspace is selected", async () => {

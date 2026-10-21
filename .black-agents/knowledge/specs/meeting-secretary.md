@@ -64,6 +64,8 @@ flowchart LR
 
 ### Phase 2 — Live secretary (desktop app)
 
+In the app. The microphone is recorded on every system. Computer sound is recorded on Windows. On a Mac the page says only the microphone is heard.
+
 - **Start listening** in the Meetings page and in the tray. A clear "Listening" sign stays visible (tray icon + page banner) the whole time.
 - Two tracks: mic = **Me**, computer sound = **Others**. This gives a simple speaker split with no extra model.
 - Every ~30 s a chunk is transcribed. Every ~2 min the notes update (rolling summary, so the prompt does not grow with the call).

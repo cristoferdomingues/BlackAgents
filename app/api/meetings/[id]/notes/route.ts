@@ -31,6 +31,8 @@ export async function POST(req: Request, ctx: RouteContext) {
       throw err
     }
     if (!meeting) return fail("Meeting not found", 404)
+    if (meeting.segments.length === 0) return fail("There is nothing to summarize yet.", 400)
+    const keepStatus = meeting.status === "listening" || meeting.status === "paused"
 
     let provider: LLMProvider | undefined
     let secret: Awaited<ReturnType<typeof getVerifiedCredentials>>["secret"] | undefined
@@ -41,10 +43,22 @@ export async function POST(req: Request, ctx: RouteContext) {
       const verified = await getVerifiedCredentials(provider)
       secret = verified.secret
       const notes = await generateMeetingNotes(provider, verified.credentials, choice.model, meeting)
-      return ok(await saveMeeting(currentPath, { ...meeting, notes, status: "ready", error: undefined }))
+      return ok(
+        await saveMeeting(currentPath, {
+          ...meeting,
+          notes,
+          notesCovered: meeting.segments.length,
+          status: keepStatus ? meeting.status : "ready",
+          error: undefined,
+        })
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not write notes"
-      await saveMeeting(currentPath, { ...meeting, status: "failed", error: message.slice(0, 500) }).catch(() => undefined)
+      await saveMeeting(currentPath, {
+        ...meeting,
+        status: keepStatus ? meeting.status : "failed",
+        error: message.slice(0, 500),
+      }).catch(() => undefined)
       if (err instanceof MeetingError) return fail(err.message, err.status)
       if (err instanceof CredentialStateError) return fail(err.message, err.status)
       if (err instanceof ProviderError) {

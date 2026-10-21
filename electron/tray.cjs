@@ -8,9 +8,10 @@ function trayIconPath(directory, platform = process.platform) {
   return path.join(directory, trayIconFileName(platform))
 }
 
-function trayMenuTemplate(onOpen) {
+function trayMenuTemplate(onOpen, onListen) {
   return [
     { label: "Open", click: onOpen },
+    { label: "Start listening", click: onListen ?? onOpen },
     { type: "separator" },
     { role: "quit" },
   ]

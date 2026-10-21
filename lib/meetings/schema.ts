@@ -46,15 +46,34 @@ export const meetingNotesSchema = z.object({
 })
 export type MeetingNotes = z.infer<typeof meetingNotesSchema>
 
+export const meetingMarkSchema = z.object({
+  at: z.number().int().min(0).max(MEETING_LIMITS.audioSeconds),
+  text: z.string().trim().min(1).max(200),
+})
+export type MeetingMark = z.infer<typeof meetingMarkSchema>
+
+export const meetingStatusSchema = z.enum([
+  "processing",
+  "listening",
+  "paused",
+  "interrupted",
+  "ready",
+  "failed",
+])
+
 export const meetingSchema = z.object({
   id: meetingIdSchema,
   title: z.string().trim().min(1).max(120),
   startedAt: isoDate,
-  status: z.enum(["processing", "ready", "failed"]),
+  endedAt: isoDate.optional(),
+  status: meetingStatusSchema,
   source: z.enum(["import", "live"]),
   /** Project id active when the meeting was created. Absent = the workspace. */
   scope: projectIdSchema.optional(),
-  segments: z.array(meetingSegmentSchema).min(1).max(MEETING_LIMITS.segments),
+  segments: z.array(meetingSegmentSchema).max(MEETING_LIMITS.segments),
+  /** How many segments were included the last time notes were written. */
+  notesCovered: z.number().int().min(0).optional(),
+  marks: z.array(meetingMarkSchema).max(50).optional(),
   notes: meetingNotesSchema.optional(),
   error: z.string().trim().min(1).max(500).optional(),
   /** Set after the note is sent to the Brain inbox. */
@@ -73,6 +92,20 @@ export const meetingImportSchema = z
     message: "Paste a transcript or add a file",
   })
 export type MeetingImport = z.infer<typeof meetingImportSchema>
+
+export const meetingLiveSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  scope: projectIdSchema.optional(),
+})
+
+export const meetingPatchSchema = z.object({
+  status: meetingStatusSchema.optional(),
+  appendSegments: z.array(meetingSegmentSchema).min(1).max(20).optional(),
+  appendMarks: z.array(meetingMarkSchema).min(1).max(5).optional(),
+  endedAt: isoDate.optional(),
+  error: z.string().trim().min(1).max(500).nullable().optional(),
+  notesCovered: z.number().int().min(0).optional(),
+})
 
 export const meetingNotesRequestSchema = z.object({
   provider: providerIdSchema.optional(),

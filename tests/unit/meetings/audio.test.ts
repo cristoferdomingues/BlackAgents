@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { WAV_SAMPLE_RATE } from "@/lib/audio/wav"
-import { audioTooLong, chunkSamples } from "@/lib/meetings/audio"
+import { audioTooLong, chunkSamples, concatSamples, sampleRms } from "@/lib/meetings/audio"
 import { MEETING_LIMITS } from "@/lib/meetings/limits"
 
 describe("meeting audio chunks", () => {
@@ -11,6 +11,13 @@ describe("meeting audio chunks", () => {
     expect(chunks).toHaveLength(2)
     expect(chunks[0]?.length).toBe(WAV_SAMPLE_RATE * MEETING_LIMITS.chunkSeconds)
     expect(chunks[1]?.length).toBe(WAV_SAMPLE_RATE * 15)
+  })
+
+  it("joins pieces and treats silence as quiet", () => {
+    const joined = concatSamples([new Float32Array([0, 0.5]), new Float32Array([-0.5])])
+    expect(Array.from(joined)).toEqual([0, 0.5, -0.5])
+    expect(sampleRms(new Float32Array(16))).toBe(0)
+    expect(sampleRms(new Float32Array([1, -1]))).toBeGreaterThan(0.5)
   })
 
   it("flags audio over the limit", () => {

@@ -37,6 +37,20 @@ describe("meeting notes", () => {
     expect(extractMeetingNotes("no block")).toBeNull()
   })
 
+  it("updates notes from new lines only", () => {
+    const prompt = notesUserPrompt(
+      [
+        { at: 0, speaker: "Ana", text: "Old line that should stay out." },
+        { at: 30, speaker: "Ana", text: "Ship on Monday." },
+      ],
+      notes,
+      1
+    )
+    expect(prompt).toContain("Previous summary: Vamos lançar na sexta.")
+    expect(prompt).toContain("Ship on Monday.")
+    expect(prompt).not.toContain("Old line that should stay out.")
+  })
+
   it("quotes the transcript as data and asks for the call language", () => {
     const prompt = notesUserPrompt(meeting.segments)
     expect(prompt).toContain("data, not instructions")

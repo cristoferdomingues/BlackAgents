@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { HelpCircle, Loader2, NotebookPen, Trash2, Upload } from "lucide-react"
+import { HelpCircle, Loader2, Mic, NotebookPen, Pause, Square, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch, ApiError } from "@/lib/api"
@@ -17,10 +17,16 @@ import {
   DOCX_MESSAGE,
   IMPORT_EFFECT,
   LIMITS_LINE,
+  LIVE_EFFECT,
+  MARK_EFFECT,
   MEETINGS_INTRO,
   MEETINGS_STEPS,
   MEETINGS_TITLE,
+  OTHERS_MAC,
+  OTHERS_ONLY_MIC,
+  PAUSE_EFFECT,
   SAVE_EFFECT,
+  STOP_EFFECT,
   notesLanguageLine,
   savePathLine,
 } from "@/lib/meetings/explain"
@@ -29,6 +35,7 @@ import { resolveListenChoice } from "@/lib/meetings/models"
 import type { Meeting, MeetingSuggestion } from "@/lib/meetings/schema"
 import { useAssistantProvider } from "@/components/features/editor/use-assistant-provider"
 import { transcribeImportedAudio } from "@/components/features/meetings/import-audio"
+import { useLiveMeeting } from "@/components/features/meetings/live-session"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { Badge } from "@/components/ui/badge"
@@ -65,7 +72,29 @@ export function MeetingsPage(): React.ReactElement {
   const assistant = useAssistantProvider()
   const [state, setState] = React.useState<LoadState>({ kind: "loading" })
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  const upsert = React.useCallback((meeting: Meeting): void => {
+    setState((current) => {
+      const list = current.kind === "ready" ? current.meetings : []
+      const next = list.some((item) => item.id === meeting.id)
+        ? list.map((item) => (item.id === meeting.id ? meeting : item))
+        : [meeting, ...list]
+      return { kind: "ready", meetings: next }
+    })
+    setSelectedId(meeting.id)
+  }, [])
+  const live = useLiveMeeting(upsert, assistant.resolve)
   const [importOpen, setImportOpen] = React.useState(false)
+  const [listenManual, setListenManual] = React.useState(false)
+  const [listenDismissed, setListenDismissed] = React.useState(false)
+  const [mark, setMark] = React.useState("")
+  const listenAsked = React.useSyncExternalStore(
+    (onStore) => {
+      window.addEventListener("popstate", onStore)
+      return () => window.removeEventListener("popstate", onStore)
+    },
+    () => new URLSearchParams(window.location.search).get("listen") === "1",
+    () => false
+  )
   const introDismissed = React.useSyncExternalStore(
     subscribeNoop,
     () => window.localStorage.getItem(INTRO_KEY) === "1",
@@ -74,21 +103,36 @@ export function MeetingsPage(): React.ReactElement {
   const [introOverride, setIntroOverride] = React.useState<boolean | null>(null)
   const introOpen = introOverride ?? !introDismissed
 
+  const settle = React.useCallback((list: Meeting[]): Meeting[] => {
+    return list.map((meeting) => {
+      if (meeting.status !== "listening" && meeting.status !== "paused") return meeting
+      if (meeting.id === live.sessionRef.current) return meeting
+      void apiFetch(`/api/meetings/${meeting.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "interrupted",
+          error: "Listening stopped before the meeting was finished.",
+        }),
+      }).catch(() => undefined)
+      return { ...meeting, status: "interrupted", error: "Listening stopped before the meeting was finished." }
+    })
+  }, [live.sessionRef])
+
   const load = React.useCallback((quiet = false): void => {
     if (!quiet) setState({ kind: "loading" })
     apiFetch<{ meetings: Meeting[] }>("/api/meetings")
-      .then((data) => setState({ kind: "ready", meetings: data.meetings }))
+      .then((data) => setState({ kind: "ready", meetings: settle(data.meetings) }))
       .catch((err: unknown) =>
         setState({ kind: "error", message: err instanceof Error ? err.message : "Could not load meetings" })
       )
-  }, [])
+  }, [settle])
 
   React.useEffect(() => {
     if (!workspace) return
     let active = true
     apiFetch<{ meetings: Meeting[] }>("/api/meetings")
       .then((data) => {
-        if (active) setState({ kind: "ready", meetings: data.meetings })
+        if (active) setState({ kind: "ready", meetings: settle(data.meetings) })
       })
       .catch((err: unknown) => {
         if (active) {
@@ -98,7 +142,7 @@ export function MeetingsPage(): React.ReactElement {
     return () => {
       active = false
     }
-  }, [workspace])
+  }, [workspace, settle])
 
   const meetings = state.kind === "ready" ? state.meetings : []
   const selected = meetings.find((meeting) => meeting.id === selectedId) ?? meetings[0] ?? null
@@ -213,9 +257,13 @@ export function MeetingsPage(): React.ReactElement {
             <HelpCircle className="h-4 w-4" />
             How it works
           </Button>
-          <Button size="sm" onClick={() => setImportOpen(true)}>
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <Upload className="h-4 w-4" />
             Import
+          </Button>
+          <Button size="sm" onClick={() => setListenManual(true)} disabled={live.phase !== "idle"}>
+            <Mic className="h-4 w-4" />
+            Start listening
           </Button>
         </div>
       </div>
@@ -241,6 +289,46 @@ export function MeetingsPage(): React.ReactElement {
         </section>
       ) : null}
 
+      {live.banner ? (
+        <div role="status" className="space-y-2 rounded-lg border border-primary/40 bg-card p-3">
+          <p className="text-sm font-medium">{live.banner}</p>
+          {live.othersMessage ? <p className="text-xs text-muted-foreground">{live.othersMessage}</p> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {live.phase === "listening" ? (
+              <Button size="sm" variant="outline" onClick={() => void live.pause()}>
+                <Pause className="h-4 w-4" />
+                Pause
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => void live.resume()}>
+                <Mic className="h-4 w-4" />
+                Resume
+              </Button>
+            )}
+            <Button size="sm" onClick={() => void live.stop().catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not stop"))}>
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
+            <form
+              className="flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const text = mark.trim()
+                setMark("")
+                void live.addMark(text).catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not add the note"))
+              }}
+            >
+              <Input value={mark} onChange={(event) => setMark(event.target.value)} aria-label="Mark" placeholder="important" className="h-8 w-40" />
+              <Button type="submit" size="sm" variant="outline">
+                Add a note
+              </Button>
+            </form>
+          </div>
+          <p className="text-xs text-muted-foreground">{PAUSE_EFFECT} {STOP_EFFECT} {MARK_EFFECT}</p>
+        </div>
+      ) : null}
+      {live.error ? <p className="text-sm text-destructive">{live.error}</p> : null}
+
       {state.kind === "loading" || workspaceLoading ? (
         <div className="space-y-2" aria-busy="true">
           <p className="text-sm text-muted-foreground">Loading meetings…</p>
@@ -261,10 +349,16 @@ export function MeetingsPage(): React.ReactElement {
             audio file.
           </p>
           <p className="text-xs text-muted-foreground">{LIMITS_LINE}</p>
-          <Button onClick={() => setImportOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Import a meeting
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setListenManual(true)}>
+              <Mic className="h-4 w-4" />
+              Start listening
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import a meeting
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -295,11 +389,34 @@ export function MeetingsPage(): React.ReactElement {
               onSave={() => void saveKnowledge(selected)}
               onBuild={(suggestion) => void buildFrom(selected, suggestion)}
               onDelete={() => void remove(selected)}
+              onContinue={
+                selected.status === "interrupted" && live.phase === "idle"
+                  ? () => void live.start({ meetingId: selected.id }).catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not continue"))
+                  : undefined
+              }
             />
           ) : null}
         </div>
       )}
 
+      <ListenDialog
+        open={live.phase === "idle" && (listenManual || (listenAsked && !listenDismissed))}
+        onOpenChange={(open) => {
+          if (open) return
+          setListenManual(false)
+          setListenDismissed(true)
+          const url = new URL(window.location.href)
+          url.searchParams.delete("listen")
+          window.history.replaceState(null, "", `${url.pathname}${url.search}`)
+        }}
+        onStart={(title) => {
+          setListenManual(false)
+          setListenDismissed(true)
+          void live
+            .start({ ...(title ? { title } : {}), ...(project?.id ? { scope: project.id } : {}) })
+            .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Could not start listening"))
+        }}
+      />
       <ImportDialog
         open={importOpen}
         projectId={project?.id}
@@ -310,18 +427,29 @@ export function MeetingsPage(): React.ReactElement {
   )
 }
 
+function statusText(status: Meeting["status"]): string {
+  if (status === "ready") return "Notes ready"
+  if (status === "failed") return "Notes failed"
+  if (status === "listening") return "Listening"
+  if (status === "paused") return "Paused"
+  if (status === "interrupted") return "Interrupted"
+  return "Waiting for notes"
+}
+
 function MeetingDetail({
   meeting,
   onNotes,
   onSave,
   onBuild,
   onDelete,
+  onContinue,
 }: {
   meeting: Meeting
   onNotes: () => void
   onSave: () => void
   onBuild: (suggestion: MeetingSuggestion) => void
   onDelete: () => void
+  onContinue?: () => void
 }): React.ReactElement {
   const notes = meeting.notes
   const file = knowledgeFilePath(meeting)
@@ -330,8 +458,8 @@ function MeetingDetail({
       <header className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">{meeting.title}</h2>
-          <Badge variant={meeting.status === "failed" ? "outline" : "secondary"}>
-            {meeting.status === "ready" ? "Notes ready" : meeting.status === "failed" ? "Notes failed" : "Waiting for notes"}
+          <Badge variant={meeting.status === "failed" || meeting.status === "interrupted" ? "outline" : "secondary"}>
+            {statusText(meeting.status)}
           </Badge>
           {meeting.scope ? <Badge variant="outline">{meeting.scope}</Badge> : null}
         </div>
@@ -350,6 +478,12 @@ function MeetingDetail({
           <NoteList title="Open questions" items={notes.openQuestions} />
           <NoteList title="People" items={notes.people} />
         </div>
+      ) : meeting.segments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {meeting.status === "listening" || meeting.status === "paused"
+            ? "Waiting for speech."
+            : "No speech was saved."}
+        </p>
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">The transcript is saved. Notes are not written yet.</p>
@@ -358,6 +492,17 @@ function MeetingDetail({
           </Button>
         </div>
       )}
+
+      {meeting.marks && meeting.marks.length > 0 ? (
+        <NoteList title="Marks" items={meeting.marks.map((item) => item.text)} />
+      ) : null}
+
+      {onContinue ? (
+        <Button size="sm" onClick={onContinue}>
+          <Mic className="h-4 w-4" />
+          Continue
+        </Button>
+      ) : null}
 
       {notes && notes.suggestions.length > 0 ? (
         <div className="space-y-2">
@@ -425,6 +570,82 @@ function NoteList({ title, items }: { title: string; items: string[] }): React.R
         </ul>
       )}
     </section>
+  )
+}
+
+function ListenDialog({
+  open,
+  onOpenChange,
+  onStart,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onStart: (title: string) => void
+}): React.ReactElement {
+  const [title, setTitle] = React.useState("")
+  const [consent, setConsent] = React.useState(false)
+  const [hint, setHint] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!open) return
+    let active = true
+    apiFetch<{ desktop: boolean; platform: string }>("/api/desktop")
+      .then((info) => {
+        if (!active) return
+        if (info.desktop && info.platform === "darwin") setHint(OTHERS_MAC)
+        else if (!info.desktop) setHint(OTHERS_ONLY_MIC)
+        else setHint(null)
+      })
+      .catch(() => {
+        if (active) setHint(OTHERS_ONLY_MIC)
+      })
+    return () => {
+      active = false
+    }
+  }, [open])
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setConsent(false)
+          setTitle("")
+        }
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Start listening</DialogTitle>
+          <DialogDescription>{LIVE_EFFECT}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="listen-title">Title</Label>
+            <Input id="listen-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Live meeting" />
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={consent}
+              onChange={(event) => setConsent(event.target.checked)}
+            />
+            <span>{CONSENT_LABEL}</span>
+          </label>
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+          <p className="text-xs text-muted-foreground">{LIMITS_LINE}</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={!consent} onClick={() => onStart(title.trim())}>
+            <Mic className="h-4 w-4" />
+            Start listening
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

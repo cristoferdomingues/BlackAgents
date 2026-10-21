@@ -178,7 +178,9 @@ Import a transcript, write notes, then send them to Brain or open a draft. See [
 | POST | `/api/meetings/[id]/notes` | Writes notes with the Meeting Notes model, or the body `{ provider, model }`. **502** when the model reply is not a valid `meeting` block |
 | POST | `/api/meetings/[id]/knowledge` | Queues a Brain proposal. Does not write the knowledge file. A second call returns `already: true` |
 | POST | `/api/meetings/[id]/build` | Body: `{ kind, name, provider?, model? }` → an artifact draft or a workflow draft. Nothing is saved |
-| GET / DELETE | `/api/meetings/[id]` | One meeting, or delete it |
+| GET / PATCH / DELETE | `/api/meetings/[id]` | One meeting, append transcript lines or marks, or change the live status |
+| POST | `/api/meetings/live` | Starts one live meeting (**201**). **409** when another meeting is already listening |
+| GET | `/api/desktop` | `{ desktop, platform }` — `desktop` is true only inside the packaged app |
 
 ## YouTube
 

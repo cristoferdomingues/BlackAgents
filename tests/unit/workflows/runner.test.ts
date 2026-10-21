@@ -70,7 +70,7 @@ describe("WorkflowRunner", () => {
     const done = await untilTerminal(runner, run.id)
     expect(done.status).toBe("succeeded")
     expect(done.task).toBe("Custom task")
-    await new Promise((r) => setTimeout(r, 20))
+    for (let i = 0; i < 400 && runner.isActive(env.workspace, "line"); i++) await new Promise((r) => setTimeout(r, 5))
     expect((await readRun(env.workspace, run.id))?.status).toBe("succeeded")
     expect(finished).toEqual([run.id])
     expect(runner.isActive(env.workspace, "line")).toBe(false)
@@ -210,7 +210,12 @@ describe("WorkflowRunner", () => {
     for (let i = 0; i < 100 && listPendingApprovals().length < 2; i++) await new Promise((r) => setTimeout(r, 5))
     expect(await runner.cancel(workspaceRun.id)).toBe(true)
     expect(await runner.cancel(projectRun.id)).toBe(true)
-    await new Promise((r) => setTimeout(r, 20))
+    // Wait for both runs to finish writing, so cleanup does not race their run files.
+    for (let i = 0; i < 400 && (runner.isActive(env.workspace, "line") || runner.isActive(env.workspace, "line", "web")); i++) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    expect(runner.isActive(env.workspace, "line")).toBe(false)
+    expect(runner.isActive(env.workspace, "line", "web")).toBe(false)
   })
 
   it("resolves a project-only agent when a scoped run is enqueued", async () => {

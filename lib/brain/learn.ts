@@ -365,7 +365,7 @@ export interface ConceptProposalInput {
   sources?: OkfConceptFrontmatter["sources"]
 }
 
-export type ConceptProposalOrigin = "memory" | "assistant"
+export type ConceptProposalOrigin = "memory" | "assistant" | "meeting"
 
 /**
  * Queue durable knowledge from a trusted UI action. The proposal gets
@@ -394,7 +394,18 @@ export async function proposeConcept(
     throw new ProposalError(issues.find((issue) => issue.severity === "error")?.message ?? "The concept is not valid", 400)
   }
   const title = input.title?.trim() || input.id.split("/").at(-1) || input.id
-  const generatedBy = origin === "memory" ? "process:memory-promotion" : "process:assistant-chat"
+  const generatedBy =
+    origin === "memory"
+      ? "process:memory-promotion"
+      : origin === "meeting"
+        ? "process:meeting-secretary"
+        : "process:assistant-chat"
+  const rationale =
+    origin === "memory"
+      ? "A memory note promoted to durable knowledge."
+      : origin === "meeting"
+        ? "Notes from a meeting. Approve to save them as knowledge."
+        : "The user asked the Assistant to save this as durable knowledge."
   const frontmatter: OkfConceptFrontmatter = {
     ...(existing?.frontmatter ?? { type: input.type.trim(), extra: {} }),
     type: input.type.trim(),
@@ -412,10 +423,7 @@ export async function proposeConcept(
     target: { type: "concept", name: input.id },
     concept: frontmatter,
     title,
-    rationale:
-      origin === "memory"
-        ? "A memory note promoted to durable knowledge."
-        : "The user asked the Assistant to save this as durable knowledge.",
+    rationale,
     content,
     description: frontmatter.description,
     source: { kind: origin, signal: "feedback" },

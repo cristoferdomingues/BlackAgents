@@ -54,6 +54,7 @@ export function proposalOrigin(
 ): string {
   if (proposal.source.kind === "import") return "From an OKF bundle you previewed."
   if (proposal.source.kind === "memory") return "From a memory note you chose to save as knowledge."
+  if (proposal.source.kind === "meeting") return "From a meeting. You chose to save these notes as knowledge."
   if (proposal.source.kind === "assistant" && proposal.kind === "memory_note") {
     return "From the Assistant. You asked to remember this."
   }

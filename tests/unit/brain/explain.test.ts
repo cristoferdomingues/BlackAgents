@@ -68,6 +68,12 @@ describe("proposalOrigin", () => {
     )
   })
 
+  it("says meeting notes came from a meeting", () => {
+    expect(proposalOrigin({ source: source({ kind: "meeting" }), decision: { by: "feedback" } })).toBe(
+      "From a meeting. You chose to save these notes as knowledge."
+    )
+  })
+
   it("says a knowledge draft came from the Assistant", () => {
     expect(proposalOrigin({ source: source({ kind: "assistant" }), decision: { by: "feedback" } })).toBe(
       "From the Assistant. You asked to save it as knowledge."

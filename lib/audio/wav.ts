@@ -43,8 +43,8 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-/** Browser only: decode a recorded clip and return it as base64 WAV. */
-export async function blobToWavBase64(blob: Blob): Promise<string> {
+/** Browser only: decode a clip to 16 kHz mono samples. */
+export async function blobToWavSamples(blob: Blob): Promise<Float32Array> {
   const encoded = await blob.arrayBuffer()
   const AudioCtx =
     window.AudioContext ||
@@ -52,7 +52,7 @@ export async function blobToWavBase64(blob: Blob): Promise<string> {
   const ctx = new AudioCtx()
   let decoded: AudioBuffer
   try {
-    decoded = await ctx.decodeAudioData(encoded)
+    decoded = await ctx.decodeAudioData(encoded.slice(0))
   } finally {
     void ctx.close().catch(() => {})
   }
@@ -63,5 +63,10 @@ export async function blobToWavBase64(blob: Blob): Promise<string> {
   source.connect(offline.destination)
   source.start()
   const rendered = await offline.startRendering()
-  return bytesToBase64(encodeWav(rendered.getChannelData(0)))
+  return Float32Array.from(rendered.getChannelData(0))
+}
+
+/** Browser only: decode a recorded clip and return it as base64 WAV. */
+export async function blobToWavBase64(blob: Blob): Promise<string> {
+  return bytesToBase64(encodeWav(await blobToWavSamples(blob)))
 }

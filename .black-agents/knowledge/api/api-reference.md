@@ -167,6 +167,19 @@ The route reads the key **server-side** from `secrets.json`, builds the system c
 | GET | `/api/approvals` | `{ approvals: PendingApproval[] }` (tool, args, risk, scope chat/run) |
 | POST | `/api/approvals/[id]` | Body: `{ approved, remember? }` → `{ id, approved, remember }`. 404 when no longer pending. `remember` only for exec |
 
+## Meetings
+
+Import a transcript, write notes, then send them to Brain or open a draft. See [Meeting Secretary](../specs/meeting-secretary.md).
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/meetings` | `{ meetings }` for the active workspace. Empty list when no workspace is selected |
+| POST | `/api/meetings` | Body: `{ title?, scope?, text? }` or `{ segments }` → the stored meeting (**201**). **400** bad input, **412** no workspace |
+| POST | `/api/meetings/[id]/notes` | Writes notes with the Meeting Notes model, or the body `{ provider, model }`. **502** when the model reply is not a valid `meeting` block |
+| POST | `/api/meetings/[id]/knowledge` | Queues a Brain proposal. Does not write the knowledge file. A second call returns `already: true` |
+| POST | `/api/meetings/[id]/build` | Body: `{ kind, name, provider?, model? }` → an artifact draft or a workflow draft. Nothing is saved |
+| GET / DELETE | `/api/meetings/[id]` | One meeting, or delete it |
+
 ## YouTube
 
 | Method | Route | Purpose |

@@ -42,6 +42,22 @@ const taskChoiceSchema = z.object({
   model: taskModelIdSchema,
 })
 
+/** Meeting secretary. No defaults, so saving Listen does not clear Notes. */
+const meetingListenSchema = z.object({
+  provider: z.enum(["openai", "custom"]),
+  model: taskModelIdSchema,
+})
+
+const meetingModelsSchema = z.object({
+  listen: meetingListenSchema.optional(),
+  notes: taskChoiceSchema.optional(),
+})
+
+const meetingModelsPatchSchema = z.object({
+  listen: meetingListenSchema.nullable().optional(),
+  notes: taskChoiceSchema.nullable().optional(),
+})
+
 export const aiSettingsSchema = z.object({
   assistant: z
     .object({
@@ -75,6 +91,7 @@ export const aiSettingsSchema = z.object({
       vision: taskChoiceSchema.optional(),
       fast: taskChoiceSchema.optional(),
       reasoning: taskChoiceSchema.optional(),
+      meeting: meetingModelsSchema.optional(),
     })
     .default({}),
   /** Desktop browser flow replay options. */
@@ -117,6 +134,7 @@ export const aiSettingsPatchSchema = z.object({
       vision: taskChoiceSchema.nullable(),
       fast: taskChoiceSchema.nullable(),
       reasoning: taskChoiceSchema.nullable(),
+      meeting: meetingModelsPatchSchema.optional(),
     })
     .partial()
     .optional(),
@@ -162,6 +180,15 @@ function mergeModels(
     if (value === undefined) continue
     if (value === null) delete next[key]
     else next[key] = value
+  }
+  if (patch.meeting) {
+    const meeting = { ...next.meeting }
+    if (patch.meeting.listen === null) delete meeting.listen
+    else if (patch.meeting.listen) meeting.listen = patch.meeting.listen
+    if (patch.meeting.notes === null) delete meeting.notes
+    else if (patch.meeting.notes) meeting.notes = patch.meeting.notes
+    if (meeting.listen || meeting.notes) next.meeting = meeting
+    else delete next.meeting
   }
   return next
 }

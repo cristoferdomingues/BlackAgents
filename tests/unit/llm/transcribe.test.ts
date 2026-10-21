@@ -49,6 +49,20 @@ describe("transcribeAudio", () => {
     expect(form.get("file")).toBeInstanceOf(Blob)
   })
 
+  it("uses a chosen OpenAI transcribe model", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "ok" }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await transcribeAudio("openai", { ...request, model: "gpt-4o-transcribe" }, { apiKey: "sk" })
+    const form = (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData
+    expect(form.get("model")).toBe("gpt-4o-transcribe")
+    expect(form.get("language")).toBe("pt")
+    expect(form.get("file")).toBeInstanceOf(Blob)
+  })
+
   it("sends input_audio to a custom endpoint with the chat model", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

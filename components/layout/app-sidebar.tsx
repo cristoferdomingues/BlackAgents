@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import {
   FileOutput,
   FolderOpen,
+  NotebookPen,
   GitCompare,
   KeyRound,
   LayoutDashboard,
@@ -36,6 +37,7 @@ const topNav: NavItem[] = [
   { href: "/chat", label: "Assistant", icon: Sparkles },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/files", label: "Files", icon: FolderOpen },
+  { href: "/meetings", label: "Meetings", icon: NotebookPen },
   { href: "/brain", label: "Brain", icon: Brain },
 ]
 

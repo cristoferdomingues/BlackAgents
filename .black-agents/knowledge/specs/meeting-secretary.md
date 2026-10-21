@@ -55,11 +55,11 @@ flowchart LR
 
 ### Phase 1 — Import a meeting (small, no recording)
 
-- **Meetings** page with an **Import** button: paste text, or drop `.txt`, `.vtt`, `.srt`, `.docx`, or an audio file (`.m4a`, `.mp3`, `.wav`, `.webm`).
+- **Meetings** page with an **Import** button: paste text, or drop `.txt`, `.md`, `.vtt`, `.srt`, or an audio file (`.m4a`, `.mp3`, `.wav`, `.webm`, `.ogg`). Word `.docx` is not in this phase.
 - Audio is decoded in the browser (`AudioContext.decodeAudioData`), cut into 16 kHz mono WAV chunks under the current `MAX_AUDIO_BASE64_LENGTH` (6 MB base64), and sent chunk by chunk to the transcribe route. No ffmpeg, no new native package.
 - The model writes **meeting notes**: summary, decisions, action items (who, what, when), open questions, people, and terms.
 - Review screen with two actions:
-  - **Save to knowledge** — writes the note with `## Sources` pointing to the transcript.
+  - **Send to Brain** — queues the note in the Brain inbox (`proposeConcept`, origin `meeting`). Approving it writes the knowledge file. The screen shows the path first. This matches the rule that knowledge is written only after a person approves it.
   - **Build from this meeting** — suggests artifacts (agent, skill, rule) and **workflows**, each with a one-line reason. The user picks. An artifact opens the existing editor pre-filled through `draft-body` with the transcript as a source; a workflow opens the workflow builder with the steps drafted from the action items and the agreed process.
 
 ### Phase 2 — Live secretary (desktop app)
@@ -100,13 +100,14 @@ A new **Meeting** card in **Settings → AI → Models by task** lets the user c
 
 | Picker | Does | When empty |
 |--------|------|------------|
-| **Listen** | Turns the call audio into text | The Voice model (Custom), or `whisper-1` (OpenAI) |
-| **Notes** | Writes live notes, final notes, and suggestions | The active chat model |
+| **Listen** | Turns the call audio into text. Saved as `{ provider: "openai" \| "custom", model }` | The Voice model (Custom), or `whisper-1` (OpenAI) |
+| **Notes** | Writes notes and suggestions. Saved as `{ provider, model }` | The Assistant's current model |
 
-- Settings: `models.meeting: { listen?: string, notes?: string }`, with a patch schema that has no defaults so one picker does not reset the other (same as `jev.cutoffs`).
-- `modelTaskSchema` gets `"meeting"`; `lib/llm/task-models.ts` gets its label, description, and fit hints: Listen needs audio in → text out; Notes needs text in → text out.
-- On OpenAI, **Listen** can be `whisper-1`, `gpt-4o-transcribe`, or `gpt-4o-mini-transcribe` (today Voice always uses `whisper-1`).
-- The card shows the cost per hour of audio when the price is known, using `lib/llm/pricing.ts`. The live meeting shows the running cost with the session cost badge.
+OpenAI Listen models: `whisper-1`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`. An unknown id falls back to `whisper-1`.
+
+- Settings: `models.meeting: { listen?: { provider, model }, notes?: { provider, model } }`, with a patch schema that has no defaults so one picker does not reset the other (same as `jev.cutoffs`).
+- Meeting is its own tab on the Models by task card. It is not a chat `task:<kind>`.
+- The card says long calls cost more. A per-hour price is shown only when a price table exists for that model.
 
 ## Data and storage
 

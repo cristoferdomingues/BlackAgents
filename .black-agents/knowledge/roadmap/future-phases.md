@@ -203,7 +203,7 @@ Zip import of a bundle is still deferred. Folder import is what shipped.
 - Scheduled runs work only while the app is open (no background service).
 - Approvals live in memory; a restart drops pending ones (runs are marked interrupted).
 - No parallel steps inside one workflow; steps run in order.
-- **Meeting Secretary** (planned): listen to a call in any app, take notes, then save knowledge or build artifacts. See [Meeting Secretary](../specs/meeting-secretary.md).
+- **Meeting Secretary**: Phase 1 (import a transcript or audio file, write notes, send to Brain, or open a draft) is in the app. Live listening is still planned. See [Meeting Secretary](../specs/meeting-secretary.md).
 - **Project scopes are shipped for artifacts, MCP config, workflows, and knowledge** (see [Project Scopes](../architecture/project-scopes.md)). Still open: chat, the assistant context, the workflow runtime, the graph route, and the MCP settings panel do not use the active project yet.
 
 ## Guiding Principles

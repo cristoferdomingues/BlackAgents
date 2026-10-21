@@ -74,7 +74,7 @@ export interface BrainProposal {
   content: string
   description?: string
   source: {
-    kind: FeedbackSignal["source"] | "import" | "memory" | "assistant"
+    kind: FeedbackSignal["source"] | "import" | "memory" | "assistant" | "meeting"
     signal: FeedbackSignal["kind"]
     runId?: string
     rating?: "up" | "down"

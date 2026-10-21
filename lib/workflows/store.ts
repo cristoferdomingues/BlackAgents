@@ -29,7 +29,7 @@ export const RUNS_DIR = ".black-agents/runs"
 export const MAX_KEPT_RUNS = 200
 const WORKFLOW_EXT = ".workflow.json"
 const GITIGNORE = ".black-agents/.gitignore"
-const GITIGNORE_LINES = ["runs/", "brain/inbox/"]
+const GITIGNORE_LINES = ["runs/", "brain/inbox/", "meetings/"]
 
 export class WorkflowNotFoundError extends Error {}
 

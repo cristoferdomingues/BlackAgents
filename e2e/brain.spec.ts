@@ -307,7 +307,7 @@ test.describe("brain", () => {
               tags: [],
               stale: false,
               status: "stable",
-              body: "BlackAgents is local-first.\n\nSee [the stack](./tech-stack.md).",
+              body: "# Overview\n\nBlackAgents is local-first.\n\nSee [the stack](./tech-stack.md).\n\n## Goals\n\nStay local.\n\n## Stack\n\nNext.js.",
               sources: [],
               generatedBy: "process:obsidian-import",
               file: ".black-agents/knowledge/overview/overview.md",
@@ -355,11 +355,20 @@ test.describe("brain", () => {
     await expect(page.getByText("No saved concepts yet")).toHaveCount(0)
     await expect(page.getByText("2 saved concepts")).toBeVisible()
     await expect(page.getByRole("button", { name: "Check files" })).toBeVisible()
-    await page.getByRole("button", { name: /Overview/ }).click()
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible()
+    // The first concept opens without a click, and its repeated "# Overview" line is not shown twice.
+    await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(1)
     await expect(page.getByText("BlackAgents is local-first.")).toBeVisible()
     await expect(page.getByText("Reviewed by you")).toBeVisible()
     await expect(page.getByText("Imported from Obsidian")).toBeVisible()
+
+    await page.getByRole("button", { name: "Hide list" }).click()
+    await expect(page.getByRole("textbox", { name: "Search concepts" })).toHaveCount(0)
+    const outline = page.getByRole("navigation", { name: "On this page" })
+    await expect(outline.getByRole("button", { name: "Goals" })).toBeVisible()
+    await expect(outline.getByRole("button", { name: "Stack" })).toBeVisible()
+    await page.getByRole("button", { name: "Show list" }).click()
+    await page.getByRole("button", { name: /Overview/ }).click()
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible()
 
     await page.getByRole("button", { name: "Graph" }).click()
     await expect(page.getByRole("region", { name: "Knowledge graph" })).toBeVisible()

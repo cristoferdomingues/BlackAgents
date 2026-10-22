@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 /**
  * "panel" is the fixed-height bordered box of the editor; "inline" grows with
- * its content, for chat messages.
+ * its content, for chat messages; "reader" grows too, with larger text for long documents.
  */
 export function MarkdownPreview({
   content,
@@ -17,12 +17,12 @@ export function MarkdownPreview({
   openConcept,
 }: {
   content: string
-  variant?: "panel" | "inline"
+  variant?: "panel" | "inline" | "reader"
   /** Concept that contains this markdown, so relative links can open another concept. */
   fromId?: string
   openConcept?: (id: string) => void
 }) {
-  const inline = variant === "inline"
+  const inline = variant !== "panel"
   if (!content.trim()) {
     return (
       <div
@@ -39,6 +39,7 @@ export function MarkdownPreview({
     <div
       className={cn(
         "prose-ba",
+        variant === "reader" && "prose-reader",
         inline ? "min-w-0 break-words" : "h-[420px] overflow-y-auto rounded-md border p-4 scrollbar-thin"
       )}
     >

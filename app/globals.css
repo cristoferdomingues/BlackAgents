@@ -137,6 +137,29 @@
   .prose-ba hr {
     @apply my-4 border-border;
   }
+  .prose-reader {
+    @apply text-base leading-7;
+  }
+  .prose-reader h1 {
+    @apply mt-8 text-2xl;
+  }
+  .prose-reader h2 {
+    @apply mb-3 mt-8 scroll-mt-4 text-xl;
+  }
+  .prose-reader h3 {
+    @apply mt-6 scroll-mt-4 text-lg;
+  }
+  .prose-reader p,
+  .prose-reader ul,
+  .prose-reader ol {
+    @apply my-4;
+  }
+  .prose-reader table {
+    @apply text-sm;
+  }
+  .prose-reader > :first-child {
+    @apply mt-0;
+  }
 }
 
 /* Subtle scrollbars */

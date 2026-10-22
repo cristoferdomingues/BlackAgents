@@ -501,4 +501,32 @@ test.describe("assistant files, voice and workflows", () => {
     expect(spoken).toContain("The rest is on the screen.")
     expect(spoken).not.toContain("Gamma")
   })
+
+  test("hello black agents starts talk without sending the microphone away", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.addInitScript(() => {
+      const spoken: string[] = []
+      Object.assign(window, { __blackAgentsFakeWake: true, __spoken: spoken })
+      const synth = window.speechSynthesis
+      synth.cancel = () => {}
+      synth.getVoices = () => []
+      synth.speak = (utter: SpeechSynthesisUtterance) => {
+        spoken.push(utter.text)
+      }
+    })
+    await page.goto("/chat")
+    await page.getByRole("switch", { name: "Wake word" }).click()
+    await expect(page.getByText("Listening for Hello BlackAgents. Your voice stays on this computer.")).toBeVisible()
+
+    await page.evaluate(() => (window as unknown as { __wakeSay: (text: string) => void }).__wakeSay("hello there"))
+    await expect(page.getByText("Listening for Hello BlackAgents. Your voice stays on this computer.")).toBeVisible()
+
+    await page.evaluate(() =>
+      (window as unknown as { __wakeSay: (text: string) => void }).__wakeSay("Hello, BlackAgents")
+    )
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" ")))
+      .toContain("Hello. I am Assistant.")
+    await expect(page.getByText("Speaking. Tap Interrupt to cut in.")).toBeVisible()
+  })
 })

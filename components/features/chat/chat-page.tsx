@@ -63,7 +63,7 @@ import {
 } from "@/lib/llm/workflow-draft"
 import { parseWorkflowInvocation } from "@/lib/workflows/invocation"
 import type { WorkflowListItem } from "@/lib/workflows/service"
-import { NOTHING_TO_READ, READ_ALOUD_LABEL, READ_REPLIES_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_HINT, TALK_INTERRUPT_LABEL, TALK_LABEL, TALK_LISTENING, TALK_SPEAKING, TALK_STOP_LABEL, TALK_THINKING } from "@/lib/chat/explain"
+import { NOTHING_TO_READ, READ_ALOUD_LABEL, READ_REPLIES_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_HINT, TALK_INTERRUPT_LABEL, TALK_LABEL, TALK_LISTENING, TALK_SPEAKING, TALK_STOP_LABEL, TALK_THINKING, WAKE_LABEL, WAKE_LISTENING, WAKE_PREPARING } from "@/lib/chat/explain"
 import { assistantSpeechText } from "@/lib/chat/spoken"
 import { listenFollowUp } from "@/lib/chat/talk"
 import { talkGreeting } from "@/lib/chat/voice-persona"
@@ -71,6 +71,7 @@ import { VoicePersonaButton } from "@/components/features/chat/voice-persona-dia
 import { useReadReplies, useSpeaker, useSpeechSupported } from "@/hooks/use-speaker"
 import { useVoicePersona } from "@/hooks/use-voice-persona"
 import { useVoiceInput } from "@/hooks/use-voice-input"
+import { useWakePreference, useWakeWord } from "@/hooks/use-wake-word"
 import {
   DRAFT_STORAGE_KEY,
   inspectDraft,
@@ -589,6 +590,11 @@ export function ChatPage({
     meta?.status.some((status) => status.verificationStatus === "valid")
   )
   const canChat = providerVerified && !agentNotFound
+  const [wakeOn, setWakeOn] = useWakePreference()
+  const wake = useWakeWord({
+    enabled: wakeOn && canChat && !talking && voice.state === "idle",
+    onWake: beginTalk,
+  })
 
   // Load selectable models for the active verified provider.
   React.useEffect(() => {
@@ -764,6 +770,7 @@ export function ChatPage({
 
   function beginTalk(): void {
     if (!canChat || !voice.isSupported) return
+    wake.release()
     stopReading()
     talkRef.current = true
     setTalking(true)
@@ -800,6 +807,7 @@ export function ChatPage({
       voice.stop()
       return
     }
+    wake.release()
     stopReading()
     voiceBaseRef.current = input
     void voice.start()
@@ -1566,10 +1574,31 @@ export function ChatPage({
               <p role="status" className="mr-auto text-xs text-muted-foreground">
                 {talkPhase === "speaking" ? TALK_SPEAKING : talkPhase === "thinking" ? TALK_THINKING : TALK_LISTENING}
               </p>
+            ) : wake.status === "preparing" ? (
+              <p role="status" className="mr-auto text-xs text-muted-foreground">
+                {WAKE_PREPARING}
+              </p>
+            ) : wake.status === "listening" ? (
+              <p role="status" className="mr-auto text-xs text-muted-foreground">
+                {WAKE_LISTENING}
+              </p>
+            ) : wake.status === "error" && wake.message ? (
+              <p role="alert" className="mr-auto text-xs text-destructive">
+                {wake.message}
+              </p>
             ) : readReplies ? (
               <p className="mr-auto text-xs text-muted-foreground">{READ_REPLIES_ON}</p>
             ) : null}
             <VoicePersonaButton agentName={selectedAgentName} />
+            <Switch
+              id="wake-word"
+              checked={wakeOn}
+              disabled={!canChat && !wakeOn}
+              onCheckedChange={setWakeOn}
+            />
+            <Label htmlFor="wake-word" className="text-xs">
+              {WAKE_LABEL}
+            </Label>
             <Button
               type="button"
               size="sm"

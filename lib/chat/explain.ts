@@ -52,3 +52,13 @@ export const VOICE_STYLE_SHORT_HINT = "Speaks the first sentences. The rest stay
 export const VOICE_STYLE_FULL = "Full"
 
 export const VOICE_STYLE_FULL_HINT = "Reads the whole answer. Code stays on the screen."
+
+export const WAKE_LABEL = "Wake word"
+
+export const WAKE_LISTENING = "Listening for Hello BlackAgents. Your voice stays on this computer."
+
+export const WAKE_PREPARING =
+  "Preparing the wake word. The first time, a small speech model is saved on this computer."
+
+export const WAKE_FAILED =
+  "The wake word could not start. Your voice was not sent. Turn it off and on to try again."

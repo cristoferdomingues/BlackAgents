@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   AlertCircle,
   ArrowUp,
+  AudioLines,
   Bot,
   Coins,
   FileImage,
@@ -17,6 +18,7 @@ import {
   MessageCircle,
   Mic,
   Paperclip,
+  Volume2,
   Plus,
   ShieldAlert,
   Sparkles,
@@ -61,6 +63,13 @@ import {
 } from "@/lib/llm/workflow-draft"
 import { parseWorkflowInvocation } from "@/lib/workflows/invocation"
 import type { WorkflowListItem } from "@/lib/workflows/service"
+import { NOTHING_TO_READ, READ_ALOUD_LABEL, READ_REPLIES_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_HINT, TALK_INTERRUPT_LABEL, TALK_LABEL, TALK_LISTENING, TALK_SPEAKING, TALK_STOP_LABEL, TALK_THINKING } from "@/lib/chat/explain"
+import { assistantSpeechText } from "@/lib/chat/spoken"
+import { listenFollowUp } from "@/lib/chat/talk"
+import { talkGreeting } from "@/lib/chat/voice-persona"
+import { VoicePersonaButton } from "@/components/features/chat/voice-persona-dialog"
+import { useReadReplies, useSpeaker, useSpeechSupported } from "@/hooks/use-speaker"
+import { useVoicePersona } from "@/hooks/use-voice-persona"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 import {
   DRAFT_STORAGE_KEY,
@@ -287,13 +296,52 @@ export function ChatPage({
   React.useEffect(() => () => replyAbortRef.current?.abort(), [])
   const voice = useVoiceInput({
     provider,
-    onTranscript: (text) => {
+    onTranscript: (text, isFinal) => {
+      if (talkRef.current) {
+        if (!isFinal) {
+          setInput(text)
+          setCaret(text.length)
+          return
+        }
+        setInput("")
+        setCaret(0)
+        setPhase("thinking")
+        void send(text)
+        return
+      }
       const base = voiceBaseRef.current
       const next = base && text ? `${base.replace(/\s+$/, "")} ${text}` : base || text
       setInput(next)
       setCaret(next.length)
     },
+    onSessionEnd: (reason) => {
+      if (!talkRef.current || talkPhaseRef.current !== "listening") return
+      const follow = listenFollowUp(reason)
+      if (follow === "stop") {
+        endTalk()
+        return
+      }
+      if (follow === "retry") {
+        window.setTimeout(() => {
+          if (talkRef.current && talkPhaseRef.current === "listening") void voice.start()
+        }, 400)
+      }
+    },
   })
+  const speechSupported = useSpeechSupported()
+  const [readReplies, setReadReplies] = useReadReplies()
+  const speaker = useSpeaker()
+  const [readingIndex, setReadingIndex] = React.useState<number | null>(null)
+  const readRepliesRef = React.useRef(readReplies)
+  readRepliesRef.current = readReplies
+  const talkRef = React.useRef(false)
+  const talkPhaseRef = React.useRef<"off" | "listening" | "thinking" | "speaking">("off")
+  const [talking, setTalking] = React.useState(false)
+  const [talkPhase, setTalkPhase] = React.useState(talkPhaseRef.current)
+  const endTalkRef = React.useRef(() => {})
+  const [persona] = useVoicePersona(selectedAgentName)
+  const personaRef = React.useRef(persona)
+  personaRef.current = persona
   const scrollRef = React.useRef<HTMLDivElement>(null)
   // Skip the first persist after hydration so we don't rewrite unchanged
   // defaults while restoring the previous selection.
@@ -506,6 +554,17 @@ export function ChatPage({
   }, [])
 
   React.useEffect(() => {
+    if (!talking) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      endTalkRef.current()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [talking])
+
+  React.useEffect(() => {
     if (voice.error) toast.error(voice.error)
   }, [voice.error])
 
@@ -669,11 +728,79 @@ export function ChatPage({
     }
   }
 
+  function stopReading(): void {
+    speaker.stop()
+    setReadingIndex(null)
+  }
+
+  function setPhase(phase: "off" | "listening" | "thinking" | "speaking"): void {
+    talkPhaseRef.current = phase
+    setTalkPhase(phase)
+  }
+
+  function resumeTalk(): void {
+    if (!talkRef.current) return
+    setPhase("listening")
+    void voice.start()
+  }
+
+  function endTalk(): void {
+    talkRef.current = false
+    setTalking(false)
+    setPhase("off")
+    voice.stop({ discard: true })
+    stopReading()
+    replyAbortRef.current?.abort()
+  }
+  endTalkRef.current = endTalk
+
+  function speakAsPersona(text: string, onDone?: () => void): void {
+    const voiceURI = personaRef.current.voiceURI
+    speaker.speak(text, {
+      ...(voiceURI ? { voiceURI } : {}),
+      ...(onDone ? { onDone } : {}),
+    })
+  }
+
+  function beginTalk(): void {
+    if (!canChat || !voice.isSupported) return
+    stopReading()
+    talkRef.current = true
+    setTalking(true)
+    setInput("")
+    setCaret(0)
+    setPhase("speaking")
+    speakAsPersona(talkGreeting(personaRef.current, selectedAgentName), () => {
+      if (talkRef.current) resumeTalk()
+    })
+  }
+
+  function interruptTalk(): void {
+    if (!talkRef.current) return
+    stopReading()
+    resumeTalk()
+  }
+
+  function readMessage(index: number, content: string): void {
+    if (readingIndex === index) {
+      stopReading()
+      return
+    }
+    const text = assistantSpeechText(content, personaRef.current.style)
+    if (!text) {
+      toast.message(NOTHING_TO_READ)
+      return
+    }
+    setReadingIndex(index)
+    speakAsPersona(text, () => setReadingIndex((current) => (current === index ? null : current)))
+  }
+
   function toggleVoice(): void {
     if (voice.state === "listening") {
       voice.stop()
       return
     }
+    stopReading()
     voiceBaseRef.current = input
     void voice.start()
   }
@@ -687,13 +814,19 @@ export function ChatPage({
     if ((!content && sentFiles.length === 0) || sending) return
     if (agentNotFound) {
       toast.error(`Agent "${selectedAgentName}" was not found`)
+      if (talkRef.current) endTalk()
       return
     }
-    if (sentFiles.length === 0 && startWorkflowTurn(content)) return
+    if (sentFiles.length === 0 && startWorkflowTurn(content)) {
+      if (talkRef.current) resumeTalk()
+      return
+    }
     if (!providerVerified) {
       toast.error("Verify this provider before starting a chat")
+      if (talkRef.current) endTalk()
       return
     }
+    stopReading()
     const userTurn: Turn = sentFiles.length > 0
       ? { role: "user", content, files: sentFiles }
       : { role: "user", content }
@@ -706,6 +839,7 @@ export function ChatPage({
     setResolvedModel({ agentKey, model: null })
     setLive(EMPTY_LIVE)
     let finished = false
+    let handedToSpeech = false
     const controller = new AbortController()
     replyAbortRef.current = controller
     let current = EMPTY_LIVE
@@ -767,6 +901,20 @@ export function ChatPage({
       if (stillThisChat()) {
         setTurns(finalized)
         setMemory(nextMemory)
+        const spoken =
+          (readRepliesRef.current || talkRef.current) && !reply.stopped
+            ? assistantSpeechText(reply.content, personaRef.current.style)
+            : ""
+        if (spoken) {
+          const index = finalized.length - 1
+          handedToSpeech = true
+          if (talkRef.current) setPhase("speaking")
+          setReadingIndex(index)
+          speakAsPersona(spoken, () => {
+            setReadingIndex((current) => (current === index ? null : current))
+            if (talkRef.current) resumeTalk()
+          })
+        }
       }
       saveTurns(finalized, scope, nextMemory, tracker.usage)
       finished = true
@@ -787,8 +935,10 @@ export function ChatPage({
           saveTurns(turns, scope, undefined, tracker.usage)
           if (stillThisChat()) {
             setTurns((t) => t.slice(0, -1))
-            setInput(content)
-            setFiles(sentFiles)
+            if (!talkRef.current) {
+              setInput(content)
+              setFiles(sentFiles)
+            }
           }
         }
         return
@@ -797,8 +947,10 @@ export function ChatPage({
       saveTurns(turns, scope, undefined, tracker.usage)
       if (stillThisChat()) {
         setTurns((t) => t.slice(0, -1))
-        setInput(content)
-        setFiles(sentFiles)
+        if (!talkRef.current) {
+          setInput(content)
+          setFiles(sentFiles)
+        }
       }
       apiFetch<ProvidersState>("/api/providers")
         .then(setMeta)
@@ -809,6 +961,10 @@ export function ChatPage({
       if (replyAbortRef.current === controller) replyAbortRef.current = null
       setSending(false)
       setLive(EMPTY_LIVE)
+      if (talkRef.current && !handedToSpeech && talkPhaseRef.current === "thinking") {
+        if (stillThisChat()) resumeTalk()
+        else endTalk()
+      }
     }
     if (finished) {
       // Remember the header picker only. An agent's model must not become the default.
@@ -831,6 +987,7 @@ export function ChatPage({
 
   function startNewChat(): void {
     if (sending) return
+    endTalk()
     const id = createConversationId()
     if (workspacePath) {
       const store = setActiveConversation(readConversationsStore(workspacePath), id)
@@ -849,6 +1006,7 @@ export function ChatPage({
 
   function openRecentConversation(id: string): void {
     if (sending || id === conversationId || !workspacePath) return
+    endTalk()
     const store = readConversationsStore(workspacePath)
     const convo = getConversation(store, id)
     if (!convo) return
@@ -972,6 +1130,7 @@ export function ChatPage({
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (talkRef.current) return
       e.preventDefault()
       void send(input)
     }
@@ -1350,6 +1509,8 @@ export function ChatPage({
                   workflows={workflows}
                   onWorkflowSaved={() => void loadWorkflows()}
                   onWorkflowStarted={(runId, task) => markWorkflowStarted(i, runId, task)}
+                  readingAloud={readingIndex === i}
+                  onReadAloud={speechSupported && !talking ? () => readMessage(i, turn.content) : undefined}
                 />
               ))}
             </>
@@ -1399,6 +1560,58 @@ export function ChatPage({
       </div>
 
       <div className="border-t p-4">
+        {voice.isSupported && speechSupported ? (
+          <div className="mx-auto mb-2 flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
+            {talking ? (
+              <p role="status" className="mr-auto text-xs text-muted-foreground">
+                {talkPhase === "speaking" ? TALK_SPEAKING : talkPhase === "thinking" ? TALK_THINKING : TALK_LISTENING}
+              </p>
+            ) : readReplies ? (
+              <p className="mr-auto text-xs text-muted-foreground">{READ_REPLIES_ON}</p>
+            ) : null}
+            <VoicePersonaButton agentName={selectedAgentName} />
+            <Button
+              type="button"
+              size="sm"
+              variant={talking ? "destructive" : "outline"}
+              aria-pressed={talking}
+              title={TALK_HINT}
+              disabled={!talking && !canChat}
+              onClick={() => (talking ? endTalk() : beginTalk())}
+            >
+              {talking ? <Square className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
+              {talking ? TALK_STOP_LABEL : TALK_LABEL}
+            </Button>
+            <Switch
+              id="read-replies"
+              checked={readReplies}
+              onCheckedChange={(next) => {
+                setReadReplies(next)
+                if (!next && talkRef.current && talkPhaseRef.current === "speaking") interruptTalk()
+                else if (!next) stopReading()
+              }}
+            />
+            <Label htmlFor="read-replies" className="text-xs">
+              {READ_REPLIES_LABEL}
+            </Label>
+          </div>
+        ) : speechSupported ? (
+          <div className="mx-auto mb-2 flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
+            {readReplies ? <p className="mr-auto text-xs text-muted-foreground">{READ_REPLIES_ON}</p> : null}
+            <VoicePersonaButton agentName={selectedAgentName} />
+            <Switch
+              id="read-replies"
+              checked={readReplies}
+              onCheckedChange={(next) => {
+                setReadReplies(next)
+                if (!next) stopReading()
+              }}
+            />
+            <Label htmlFor="read-replies" className="text-xs">
+              {READ_REPLIES_LABEL}
+            </Label>
+          </div>
+        ) : null}
         {files.length > 0 ? (
           <ul
             className="mx-auto mb-2 flex w-full max-w-6xl flex-wrap gap-2"
@@ -1526,13 +1739,24 @@ export function ChatPage({
                 : "Message assistant"
             }
           />
-          {voice.state === "listening" ? (
+          {talking && talkPhase === "speaking" ? (
             <Button
               type="button"
               size="icon"
               variant="destructive"
-              onClick={toggleVoice}
-              aria-label="Stop voice input"
+              onClick={interruptTalk}
+              aria-label={TALK_INTERRUPT_LABEL}
+              className="animate-pulse"
+            >
+              <Square className="h-4 w-4" />
+            </Button>
+          ) : voice.state === "listening" ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="destructive"
+              onClick={talking ? endTalk : toggleVoice}
+              aria-label={talking ? TALK_STOP_LABEL : "Stop voice input"}
               className="animate-pulse"
             >
               <Square className="h-4 w-4" />
@@ -1541,7 +1765,7 @@ export function ChatPage({
             <Button type="button" size="icon" disabled aria-label="Transcribing voice">
               <Loader2 className="h-4 w-4 animate-spin" />
             </Button>
-          ) : voice.isSupported && !sending && !input.trim() && files.length === 0 ? (
+          ) : voice.isSupported && !talking && !sending && !input.trim() && files.length === 0 ? (
             <Button
               type="button"
               size="icon"
@@ -1620,6 +1844,8 @@ function Message({
   workflows,
   onWorkflowSaved,
   onWorkflowStarted,
+  readingAloud,
+  onReadAloud,
 }: {
   turn: Turn
   onOpen: (draft: NormalizedDraft) => void
@@ -1633,6 +1859,8 @@ function Message({
   workflows: WorkflowListItem[]
   onWorkflowSaved: () => void
   onWorkflowStarted: (runId: string, task: string) => void
+  readingAloud?: boolean
+  onReadAloud?: () => void
 }) {
   const isUser = turn.role === "user"
   const bundle = isUser ? null : extractBundle(turn.content)
@@ -1772,6 +2000,19 @@ function Message({
             onFixIssues={onFixIssues}
             fixDisabled={fixDisabled}
           />
+        ) : null}
+        {!isUser && onReadAloud ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs text-muted-foreground"
+            onClick={onReadAloud}
+            aria-label={readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
+          >
+            {readingAloud ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            {readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
+          </Button>
         ) : null}
         {!isUser ? (
           <FeedbackBar

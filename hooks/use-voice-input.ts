@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { apiFetch } from "@/lib/api"
 import { blobToWavBase64 } from "@/lib/audio/wav"
+import type { VoiceStopReason } from "@/lib/chat/talk"
 
 /**
  * Voice to text for the chat input. `browser` uses the Web Speech API (live
@@ -19,6 +20,8 @@ export interface UseVoiceInputOptions {
   provider: string
   /** Called with the text heard so far; `isFinal` once the clip is done. */
   onTranscript: (text: string, isFinal: boolean) => void
+  /** Called once each time a listen session returns to idle. */
+  onSessionEnd?: (reason: VoiceStopReason) => void
 }
 
 export interface UseVoiceInputReturn {
@@ -27,7 +30,8 @@ export interface UseVoiceInputReturn {
   engine: VoiceEngine
   error: string | null
   start: () => Promise<void>
-  stop: () => void
+  /** `discard` drops any words heard so far instead of sending them. */
+  stop: (options?: { discard?: boolean }) => void
 }
 
 const SILENCE_MS = 1_600
@@ -84,7 +88,7 @@ function micErrorMessage(err: unknown): string {
   return "Could not open the microphone."
 }
 
-export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions): UseVoiceInputReturn {
+export function useVoiceInput({ provider, onTranscript, onSessionEnd }: UseVoiceInputOptions): UseVoiceInputReturn {
   const capability = React.useSyncExternalStore(subscribeNoop, clientCapability, serverCapability)
   const [state, setState] = React.useState<VoiceState>("idle")
   const [fallback, setFallback] = React.useState(false)
@@ -94,10 +98,14 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
   const engineRef = React.useRef<VoiceEngine>(engine)
   const providerRef = React.useRef(provider)
   const onTranscriptRef = React.useRef(onTranscript)
+  const onSessionEndRef = React.useRef(onSessionEnd)
+  const stateRef = React.useRef<VoiceState>(state)
+  const discardRef = React.useRef(false)
   React.useLayoutEffect(() => {
     engineRef.current = engine
     providerRef.current = provider
     onTranscriptRef.current = onTranscript
+    onSessionEndRef.current = onSessionEnd
   })
 
   const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null)
@@ -125,7 +133,14 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
     audioCtxRef.current = null
   }, [])
 
+  const settle = React.useCallback((reason: VoiceStopReason) => {
+    stateRef.current = "idle"
+    setState("idle")
+    onSessionEndRef.current?.(reason)
+  }, [])
+
   const transcribe = React.useCallback(async (blob: Blob) => {
+    stateRef.current = "transcribing"
     setState("transcribing")
     try {
       const audio = await blobToWavBase64(blob)
@@ -140,16 +155,19 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
       })
       if (unmountedRef.current) return
       const text = data.text.trim()
-      if (!text) setError("No speech was heard. Try again.")
-      else onTranscriptRef.current(text, true)
-    } catch (err) {
-      if (!unmountedRef.current) {
-        setError(err instanceof Error ? err.message : "Could not turn your voice into text.")
+      if (!text) {
+        setError("No speech was heard. Try again.")
+        settle("empty")
+      } else {
+        onTranscriptRef.current(text, true)
+        settle("transcript")
       }
-    } finally {
-      if (!unmountedRef.current) setState("idle")
+    } catch (err) {
+      if (unmountedRef.current) return
+      setError(err instanceof Error ? err.message : "Could not turn your voice into text.")
+      settle("error")
     }
-  }, [])
+  }, [settle])
 
   /** Watch the input level so recording stops after a pause in speech. */
   const watchLevel = React.useCallback((stream: MediaStream) => {
@@ -175,7 +193,8 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
     }
   }, [])
 
-  const stop = React.useCallback(() => {
+  const stop = React.useCallback((options?: { discard?: boolean }) => {
+    if (options?.discard) discardRef.current = true
     const recognition = recognitionRef.current
     if (recognition) {
       try {
@@ -187,7 +206,10 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
     const recorder = recorderRef.current
     if (recorder && recorder.state !== "inactive") recorder.stop()
     releaseMic()
-    setState((current) => (current === "listening" ? "idle" : current))
+    if (stateRef.current === "listening") {
+      stateRef.current = "idle"
+      setState("idle")
+    }
   }, [releaseMic])
 
   const startRecording = React.useCallback(
@@ -202,16 +224,22 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
       }
       recorder.onstop = () => {
         recorderRef.current = null
+        if (discardRef.current) {
+          discardRef.current = false
+          settle("cancelled")
+          return
+        }
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" })
         chunksRef.current = []
         if (Date.now() - startedAtRef.current < MIN_RECORDING_MS || blob.size === 0) {
           setError("The recording was too short. Tap the microphone and speak.")
-          setState("idle")
+          settle("empty")
           return
         }
         void transcribe(blob)
       }
       recorder.start()
+      stateRef.current = "listening"
       setState("listening")
       timerRef.current = setInterval(() => {
         const now = Date.now()
@@ -219,7 +247,7 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
         if (paused || now - startedAtRef.current > MAX_RECORDING_MS) stop()
       }, 200)
     },
-    [stop, transcribe]
+    [stop, transcribe, settle]
   )
 
   const startBrowser = React.useCallback(
@@ -232,6 +260,7 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
       let heard = ""
       let finished = false
       let silence: ReturnType<typeof setTimeout> | null = null
+      let endReason: VoiceStopReason = "empty"
 
       const finish = () => {
         if (finished) return
@@ -247,9 +276,11 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
         }
         if (recognitionRef.current === recognition) recognitionRef.current = null
         releaseMic()
-        setState("idle")
-        const text = heard.trim()
+        const discarded = discardRef.current
+        discardRef.current = false
+        const text = discarded ? "" : heard.trim()
         if (text) onTranscriptRef.current(text, true)
+        settle(discarded ? "cancelled" : text ? "transcript" : endReason)
       }
 
       recognition.onresult = (event) => {
@@ -272,34 +303,41 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
             startRecording(stream)
           } else {
             releaseMic()
-            setState("idle")
             setError("Voice switched to recording mode. Tap the microphone again.")
+            settle("error")
           }
           return
         }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           setError("Microphone access is blocked. Allow it in your browser settings.")
+          endReason = "error"
         } else if (event.error === "audio-capture") {
           setError("The microphone is busy or missing.")
+          endReason = "error"
         } else if (event.error !== "no-speech" && event.error !== "aborted") {
           setError(`Voice error: ${event.error}`)
+          endReason = "error"
         }
         finish()
       }
       recognition.onend = finish
       recognition.start()
+      stateRef.current = "listening"
       setState("listening")
     },
-    [releaseMic, startRecording]
+    [releaseMic, startRecording, settle]
   )
 
   const start = React.useCallback(async () => {
-    if (state !== "idle") return
+    if (stateRef.current !== "idle") return
+    stateRef.current = "listening"
     setError(null)
     const Recognition = speechRecognitionClass()
     const useCloud = engineRef.current === "cloud" || !Recognition
     if (useCloud && !canRecordAudio()) {
+      stateRef.current = "idle"
       setError("Voice input is not supported in this browser.")
+      settle("error")
       return
     }
     let stream: MediaStream | null = null
@@ -307,7 +345,9 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       } catch (err) {
+        stateRef.current = "idle"
         setError(micErrorMessage(err))
+        settle("error")
         return
       }
       streamRef.current = stream
@@ -316,12 +356,19 @@ export function useVoiceInput({ provider, onTranscript }: UseVoiceInputOptions):
     try {
       if (useCloud && stream) startRecording(stream)
       else if (Recognition) startBrowser(Recognition)
+      else {
+        stateRef.current = "idle"
+        setError("Voice input is not supported in this browser.")
+        settle("error")
+      }
     } catch (err) {
       releaseMic()
+      stateRef.current = "idle"
       setState("idle")
       setError(err instanceof Error ? err.message : "Could not start voice input.")
+      settle("error")
     }
-  }, [state, watchLevel, startRecording, startBrowser, releaseMic])
+  }, [watchLevel, startRecording, startBrowser, releaseMic, settle])
 
   React.useEffect(() => {
     unmountedRef.current = false

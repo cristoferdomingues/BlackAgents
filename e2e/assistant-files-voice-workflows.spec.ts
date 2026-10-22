@@ -261,4 +261,244 @@ test.describe("assistant files, voice and workflows", () => {
     await expect(page.getByText("Workflows run steps")).toBeVisible()
     await expect(page.getByRole("textbox", { name: "Message assistant" })).toHaveValue("")
   })
+
+  test("reads a reply aloud and skips code and links", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.addInitScript(() => {
+      const spoken: string[] = []
+      Object.assign(window, { __spoken: spoken })
+      const synth = window.speechSynthesis
+      synth.cancel = () => {}
+      synth.getVoices = () => []
+      synth.speak = (utter: SpeechSynthesisUtterance) => {
+        spoken.push(utter.text)
+        queueMicrotask(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent))
+      }
+    })
+    await page.route("**/api/chat", (route) =>
+      fulfillSse(route, [
+        [
+          "done",
+          {
+            content: "See the [docs](https://example.com/secret).\n\n```js\nconst secret = 1\n```",
+            model: "gpt-4o-mini",
+            toolExecutions: [],
+          },
+        ],
+      ])
+    )
+    await page.goto("/chat")
+    await page.getByRole("switch", { name: "Read replies aloud" }).click()
+    await expect(page.getByText("New answers are read with this browser's voice.")).toBeVisible()
+    await page.getByRole("textbox", { name: "Message assistant" }).fill("Hi")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("See the docs.")).toBeVisible()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" ")))
+      .toContain("See the docs")
+    const spoken = await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" "))
+    expect(spoken).not.toContain("https://")
+    expect(spoken).not.toContain("const secret")
+    expect(spoken).toContain("code, shown on the screen")
+
+    const before = await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.length)
+    await page.getByRole("button", { name: "Read aloud" }).click()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.length))
+      .toBeGreaterThan(before)
+  })
+
+  test("talk mode sends a pause, reads the answer, and can be interrupted", async ({ page }) => {
+    await stubWorkflows(page, [])
+    let posts = 0
+    await page.addInitScript(() => {
+      const spoken: string[] = []
+      let starts = 0
+      Object.assign(window, { __spoken: spoken, __starts: 0 })
+      class FakeRecognition {
+        continuous = false
+        interimResults = false
+        lang = "en-US"
+        onresult: ((event: unknown) => void) | null = null
+        onerror: ((event: unknown) => void) | null = null
+        onend: (() => void) | null = null
+        start(): void {
+          starts += 1
+          Object.assign(window, { __starts: starts })
+          if (starts > 1) return
+          setTimeout(() => {
+            const alternative = { transcript: "hello there" }
+            const result = Object.assign([alternative], { isFinal: true })
+            this.onresult?.({ results: [result] })
+            this.onend?.()
+          }, 30)
+        }
+        stop(): void {
+          this.onend?.()
+        }
+        abort(): void {}
+      }
+      Object.assign(window, { SpeechRecognition: FakeRecognition, webkitSpeechRecognition: FakeRecognition })
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: async () => new MediaStream() },
+      })
+      const synth = window.speechSynthesis
+      synth.cancel = () => {}
+      synth.getVoices = () => []
+      synth.speak = (utter: SpeechSynthesisUtterance) => {
+        spoken.push(utter.text)
+        if (spoken.length === 1) {
+          setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 20)
+        }
+      }
+    })
+    await page.route("**/api/chat", async (route) => {
+      posts += 1
+      await fulfillSse(route, [["done", { content: "Sure. I can help.", model: "gpt-4o-mini", toolExecutions: [] }]])
+    })
+
+    await page.goto("/chat")
+    await page.getByRole("button", { name: "Talk", exact: true }).click()
+    await expect(page.getByText("hello there")).toBeVisible()
+    await expect(page.getByText("Sure. I can help.")).toBeVisible()
+    await expect(page.getByText("Speaking. Tap Interrupt to cut in.")).toBeVisible()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" ")))
+      .toContain("Sure. I can help.")
+
+    await page.getByRole("button", { name: "Interrupt" }).click()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __starts: number }).__starts))
+      .toBeGreaterThan(1)
+    await expect(page.getByText("Listening. Pause when you finish, and your words are sent.")).toBeVisible()
+
+    await page.getByRole("button", { name: "Stop talking" }).first().click()
+    await expect(page.getByRole("button", { name: "Talk", exact: true })).toBeVisible()
+    expect(posts).toBe(1)
+  })
+
+  test("talk mode listens again after it finishes speaking", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.addInitScript(() => {
+      let starts = 0
+      Object.assign(window, { __starts: 0 })
+      class FakeRecognition {
+        continuous = false
+        interimResults = false
+        lang = "en-US"
+        onresult: ((event: unknown) => void) | null = null
+        onerror: ((event: unknown) => void) | null = null
+        onend: (() => void) | null = null
+        start(): void {
+          starts += 1
+          Object.assign(window, { __starts: starts })
+          if (starts > 1) return
+          setTimeout(() => {
+            const alternative = { transcript: "hello there" }
+            const result = Object.assign([alternative], { isFinal: true })
+            this.onresult?.({ results: [result] })
+            this.onend?.()
+          }, 30)
+        }
+        stop(): void {
+          this.onend?.()
+        }
+        abort(): void {}
+      }
+      Object.assign(window, { SpeechRecognition: FakeRecognition, webkitSpeechRecognition: FakeRecognition })
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: async () => new MediaStream() },
+      })
+      const synth = window.speechSynthesis
+      synth.cancel = () => {}
+      synth.getVoices = () => []
+      synth.speak = (utter: SpeechSynthesisUtterance) => {
+        setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 20)
+      }
+    })
+    await page.route("**/api/chat", (route) =>
+      fulfillSse(route, [["done", { content: "Sure. I can help.", model: "gpt-4o-mini", toolExecutions: [] }]])
+    )
+
+    await page.goto("/chat")
+    await page.getByRole("button", { name: "Talk", exact: true }).click()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __starts: number }).__starts))
+      .toBeGreaterThan(1)
+    await expect(page.getByText("Listening. Pause when you finish, and your words are sent.")).toBeVisible()
+  })
+
+  test("talk greets with the persona and speaks a short answer", async ({ page }) => {
+    await stubWorkflows(page, [])
+    await page.addInitScript(() => {
+      const spoken: string[] = []
+      Object.assign(window, { __spoken: spoken })
+      class FakeRecognition {
+        continuous = false
+        interimResults = false
+        lang = "en-US"
+        onresult: ((event: unknown) => void) | null = null
+        onerror: ((event: unknown) => void) | null = null
+        onend: (() => void) | null = null
+        start(): void {
+          setTimeout(() => {
+            const alternative = { transcript: "hello there" }
+            const result = Object.assign([alternative], { isFinal: true })
+            this.onresult?.({ results: [result] })
+            this.onend?.()
+          }, 30)
+        }
+        stop(): void {
+          this.onend?.()
+        }
+        abort(): void {}
+      }
+      Object.assign(window, { SpeechRecognition: FakeRecognition, webkitSpeechRecognition: FakeRecognition })
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: async () => new MediaStream() },
+      })
+      const synth = window.speechSynthesis
+      synth.cancel = () => {}
+      synth.getVoices = () => []
+      synth.speak = (utter: SpeechSynthesisUtterance) => {
+        spoken.push(utter.text)
+        setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 20)
+      }
+    })
+    await page.route("**/api/chat", (route) =>
+      fulfillSse(route, [
+        [
+          "done",
+          {
+            content: "Alpha is ready. Beta is ready. Gamma is extra.",
+            model: "gpt-4o-mini",
+            toolExecutions: [],
+          },
+        ],
+      ])
+    )
+
+    await page.goto("/chat")
+    await page.getByRole("button", { name: "Voice", exact: true }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByLabel("Name").fill("Nova")
+    await expect(dialog.getByText("Talk starts with: Hello. I am Nova.")).toBeVisible()
+    await dialog.getByLabel("Greeting").fill("Hi from Nova.")
+    await expect(dialog.getByText("Talk starts with: Hi from Nova.")).toBeVisible()
+    await dialog.getByRole("radio", { name: /Short/ }).click()
+    await dialog.getByRole("button", { name: "Close" }).click()
+
+    await page.getByRole("button", { name: "Talk", exact: true }).click()
+    await expect(page.getByText("Gamma is extra.")).toBeVisible()
+    await expect
+      .poll(async () => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" ")))
+      .toContain("Hi from Nova.")
+    const spoken = await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.join(" "))
+    expect(spoken).toContain("Alpha is ready. Beta is ready.")
+    expect(spoken).toContain("The rest is on the screen.")
+    expect(spoken).not.toContain("Gamma")
+  })
 })

@@ -1864,7 +1864,7 @@ function LoadedArtifacts({ artifacts }: { artifacts: TurnArtifact[] }) {
 
 function CopyMessageButton({ text }: { text: string }): React.ReactElement {
   const [copied, setCopied] = React.useState(false)
-  const timer = React.useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const timer = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     return () => {

@@ -36,6 +36,22 @@ export function supportsTranscription(provider: ProviderId): boolean {
   return provider === "openai" || provider === "custom"
 }
 
+function transcriptionFailureMessage(provider: "openai" | "custom", status: number): string {
+  const service = provider === "openai" ? "OpenAI" : "The custom provider"
+  if (status === 400) {
+    return provider === "custom"
+      ? "The Listen model could not transcribe this audio. In Settings → AI → Models by task, choose a Listen model that accepts audio, then try again."
+      : "OpenAI could not transcribe this audio. Check the Listen model in Settings → AI → Models by task, then try again."
+  }
+  if (status === 401) return `${service} rejected the API key. Check it in Settings → AI, then try again.`
+  if (status === 403) return `${service} did not allow audio transcription. Check your provider access and Listen model.`
+  if (status === 404) return `${service} could not find the Listen model or API endpoint. Check Settings → AI.`
+  if (status === 413) return "This audio part is too large for the provider. Try a shorter recording."
+  if (status === 429) return `${service} is busy or its usage limit was reached. Wait a moment, then try again.`
+  if (status >= 500) return `${service} could not transcribe audio right now. Try again later.`
+  return `${service} could not transcribe the audio (error ${status}).`
+}
+
 function instruction(language?: string): string {
   const hint = language ? ` The speaker most likely uses ${language}.` : ""
   return (
@@ -63,7 +79,7 @@ async function transcribeOpenAI(
     body: form,
   })
   const json = (await res.json().catch(() => null)) as { text?: unknown } | null
-  if (!res.ok) throw new ProviderError(`Transcription failed (${res.status})`, res.status)
+  if (!res.ok) throw new ProviderError(transcriptionFailureMessage("openai", res.status), res.status)
   return typeof json?.text === "string" ? json.text.trim() : ""
 }
 
@@ -96,7 +112,7 @@ async function transcribeCustom(
   const json = (await res.json().catch(() => null)) as {
     choices?: Array<{ message?: { content?: unknown } }>
   } | null
-  if (!res.ok) throw new ProviderError(`Transcription failed (${res.status})`, res.status)
+  if (!res.ok) throw new ProviderError(transcriptionFailureMessage("custom", res.status), res.status)
   const text = json?.choices?.[0]?.message?.content
   return typeof text === "string" ? text.trim() : ""
 }

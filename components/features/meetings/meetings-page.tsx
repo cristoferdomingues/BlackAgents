@@ -594,7 +594,9 @@ function MeetingDetail({
         <p className="text-sm text-muted-foreground">
           {meeting.status === "listening" || meeting.status === "paused"
             ? "Waiting for speech."
-            : "No speech was saved."}
+            : meeting.error
+              ? "No transcript was saved."
+              : "No speech was found."}
         </p>
       ) : (
         <div className="space-y-2">

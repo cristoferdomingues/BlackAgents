@@ -114,6 +114,7 @@ test("asks everyone to agree before it listens", async ({ page }) => {
   await page.getByRole("button", { name: "Start listening" }).first().click()
   const dialog = page.getByRole("dialog")
   const start = dialog.getByRole("button", { name: "Start listening" })
+  await expect(dialog).toContainText("You can test this without a call")
   await expect(start).toBeDisabled()
   await dialog.getByRole("checkbox").check()
   await expect(start).toBeEnabled()

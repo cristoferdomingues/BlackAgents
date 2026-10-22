@@ -104,6 +104,26 @@ describe("transcribeAudio", () => {
     expect(err).toBeInstanceOf(ProviderError)
     expect((err as ProviderError).status).toBe(401)
     expect((err as ProviderError).message).not.toContain("secret")
+    expect((err as ProviderError).message).toMatch(/API key/)
+  })
+
+  it("explains how to fix audio errors without exposing the provider body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: "private provider detail" } }),
+      })
+    )
+    const err = await transcribeAudio(
+      "custom",
+      { ...request, provider: "custom", model: "text-only-model" },
+      { apiKey: "k", baseUrl: "https://example.com/v1" }
+    ).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ProviderError)
+    expect((err as ProviderError).message).toMatch(/Listen model.*accepts audio/)
+    expect((err as ProviderError).message).not.toContain("private provider detail")
   })
 
   it("rejects anthropic", () => {

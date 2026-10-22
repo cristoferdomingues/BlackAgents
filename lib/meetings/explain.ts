@@ -34,7 +34,7 @@ export const DELETE_EFFECT = "Deletes this meeting and its transcript from this 
 export const CONSENT_LABEL = "Everyone in the call agreed to this recording."
 
 export const LIVE_EFFECT =
-  "Records until you press Stop. Notes update during the call. Nothing is saved as knowledge until you send it to Brain."
+  "You can test this without a call: speak into your microphone, then press Stop. During a call, notes update while you listen. Nothing is saved as knowledge until you send it to Brain."
 
 export const LISTENING_BANNER = "Listening. Your microphone is on."
 

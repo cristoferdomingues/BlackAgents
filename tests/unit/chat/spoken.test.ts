@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { READ_ALOUD_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_SPEAKING } from "@/lib/chat/explain"
+import { COPY_FAILED, COPY_MESSAGE_LABEL, READ_ALOUD_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_SPEAKING } from "@/lib/chat/explain"
 import { listenFollowUp } from "@/lib/chat/talk"
 import { assistantSpeechText, speechChunks, SPOKEN_MAX_CHARS } from "@/lib/chat/spoken"
 
@@ -10,6 +10,8 @@ describe("assistant speech copy", () => {
     expect(READ_REPLIES_ON.toLowerCase()).toContain("code")
     expect(READ_ALOUD_LABEL.length).toBeGreaterThan(0)
     expect(STOP_READING_LABEL.length).toBeGreaterThan(0)
+    expect(COPY_MESSAGE_LABEL).toBe("Copy")
+    expect(COPY_FAILED.toLowerCase()).toContain("copy")
   })
 })
 

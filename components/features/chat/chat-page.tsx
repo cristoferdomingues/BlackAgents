@@ -8,7 +8,9 @@ import {
   ArrowUp,
   AudioLines,
   Bot,
+  Check,
   Coins,
+  Copy,
   FileImage,
   FileText,
   FolderOpen,
@@ -63,7 +65,7 @@ import {
 } from "@/lib/llm/workflow-draft"
 import { parseWorkflowInvocation } from "@/lib/workflows/invocation"
 import type { WorkflowListItem } from "@/lib/workflows/service"
-import { NOTHING_TO_READ, READ_ALOUD_LABEL, READ_REPLIES_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_HINT, TALK_INTERRUPT_LABEL, TALK_LABEL, TALK_LISTENING, TALK_SPEAKING, TALK_STOP_LABEL, TALK_THINKING, WAKE_LABEL, WAKE_LISTENING, WAKE_PREPARING } from "@/lib/chat/explain"
+import { COPIED_MESSAGE_LABEL, COPY_FAILED, COPY_MESSAGE_LABEL, NOTHING_TO_READ, READ_ALOUD_LABEL, READ_REPLIES_LABEL, READ_REPLIES_ON, STOP_READING_LABEL, TALK_HINT, TALK_INTERRUPT_LABEL, TALK_LABEL, TALK_LISTENING, TALK_SPEAKING, TALK_STOP_LABEL, TALK_THINKING, WAKE_LABEL, WAKE_LISTENING, WAKE_PREPARING } from "@/lib/chat/explain"
 import { assistantSpeechText } from "@/lib/chat/spoken"
 import { listenFollowUp } from "@/lib/chat/talk"
 import { talkGreeting } from "@/lib/chat/voice-persona"
@@ -1860,6 +1862,42 @@ function LoadedArtifacts({ artifacts }: { artifacts: TurnArtifact[] }) {
   )
 }
 
+function CopyMessageButton({ text }: { text: string }): React.ReactElement {
+  const [copied, setCopied] = React.useState(false)
+  const timer = React.useRef<ReturnType<typeof window.setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current)
+    }
+  }, [])
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (timer.current) window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error(COPY_FAILED)
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className="h-7 px-2 text-xs text-muted-foreground"
+      onClick={() => void copy()}
+      aria-label={copied ? COPIED_MESSAGE_LABEL : COPY_MESSAGE_LABEL}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? COPIED_MESSAGE_LABEL : COPY_MESSAGE_LABEL}
+    </Button>
+  )
+}
+
 function Message({
   turn,
   onOpen,
@@ -1919,6 +1957,7 @@ function Message({
       )
   const choices = isUser || cardShown || turn.workflowRun ? null : inspectChoices(baseProse)
   const prose = choices ? choices.rest : baseProse
+  const copyText = (isUser ? turn.content : prose).trim()
   const attached = turnAttachments(turn)
   const runTarget = turn.workflowRun
     ? workflows.find((item) => item.workflow.name === turn.workflowRun?.workflow)?.workflow
@@ -2030,18 +2069,23 @@ function Message({
             fixDisabled={fixDisabled}
           />
         ) : null}
-        {!isUser && onReadAloud ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs text-muted-foreground"
-            onClick={onReadAloud}
-            aria-label={readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
-          >
-            {readingAloud ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-            {readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
-          </Button>
+        {copyText || (!isUser && onReadAloud) ? (
+          <div className={cn("flex flex-wrap items-center gap-1", isUser && "justify-end")}>
+            {copyText ? <CopyMessageButton text={copyText} /> : null}
+            {!isUser && onReadAloud ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={onReadAloud}
+                aria-label={readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
+              >
+                {readingAloud ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                {readingAloud ? STOP_READING_LABEL : READ_ALOUD_LABEL}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         {!isUser ? (
           <FeedbackBar

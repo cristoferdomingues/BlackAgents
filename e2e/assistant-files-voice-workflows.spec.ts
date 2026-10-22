@@ -262,6 +262,23 @@ test.describe("assistant files, voice and workflows", () => {
     await expect(page.getByRole("textbox", { name: "Message assistant" })).toHaveValue("")
   })
 
+  test("copies a reply", async ({ page }) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+    await stubWorkflows(page, [])
+    await page.route("**/api/chat", (route) =>
+      fulfillSse(route, [
+        ["done", { content: "Paste this note.", model: "gpt-4o-mini", toolExecutions: [] }],
+      ])
+    )
+    await page.goto("/chat")
+    await page.getByRole("textbox", { name: "Message assistant" }).fill("hello")
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("Paste this note.")).toBeVisible()
+    await page.getByRole("button", { name: "Copy", exact: true }).last().click()
+    await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toBe("Paste this note.")
+    await expect(page.getByRole("button", { name: "Copied" })).toBeVisible()
+  })
+
   test("reads a reply aloud and skips code and links", async ({ page }) => {
     await stubWorkflows(page, [])
     await page.addInitScript(() => {

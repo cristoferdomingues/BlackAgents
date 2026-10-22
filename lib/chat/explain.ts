@@ -9,6 +9,12 @@ export const READ_ALOUD_LABEL = "Read aloud"
 
 export const STOP_READING_LABEL = "Stop reading"
 
+export const COPY_MESSAGE_LABEL = "Copy"
+
+export const COPIED_MESSAGE_LABEL = "Copied"
+
+export const COPY_FAILED = "Could not copy this message."
+
 export const NOTHING_TO_READ = "There is nothing to read aloud."
 
 export const TALK_LABEL = "Talk"

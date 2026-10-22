@@ -52,7 +52,7 @@ test("shows Jev decisions, saves a level, and clears the list", async ({ page })
     await route.fulfill({ json: { success: true, data: { entries: log, max: 200 } } })
   })
 
-  await page.goto("/settings?tab=ai")
+  await page.goto("/settings/jev")
   await expect(page.getByText("Could not read the decision list")).toBeVisible()
   failing = false
   await page.getByRole("button", { name: "Retry" }).click()

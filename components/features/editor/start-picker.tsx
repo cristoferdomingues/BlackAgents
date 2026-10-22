@@ -88,7 +88,7 @@ export function StartPicker({
           <div className="flex flex-wrap items-center justify-between gap-2">
             {providerLoaded && !hasProvider ? (
               <p className="text-xs text-muted-foreground">
-                <Link href="/providers" className="underline underline-offset-2">
+                <Link href="/settings/providers" className="underline underline-offset-2">
                   Verify an AI provider
                 </Link>{" "}
                 to draft with the assistant.

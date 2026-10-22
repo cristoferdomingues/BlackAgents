@@ -174,7 +174,7 @@ describe("POST /api/sources/youtube with watch", () => {
     const res = await watch()
     expect(res.status).toBe(412)
     const body = await res.json()
-    expect(body.error).toBe(`Choose a video model in Settings → AI → Models by task. ${NO_CAPTIONS_MESSAGE}`)
+    expect(body.error).toBe(`Choose a video model in Settings → Models. ${NO_CAPTIONS_MESSAGE}`)
   })
 
   it("does not watch a video that is too long", async () => {

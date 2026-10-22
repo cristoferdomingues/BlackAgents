@@ -87,7 +87,7 @@ test.describe("project scopes", () => {
 
   test("creates a project with a whitelist and lists broken folders", async ({ page }) => {
     const state = await stubProjects(page)
-    await page.goto("/settings")
+    await page.goto("/settings/projects")
     const panel = page.locator("#projects")
     await expect(panel.getByText("MyHealthCare")).toBeVisible()
     await expect(panel.getByRole("alert")).toContainText("broken")
@@ -106,7 +106,7 @@ test.describe("project scopes", () => {
 
   test("blocks an invalid folder id before sending", async ({ page }) => {
     const state = await stubProjects(page)
-    await page.goto("/settings")
+    await page.goto("/settings/projects")
     const panel = page.locator("#projects")
     await panel.getByLabel("Name").fill("!!!")
     await panel.getByRole("button", { name: "Create project" }).click()

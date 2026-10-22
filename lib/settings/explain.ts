@@ -5,39 +5,31 @@ import type { McpTransportType } from "@/lib/mcp/types"
 export const SETTINGS_INTRO_STORAGE_KEY = "black-agents:settings-intro-dismissed"
 
 export const SETTINGS_INTRO =
-  "Pick a workspace folder, then connect tools and AI options for that folder."
+  "Set up AI, tools, and workspace folders. Pick a section on the left."
 
 export const HOW_IT_WORKS_TITLE = "How Settings works"
 
 export const HOW_IT_WORKS_STEPS: ReadonlyArray<{ title: string; text: string }> = [
   {
     title: "1. Choose a folder",
-    text: "Create a new workspace, or open a folder you already have. That folder is the one this app reads and writes.",
+    text: "Use the workspace menu at the top to create a workspace or open a folder. That folder is the one this app reads and writes.",
   },
   {
-    title: "2. Connect tools",
-    text: "Add MCP servers or the browser for that folder. Tokens stay in your secrets file, not in the project.",
+    title: "2. Connect AI and tools",
+    text: "Add a provider key, pick a model for each job, and add MCP servers or the browser. Keys stay in your secrets file, not in the project.",
   },
   {
     title: "3. You choose what to save",
-    text: "Edit a server, set how much you trust it, and save AI options. Nothing is written until you save.",
+    text: "Each section saves on its own. Nothing is written until you press Save.",
   },
 ]
 
-export const TAB_INTRO = {
-  create: "Make a new folder and fill it with a starter kit so your agents have a place to work.",
-  open: "Add a folder that is already on your computer, and make it the active workspace.",
-  mcp: "MCP (Model Context Protocol) lets an agent call tools on another program. Servers here belong to the active folder.",
-  browser: "Record steps in a browser, then run those steps again later.",
-  ai: "Set how the assistant writes files, and the optional Jev helper.",
-} as const
-
-export const TAB_TOOLTIP = {
-  create: "New folder with a starter kit",
-  open: "Use a folder you already have",
-  mcp: "Tools from other programs",
-  browser: "Record and replay a browser",
-  ai: "Assistant limits and Jev",
+export const WORKSPACE_DIALOG = {
+  createTitle: "Create a workspace",
+  createText:
+    "Choose a starter kit and a folder. BlackAgents makes the folder layout and starter artifacts, so your agents can work right away.",
+  openTitle: "Open a folder",
+  openText: "Enter the path to a folder on this computer, like a repo with a .cursor or .claude folder.",
 } as const
 
 export const TERM_MCP =
@@ -109,7 +101,7 @@ export const EMPTY = {
     "Add one in the form below. After it connects, agents can call its tools in chat. The list is stored in .black-agents/mcp.json.",
   mcpAction: "Add a server",
   workspacesTitle: "No workspaces yet",
-  workspacesText: "Create a new folder, or open one you already have. The active workspace is the folder this app reads and writes.",
+  workspacesText: "Create a new workspace, or open a folder you already have. The active workspace is the folder this app reads and writes.",
   flowsTitle: "No saved flows yet",
   flowsText:
     "Record a flow above, then use the Assistant with the browser tools. Stop & save stores it in .black-agents/browser-flows/.",

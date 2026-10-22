@@ -31,7 +31,7 @@ const modelListSchema = z.object({
   providers: z.array(z.object({ id: providerIdSchema, label: z.string() })).optional(),
 })
 
-/** Settings → AI → Models by task → Coding. */
+/** Settings → Models → Coding. */
 export function CodingModelsPanel(): React.ReactElement {
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -114,7 +114,7 @@ export function CodingModelsPanel(): React.ReactElement {
             loadModels(value)
           }}
         >
-          <SelectTrigger className="w-36" aria-label="Coding provider">
+          <SelectTrigger className="w-48" aria-label="Coding provider">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

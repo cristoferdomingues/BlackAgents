@@ -72,7 +72,7 @@ async function resolveLayers(layers: ModelLayer[], options?: ResolveLlmOptions):
   const settings = needsTask ? (options?.settings ?? (await readAiSettings())) : options?.settings
   const selected = selectLayeredModel(layers, (task) => {
     if (!settings) {
-      throw new ModelRefError("Set the model in Settings → AI → Models by task", 412, "task_unset")
+      throw new ModelRefError("Set the model in Settings → Models", 412, "task_unset")
     }
     return resolveTaskRef(task, settings)
   })

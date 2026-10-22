@@ -664,7 +664,7 @@ export function ArtifactEditor({ type, name }: { type: ArtifactType; name?: stri
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuItem asChild>
-                    <Link href="/providers">
+                    <Link href="/settings/providers">
                       <MessageCircle className="h-4 w-4" />
                       Verify provider to chat
                     </Link>

@@ -151,7 +151,7 @@ export async function prepareChat(request: ChatRequest, scope?: string): Promise
   try {
     modelChoice = selectLayeredModel(layers, (task) => {
       if (!settingsForTask) {
-        throw new ModelRefError("Set the model in Settings → AI → Models by task", 412, "task_unset")
+        throw new ModelRefError("Set the model in Settings → Models", 412, "task_unset")
       }
       return resolveTaskRef(task, settingsForTask)
     })

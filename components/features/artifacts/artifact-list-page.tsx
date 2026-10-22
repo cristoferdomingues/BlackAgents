@@ -166,7 +166,7 @@ export function ArtifactListPage({ type }: { type: ArtifactType }) {
                       ) : (
                         <Button asChild variant="outline" size="sm">
                           <Link
-                            href="/providers"
+                            href="/settings/providers"
                             onClick={(event) => event.stopPropagation()}
                             aria-label={`Verify a provider to chat with ${artifact.name}`}
                           >

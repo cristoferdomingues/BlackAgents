@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   type ProviderDescriptor,
   type ProviderStatus,
@@ -38,7 +39,8 @@ function checkedAtLabel(checkedAt?: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toLocaleString()
 }
 
-export function ProvidersPage() {
+/** Settings → AI providers: add, verify, and remove provider keys. */
+export function ProvidersPanel(): React.ReactElement {
   const [state, setState] = React.useState<ProvidersState | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -147,16 +149,16 @@ export function ProvidersPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Loading…
+      <div className="space-y-2" aria-busy="true">
+        <p className="text-sm text-muted-foreground">Loading providers…</p>
+        <Skeleton className="h-32 w-full" />
       </div>
     )
   }
 
   if (loadError || !state) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="flex flex-col items-center justify-center gap-3 rounded-lg border p-6 text-center">
         <AlertCircle className="h-6 w-6 text-destructive" />
         <div>
           <p className="font-medium">Could not load providers</p>
@@ -173,16 +175,10 @@ export function ProvidersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">AI Providers</h1>
-        <p className="text-sm text-muted-foreground">
-          Bring your own key. Keys are stored locally in{" "}
-          <code className="rounded bg-muted px-1">~/.black-agents/secrets.json</code>{" "}
-          and never leave this machine — the assistant calls the provider from
-          the local server.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Keys are saved in <code className="rounded bg-muted px-1">~/.black-agents/secrets.json</code>.
+      </p>
 
       {state.providers.map((p) => {
         const status = statusFor(p.id)

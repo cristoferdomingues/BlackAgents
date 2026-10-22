@@ -2,14 +2,14 @@ import { expect, test } from "@playwright/test"
 
 import { stubVerifiedProvider, stubWorkspace } from "./support/stubs"
 
-function settingsBody(autoApproveFileWrites: boolean) {
+function settingsBody(autoApproveFileWrites: boolean, models: Record<string, unknown> = {}) {
   return {
     success: true,
     data: {
       settings: {
         assistant: { maxToolTurns: 8, autoApproveFileWrites },
         jev: { enabled: false, provider: "auto", openRouterKeySource: "reuse" },
-        models: {},
+        models,
       },
       jevKey: { configured: false },
       jevOpenRouterKey: { configured: false },
@@ -34,7 +34,7 @@ test("warns before file writes can run without asking", async ({ page }) => {
     await route.fulfill({ json: settingsBody(autoApproveFileWrites) })
   })
 
-  await page.goto("/settings?tab=ai")
+  await page.goto("/settings/assistant")
   const toggle = page.getByLabel("Allow file writes without asking")
   await expect(toggle).not.toBeChecked()
   await toggle.click()
@@ -70,7 +70,7 @@ test("picks a voice model from models that take audio", async ({ page }) => {
       puts.push(body)
       if (body.models?.voice !== undefined) saved = body.models.voice
     }
-    await route.fulfill({ json: settingsBody(false) })
+    await route.fulfill({ json: settingsBody(false, saved ? { voice: saved } : {}) })
   })
   await page.route("**/api/settings/ai/models?task=voice", (route) =>
     route.fulfill({
@@ -89,21 +89,31 @@ test("picks a voice model from models that take audio", async ({ page }) => {
     })
   )
 
-  await page.goto("/settings?tab=ai")
-  await expect(page.getByText("Models by task")).toBeVisible()
-  await expect(page.getByRole("tab", { name: "Voice" })).toHaveAttribute("aria-selected", "true")
-  const model = page.getByRole("textbox", { name: "Model" })
-  await expect(model).toHaveValue("google/gemini-2.5-flash")
-  await expect(page.getByText("2 models can take audio and give text.")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Save", exact: true }).last()).toBeDisabled()
+  await page.goto("/settings/models")
+  const voiceRow = page.getByRole("row", { name: /Voice/ })
+  await expect(voiceRow).toContainText("google/gemini-2.5-flash on OpenRouter")
+  await expect(voiceRow).toContainText("Default")
 
-  await page.getByRole("button", { name: "Choose model" }).click()
+  await page.getByRole("button", { name: "Edit Voice" }).click()
+  const dialog = page.getByRole("dialog", { name: "Voice model" })
+  const model = dialog.getByRole("textbox", { name: "Model" })
+  await expect(model).toHaveValue("google/gemini-2.5-flash")
+  await expect(dialog.getByText("2 models can take audio and give text.")).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled()
+
+  await dialog.getByRole("button", { name: "Choose model" }).click()
   await page.getByRole("menuitem", { name: "openai/gpt-4o-audio-preview" }).click()
-  await page.getByRole("button", { name: "Save", exact: true }).last().click()
+  await dialog.getByRole("button", { name: "Save", exact: true }).click()
   await expect(page.getByText("Voice model saved")).toBeVisible()
   expect(puts).toContainEqual({ models: { voice: "openai/gpt-4o-audio-preview" } })
 
-  await page.getByRole("button", { name: "Use default" }).click()
+  await page.keyboard.press("Escape")
+  await expect(dialog).toBeHidden()
+  await expect(voiceRow).toContainText("openai/gpt-4o-audio-preview")
+  await expect(voiceRow).not.toContainText("Default")
+
+  await page.getByRole("button", { name: "Edit Voice" }).click()
+  await dialog.getByRole("button", { name: "Use default" }).click()
   await expect(model).toHaveValue("google/gemini-2.5-flash")
   expect(puts).toContainEqual({ models: { voice: null } })
 })
@@ -152,7 +162,7 @@ test("saves a vision model for a provider and lists who uses it", async ({ page 
       puts.push(body)
       if (body.models && "vision" in body.models) saved = body.models.vision ?? null
     }
-    await route.fulfill({ json: settingsBody(false) })
+    await route.fulfill({ json: settingsBody(false, saved ? { vision: saved } : {}) })
   })
   await page.route("**/api/settings/ai/models*", (route) => {
     const url = new URL(route.request().url())
@@ -200,11 +210,13 @@ test("saves a vision model for a provider and lists who uses it", async ({ page 
     })
   })
 
-  await page.goto("/settings?tab=ai")
-  await page.getByRole("tab", { name: "Vision" }).click()
-  await expect(page.getByRole("tab", { name: "Vision" })).toHaveAttribute("aria-selected", "true")
-  await expect(page.getByText("Used by: reviewer (agent), nightly-report → summarize (step)")).toBeVisible()
-  const provider = page.getByRole("combobox", { name: "Vision provider" })
+  await page.goto("/settings/models")
+  const visionRow = page.getByRole("row", { name: /Vision/ })
+  await expect(visionRow).toContainText("Not set")
+  await page.getByRole("button", { name: "Edit Vision" }).click()
+  const dialog = page.getByRole("dialog", { name: "Vision model" })
+  await expect(dialog.getByText("Used by: reviewer (agent), nightly-report → summarize (step)")).toBeVisible()
+  const provider = dialog.getByRole("combobox", { name: "Vision provider" })
   await provider.click()
   await expect(page.getByRole("option", { name: /Verify under AI Providers/ })).toBeDisabled()
   const listed = page.waitForResponse(
@@ -212,24 +224,45 @@ test("saves a vision model for a provider and lists who uses it", async ({ page 
   )
   await page.getByRole("option", { name: "Anthropic", exact: true }).click()
   await listed
-  await page.getByRole("button", { name: "Choose model" }).click()
+  await dialog.getByRole("button", { name: "Choose model" }).click()
   await page.getByRole("menuitem", { name: "claude-sonnet-4-20250514" }).click()
-  await page.getByRole("tabpanel", { name: "Vision" }).getByRole("button", { name: "Save", exact: true }).click()
+  await dialog.getByRole("button", { name: "Save", exact: true }).click()
   await expect(page.getByText("Vision model saved")).toBeVisible()
   expect(puts).toContainEqual({
     models: { vision: { provider: "anthropic", model: "claude-sonnet-4-20250514" } },
   })
 
   await page.reload()
-  await page.getByRole("tab", { name: "Vision" }).click()
-  await expect(page.getByRole("textbox", { name: "Vision model" })).toHaveValue("claude-sonnet-4-20250514")
-  await expect(page.getByRole("combobox", { name: "Vision provider" })).toContainText("Anthropic")
+  await expect(visionRow).toContainText("claude-sonnet-4-20250514 (Anthropic)")
+  await page.getByRole("button", { name: "Edit Vision" }).click()
+  await expect(dialog.getByRole("textbox", { name: "Vision model" })).toHaveValue("claude-sonnet-4-20250514")
+  await expect(dialog.getByRole("combobox", { name: "Vision provider" })).toContainText("Anthropic")
+  await page.keyboard.press("Escape")
 
-  await page.getByRole("tab", { name: "Fast" }).click()
-  await expect(page.getByText("Not used yet")).toBeVisible()
+  await page.getByRole("button", { name: "Edit Fast" }).click()
+  await expect(page.getByRole("dialog", { name: "Fast model" }).getByText("Not used yet")).toBeVisible()
+  await page.keyboard.press("Escape")
 
-  await page.getByRole("tab", { name: "Vision" }).click()
-  await page.getByRole("button", { name: "Clear", exact: true }).click()
+  await page.getByRole("button", { name: "Edit Vision" }).click()
+  await dialog.getByRole("button", { name: "Clear", exact: true }).click()
   await expect(page.getByText("Cleared the Vision model")).toBeVisible()
   expect(puts).toContainEqual({ models: { vision: null } })
+})
+
+test("old settings links open the new sections", async ({ page }) => {
+  await stubWorkspace(page)
+  await stubVerifiedProvider(page)
+  await page.route("**/api/settings/ai", (route) => route.fulfill({ json: settingsBody(false) }))
+
+  await page.goto("/settings?tab=ai")
+  await expect(page).toHaveURL(/\/settings\/models$/)
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Models" })).toHaveAttribute("aria-current", "page")
+
+  await page.goto("/providers")
+  await expect(page).toHaveURL(/\/settings\/providers$/)
+
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Assistant" }).click()
+  await expect(page).toHaveURL(/\/settings\/assistant$/)
+  await expect(page.getByLabel("Allow file writes without asking")).toBeVisible()
 })

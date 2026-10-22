@@ -66,7 +66,7 @@ export function ProjectSwitcher(): React.ReactElement | null {
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings?tab=open#projects" className="gap-2">
+          <Link href="/settings/projects" className="gap-2">
             <Settings className="h-4 w-4" />
             Manage projects
           </Link>

@@ -248,7 +248,7 @@ export function McpServerPicker({
       ) : state.status === "ready" && known.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           No MCP servers in this workspace.{" "}
-          <Link href="/settings?tab=mcp" className="underline underline-offset-2">
+          <Link href="/settings/mcp" className="underline underline-offset-2">
             Add one
           </Link>
         </p>

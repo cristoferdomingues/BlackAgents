@@ -1072,7 +1072,7 @@ export function ChatPage({
           </DropdownMenu>
           {mcpToolsCount > 0 ? (
             <Link
-              href="/settings"
+              href="/settings/mcp"
               title={`${mcpToolsCount} MCP ${mcpToolsCount === 1 ? "tool" : "tools"} loaded in this workspace. Click to manage in Settings.`}
             >
               <Badge
@@ -1280,7 +1280,7 @@ export function ChatPage({
                 </div>
               </div>
               <Button asChild size="sm">
-                <Link href="/providers">Open providers</Link>
+                <Link href="/settings/providers">Open providers</Link>
               </Button>
             </div>
           ) : !metaLoading &&
@@ -1290,7 +1290,7 @@ export function ChatPage({
             <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3">
               <p className="text-sm text-muted-foreground">
                 This provider is not verified. Choose a verified provider or{" "}
-                <Link href="/providers" className="text-primary underline">
+                <Link href="/settings/providers" className="text-primary underline">
                   verify it
                 </Link>
                 .

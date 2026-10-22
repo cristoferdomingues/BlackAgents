@@ -67,8 +67,8 @@ const OPENROUTER_SOURCE_LABELS: Record<JevOpenRouterKeySource, string> = {
   dedicated: "Dedicated OpenRouter API key for Jev",
 }
 
-/** Assistant limits and the optional Jev decision engine. */
-export function AiSettingsCard() {
+/** Assistant limits, or the optional Jev decision engine. */
+export function AiSettingsCard({ part }: { part: "assistant" | "jev" }): React.ReactElement {
   const [data, setData] = React.useState<AiSettingsSnapshot | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [keyInput, setKeyInput] = React.useState("")
@@ -155,7 +155,8 @@ export function AiSettingsCard() {
   const showTypeSafeKey = jev.provider === "auto" || jev.provider === "direct"
   const showOpenRouterKey = jev.provider === "auto" || jev.provider === "openrouter"
 
-  return (
+  if (part === "assistant") {
+    return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
@@ -239,7 +240,12 @@ export function AiSettingsCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+    )
+  }
 
+  return (
+    <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">

@@ -2,7 +2,7 @@ import { DEFAULT_MODELS } from "@/lib/app-config"
 import type { ProviderId } from "@/lib/llm/types"
 
 /**
- * The Meeting task in Settings → AI → Models by task.
+ * The Meeting task in Settings → Models.
  * Listen turns call audio into text. Notes writes the summary and suggestions.
  */
 

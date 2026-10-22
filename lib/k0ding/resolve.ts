@@ -16,7 +16,7 @@ export async function resolveCodingModel(requested?: {
     return { provider: requested.provider as ProviderId, model: requested.model }
   }
   throw new K0dingError(
-    "Choose a Coding model in Settings → AI → Models by task, or pick a model in the Assistant.",
+    "Choose a Coding model in Settings → Models, or pick a model in the Assistant.",
     412
   )
 }

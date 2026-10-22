@@ -114,8 +114,8 @@ test.describe("agent persona chat", () => {
     await expect(recoveryLink).toBeVisible()
     await recoveryLink.click()
 
-    await expect(page).toHaveURL(/\/providers$/)
-    await expect(page.getByRole("heading", { name: "AI Providers" })).toBeVisible()
+    await expect(page).toHaveURL(/\/settings\/providers$/)
+    await expect(page.getByRole("heading", { name: "AI providers" })).toBeVisible()
 
     await page.goto("/chat?agent=tester")
     await expect(
@@ -350,7 +350,7 @@ test.describe("agent model editor", () => {
     await expect(page.getByLabel("Name")).toHaveValue("reviewer")
     await page.getByRole("combobox", { name: "Model provider" }).click()
     await page.getByRole("option", { name: "Vision" }).click()
-    await expect(page.getByRole("link", { name: "not set" })).toHaveAttribute("href", "/settings?tab=ai")
+    await expect(page.getByRole("link", { name: "not set" })).toHaveAttribute("href", "/settings/models")
     await page.getByRole("button", { name: "Save" }).click()
     await expect(page.getByText('Agent "reviewer" saved')).toBeVisible()
     expect(saved[0]).toMatchObject({ extra: { model: "task:vision", provider: null } })

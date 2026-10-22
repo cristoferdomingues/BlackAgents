@@ -180,15 +180,15 @@ async function installMcp(page: Page, initial: ListedServer[]): Promise<{
 
 test("shows the settings explainer once, then the empty MCP teaching state", async ({ page }) => {
   await stubWorkspace(page)
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
 
   const how = page.getByRole("button", { name: "How it works" })
   await expect(how).toHaveAttribute("aria-expanded", "true")
   await expect(page.getByRole("heading", { name: "How Settings works" })).toBeVisible()
   await expect(page.getByText("1. Choose a folder")).toBeVisible()
-  await expect(page.getByText("2. Connect tools")).toBeVisible()
+  await expect(page.getByText("2. Connect AI and tools")).toBeVisible()
   await expect(page.getByText("3. You choose what to save")).toBeVisible()
-  await expect(page.getByText("Pick a workspace folder, then connect tools and AI options for that folder.")).toBeVisible()
+  await expect(page.getByText("Set up AI, tools, and workspace folders. Pick a section on the left.")).toBeVisible()
 
   await page.getByRole("button", { name: "Got it" }).click()
   await expect(how).toHaveAttribute("aria-expanded", "false")
@@ -215,7 +215,7 @@ test("edits an HTTP server, keeps a blank secret, and replaces a changed secret"
   await stubWorkspace(page)
   const mcp = await installMcp(page, [httpServer(), stdioServer()])
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await expect(page.getByRole("button", { name: "Edit blacklionfi" })).toBeVisible()
   await page.getByRole("button", { name: "Edit blacklionfi" }).click()
 
@@ -275,7 +275,7 @@ test("edits a command server and keeps a blank secret", async ({ page }) => {
   await stubWorkspace(page)
   const mcp = await installMcp(page, [stdioServer()])
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await page.getByRole("button", { name: "Edit github" }).click()
   await expect(page.getByLabel("Secret 1 value")).toHaveAttribute(
     "placeholder",
@@ -305,7 +305,7 @@ test("cancel drops edits, and a dirty form blocks the next edit", async ({ page 
   await stubWorkspace(page)
   const mcp = await installMcp(page, [httpServer(), stdioServer()])
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await page.getByRole("button", { name: "Edit blacklionfi" }).click()
   await page.getByLabel("Server URL").fill("https://app.example/api/mcp/draft")
   await expect(page.getByText("Unsaved changes")).toBeVisible()
@@ -332,7 +332,7 @@ test("asks before deleting a server, using named edit and delete controls", asyn
   await stubWorkspace(page)
   await installMcp(page, [httpServer(), stdioServer()])
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await expect(page.getByRole("button", { name: "Edit github" })).toBeVisible()
   await page.getByRole("button", { name: "Delete blacklionfi" }).click()
 

@@ -48,8 +48,8 @@ export function WatchVideoSwitch({
       <div className="space-y-0.5">
         <Label htmlFor={id}>Watch the video</Label>
         <p className="text-xs text-muted-foreground">
-          A video model also looks at the pictures. It is slower and costs more. Set it in Settings → AI →
-          Models by task → Video.
+          A video model also looks at the pictures. It is slower and costs more. Set it in Settings → Models →
+          Video.
         </p>
       </div>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />

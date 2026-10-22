@@ -186,7 +186,7 @@ describe("workflow routes", () => {
     expect(saved.status).toBe(200)
     const started = await json(await START_RUN(jsonRequest("http://t", "POST", {}), named("review-line")))
     expect(started.status).toBe(412)
-    expect(started.body.error).toBe("Set the Fast model in Settings → AI → Models by task")
+    expect(started.body.error).toBe("Set the Fast model in Settings → Models")
 
     await updateAiSettings({ models: { fast: { provider: "openai", model: "gpt-4o-mini" } } })
     vi.stubGlobal(

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Brain, Eye, Loader2, Mic, NotebookPen, RotateCcw, SquareCode, Video, Zap } from "lucide-react"
+import { Loader2, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -13,13 +13,9 @@ import { useWorkspace } from "@/components/providers/workspace-provider"
 import { ModelCombobox } from "@/components/features/chat/model-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CodingModelsPanel } from "@/components/features/settings/coding-models-panel"
-import { MeetingModelsPanel } from "@/components/features/settings/meeting-models-panel"
 
 interface TaskModelsSnapshot {
   task: ModelTask
@@ -32,73 +28,12 @@ interface TaskModelsSnapshot {
   warning?: string
 }
 
-const TASK_ICONS: Record<ModelTask, React.ComponentType<{ className?: string }>> = {
-  voice: Mic,
-  video: Video,
-  vision: Eye,
-  fast: Zap,
-  reasoning: Brain,
-}
-
-/** Settings → AI → Models by task: one tab per job that needs its own model. */
-export function TaskModelsCard() {
-  const tasks = Object.values(MODEL_TASKS)
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Models by task</CardTitle>
-        <CardDescription>
-          Some jobs need a model that can do more than chat. The Assistant header model still answers
-          your messages; these models only do their job.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue={tasks[0]?.id}>
-          <TabsList>
-            {tasks.map((task) => {
-              const Icon = TASK_ICONS[task.id]
-              return (
-                <TabsTrigger key={task.id} value={task.id} className="gap-2">
-                  <Icon className="h-4 w-4" />
-                  {task.label}
-                </TabsTrigger>
-              )
-            })}
-            <TabsTrigger value="meeting" className="gap-2">
-              <NotebookPen className="h-4 w-4" />
-              Meeting
-            </TabsTrigger>
-            <TabsTrigger value="coding" className="gap-2">
-              <SquareCode className="h-4 w-4" />
-              Coding
-            </TabsTrigger>
-          </TabsList>
-          {tasks.map((task) => (
-            <TabsContent key={task.id} value={task.id} className="pt-3">
-              {isChatTask(task.id) ? (
-                <ChatTaskPanel task={task.id} />
-              ) : (
-                <VoiceTaskPanel task={task.id} />
-              )}
-            </TabsContent>
-          ))}
-          <TabsContent value="meeting" className="pt-3">
-            <MeetingModelsPanel />
-          </TabsContent>
-          <TabsContent value="coding" className="pt-3">
-            <CodingModelsPanel />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
-  )
-}
-
-function isChatTask(task: ModelTask): task is ChatModelTask {
+export function isChatTask(task: ModelTask): task is ChatModelTask {
   return chatModelTaskSchema.safeParse(task).success
 }
 
-function VoiceTaskPanel({ task }: { task: ModelTask }) {
+/** Voice and video: a Custom-provider model id. */
+export function VoiceTaskPanel({ task }: { task: ModelTask }): React.ReactElement {
   const [data, setData] = React.useState<TaskModelsSnapshot | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [value, setValue] = React.useState("")
@@ -267,7 +202,8 @@ const workflowUsersSchema = z.object({
   ),
 })
 
-function ChatTaskPanel({ task }: { task: ChatModelTask }) {
+/** Vision, fast, and reasoning: a provider and a model. */
+export function ChatTaskPanel({ task }: { task: ChatModelTask }): React.ReactElement {
   const definition = MODEL_TASKS[task]
   const [data, setData] = React.useState<ChatModelsView | null>(null)
   const [error, setError] = React.useState<string | null>(null)

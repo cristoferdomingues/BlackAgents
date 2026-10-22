@@ -171,7 +171,7 @@ describe("WorkflowRunner", () => {
     const runs = await listRuns(env.workspace, "hourly")
     expect(runs[0]).toMatchObject({
       status: "failed",
-      error: "Set the Reasoning model in Settings → AI → Models by task",
+      error: "Set the Reasoning model in Settings → Models",
     })
   })
 

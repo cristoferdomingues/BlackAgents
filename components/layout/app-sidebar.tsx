@@ -9,7 +9,6 @@ import {
   NotebookPen,
   SquareCode,
   GitCompare,
-  KeyRound,
   LayoutDashboard,
   Network,
   Plus,
@@ -48,7 +47,6 @@ const bottomNav: NavItem[] = [
   { href: "/standards", label: "Standards", icon: ScrollText },
   { href: "/export", label: "Export", icon: FileOutput },
   { href: "/sync", label: "Sync", icon: GitCompare },
-  { href: "/providers", label: "AI Providers", icon: KeyRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

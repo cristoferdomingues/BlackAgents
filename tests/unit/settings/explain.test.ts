@@ -18,7 +18,6 @@ import {
   SECRET_KEEP_HELP,
   SETTINGS_INTRO,
   SETTINGS_INTRO_STORAGE_KEY,
-  TAB_INTRO,
   TERM_COMMAND,
   TERM_HTTP,
   TERM_JEV,
@@ -28,6 +27,7 @@ import {
   transportHelp,
   TRUST_LEVELS,
   UNSAVED_CHANGES,
+  WORKSPACE_DIALOG,
 } from "@/lib/settings/explain"
 
 describe("settings explain copy", () => {
@@ -37,10 +37,10 @@ describe("settings explain copy", () => {
     expect(SETTINGS_INTRO_STORAGE_KEY).toContain("settings-intro")
   })
 
-  it("has a one-line intro for every settings tab", () => {
-    for (const text of Object.values(TAB_INTRO)) {
-      expect(text.length).toBeGreaterThan(20)
-    }
+  it("says where to create or open a workspace", () => {
+    expect(HOW_IT_WORKS_STEPS[0]?.text).toMatch(/workspace menu at the top/)
+    expect(WORKSPACE_DIALOG.createTitle).toBe("Create a workspace")
+    expect(WORKSPACE_DIALOG.openText).toMatch(/\.cursor or \.claude/)
   })
 
   it("explains MCP, SSE, Jev, and trust in plain words", () => {
@@ -84,7 +84,7 @@ describe("settings explain copy", () => {
   })
 
   it("teaches the empty MCP list and the unsaved-edit state", () => {
-    expect(SETTINGS_INTRO).toMatch(/workspace folder/i)
+    expect(SETTINGS_INTRO).toMatch(/section on the left/i)
     expect(EMPTY.mcpTitle).toBe("No MCP servers yet")
     expect(EMPTY.mcpAction).toBe("Add a server")
     expect(EMPTY.mcpText).toMatch(/\.black-agents\/mcp\.json/)

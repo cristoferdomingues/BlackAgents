@@ -43,7 +43,7 @@ const modelListSchema = z.object({
   warning: z.string().optional(),
 })
 
-/** Settings → AI → Models by task → Meeting. Two pickers: Listen and Notes. */
+/** Settings → Models → Meeting. Two pickers: Listen and Notes. */
 export function MeetingModelsPanel() {
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -190,7 +190,7 @@ export function MeetingModelsPanel() {
               }
             }}
           >
-            <SelectTrigger className="w-36" aria-label="Listen provider">
+            <SelectTrigger className="w-48" aria-label="Listen provider">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -237,7 +237,7 @@ export function MeetingModelsPanel() {
               loadNotesModels(value)
             }}
           >
-            <SelectTrigger className="w-36" aria-label="Notes provider">
+            <SelectTrigger className="w-48" aria-label="Notes provider">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

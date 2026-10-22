@@ -39,7 +39,7 @@ export function DashboardPage() {
           rules, and skills.
         </p>
         <Button asChild className="mt-6">
-          <Link href="/settings">
+          <Link href="/settings/workspaces">
             Select a workspace
             <ArrowRight className="h-4 w-4" />
           </Link>

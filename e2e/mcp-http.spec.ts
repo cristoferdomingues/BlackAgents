@@ -98,7 +98,7 @@ test("saves an HTTP MCP server with a header", async ({ page }) => {
     })
   })
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await page.getByRole("button", { name: "HTTP", exact: true }).click()
   await expect(page.getByText("Uses HTTP POST.")).toBeVisible()
 

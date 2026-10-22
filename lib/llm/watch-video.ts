@@ -12,7 +12,7 @@ import { ProviderError, type LLMCredentials } from "./types"
  * link is always rebuilt from the video id, never taken from the user.
  */
 
-export const VIDEO_MODEL_MISSING = "Choose a video model in Settings → AI → Models by task"
+export const VIDEO_MODEL_MISSING = "Choose a video model in Settings → Models"
 export const WATCH_NEEDS_CUSTOM = "Watch video needs AI Providers → Custom (for example OpenRouter)"
 export const MAX_WATCH_SECONDS = LIMITS.watchVideo.maxSeconds
 const WATCH_TIMEOUT_MS = TIMEOUTS_MS.watchVideo

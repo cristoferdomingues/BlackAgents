@@ -96,7 +96,7 @@ test("saves a command MCP server with a secret", async ({ page }) => {
     })
   })
 
-  await page.goto("/settings?tab=mcp")
+  await page.goto("/settings/mcp")
   await expect(page.getByRole("textbox", { name: "Command" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Add secret" })).toBeVisible()
 

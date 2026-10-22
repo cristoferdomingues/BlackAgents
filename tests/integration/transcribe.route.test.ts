@@ -73,7 +73,7 @@ describe("POST /api/assistant/transcribe", () => {
       expect(sentModel(fetchMock)).toBe("google/gemini-2.5-flash")
     })
 
-    it("uses the model saved in Settings → AI", async () => {
+    it("uses the model saved in Settings → Models", async () => {
       await setProviderSecret("custom", { apiKey: "k", baseUrl: "https://openrouter.ai/api/v1", verification: verified })
       await updateAiSettings({ models: { voice: "openai/gpt-4o-audio-preview" } })
       const fetchMock = vi.fn().mockResolvedValue(okReply)
@@ -88,7 +88,7 @@ describe("POST /api/assistant/transcribe", () => {
       vi.stubGlobal("fetch", fetchMock)
       const res = await post({ ...body, provider: "custom" })
       expect(res.status).toBe(412)
-      expect((await res.json()).error).toMatch(/Models by task/)
+      expect((await res.json()).error).toMatch(/Settings → Models/)
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })

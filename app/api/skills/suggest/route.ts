@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
     const config = await readConfig()
     if (!config.currentPath) return fail("Select a workspace first", 400)
     const resolved = await loadDecisionClient()
-    if (!resolved) return fail("Turn on Jev in Settings → AI to suggest a skill", 412)
+    if (!resolved) return fail("Turn on Jev in Settings → Jev to suggest a skill", 412)
 
     const artifacts = await scanWorkspace(config.currentPath)
     const suggestion = await suggestSkill({

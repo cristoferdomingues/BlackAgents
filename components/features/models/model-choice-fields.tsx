@@ -51,7 +51,7 @@ const providerModelsSchema = z.object({
 
 const CHAT_TASKS: ChatModelTask[] = ["vision", "fast", "reasoning"]
 
-/** Saved chat-task models from Settings → AI. Missing keys mean "not set". */
+/** Saved chat-task models from Settings → Models. Missing keys mean "not set". */
 export function useSavedTaskModels(enabled: boolean): { choices: TaskChoiceMap; loading: boolean } {
   const [choices, setChoices] = React.useState<TaskChoiceMap>({})
   const [loading, setLoading] = React.useState(false)
@@ -222,7 +222,7 @@ function TaskKindSummary({
   return (
     <p className="text-sm text-muted-foreground">
       task:{task} →{" "}
-      <Link href="/settings?tab=ai" className="text-primary underline">
+      <Link href="/settings/models" className="text-primary underline">
         not set
       </Link>
     </p>

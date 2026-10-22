@@ -198,7 +198,7 @@ export function resolveTaskRef(
   const choice = settings.models[task]
   if (!choice?.model || !choice.provider) {
     throw new ModelRefError(
-      `Set the ${MODEL_TASKS[task].label} model in Settings → AI → Models by task`,
+      `Set the ${MODEL_TASKS[task].label} model in Settings → Models`,
       412,
       "task_unset"
     )

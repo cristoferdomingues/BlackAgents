@@ -13,7 +13,7 @@ import { ProviderError, type LLMCredentials, type ProviderId } from "./types"
  */
 
 export const OPENAI_TRANSCRIBE_MODEL = openAiTranscribeModel(undefined)
-export const VOICE_MODEL_MISSING = "Choose a voice model in Settings → AI → Models by task"
+export const VOICE_MODEL_MISSING = "Choose a voice model in Settings → Models"
 /** About 2 minutes of 16 kHz mono 16-bit WAV, base64-encoded. */
 export const MAX_AUDIO_BASE64_LENGTH = 6_000_000
 
@@ -40,12 +40,12 @@ function transcriptionFailureMessage(provider: "openai" | "custom", status: numb
   const service = provider === "openai" ? "OpenAI" : "The custom provider"
   if (status === 400) {
     return provider === "custom"
-      ? "The Listen model could not transcribe this audio. In Settings → AI → Models by task, choose a Listen model that accepts audio, then try again."
-      : "OpenAI could not transcribe this audio. Check the Listen model in Settings → AI → Models by task, then try again."
+      ? "The Listen model could not transcribe this audio. In Settings → Models, choose a Listen model that accepts audio, then try again."
+      : "OpenAI could not transcribe this audio. Check the Listen model in Settings → Models, then try again."
   }
-  if (status === 401) return `${service} rejected the API key. Check it in Settings → AI, then try again.`
+  if (status === 401) return `${service} rejected the API key. Check it in Settings → AI providers, then try again.`
   if (status === 403) return `${service} did not allow audio transcription. Check your provider access and Listen model.`
-  if (status === 404) return `${service} could not find the Listen model or API endpoint. Check Settings → AI.`
+  if (status === 404) return `${service} could not find the Listen model or API endpoint. Check Settings → AI providers and Settings → Models.`
   if (status === 413) return "This audio part is too large for the provider. Try a shorter recording."
   if (status === 429) return `${service} is busy or its usage limit was reached. Wait a moment, then try again.`
   if (status >= 500) return `${service} could not transcribe audio right now. Try again later.`

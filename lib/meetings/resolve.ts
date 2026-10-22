@@ -19,7 +19,7 @@ export async function resolveNotesModel(requested?: {
     return { provider: requested.provider as ProviderId, model: requested.model }
   }
   throw new MeetingError(
-    "Choose a Notes model in Settings → AI → Models by task, or pick a model in the Assistant.",
+    "Choose a Notes model in Settings → Models, or pick a model in the Assistant.",
     412
   )
 }

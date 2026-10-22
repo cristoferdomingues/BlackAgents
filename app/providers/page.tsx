@@ -1,5 +1,7 @@
-import { ProvidersPage } from "@/components/features/providers/providers-page"
+import { redirect } from "next/navigation"
+
+import { settingsHref } from "@/lib/settings/sections"
 
 export default function Page() {
-  return <ProvidersPage />
+  redirect(settingsHref("providers"))
 }

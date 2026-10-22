@@ -115,7 +115,7 @@ describe("resolveTaskRef", () => {
       model: "gpt-4o",
     })
     expect(() => resolveTaskRef("fast", { models: {} })).toThrow(
-      "Set the Fast model in Settings → AI → Models by task"
+      "Set the Fast model in Settings → Models"
     )
     try {
       resolveTaskRef("reasoning", { models: {} })
@@ -125,7 +125,7 @@ describe("resolveTaskRef", () => {
     }
     expect(() =>
       resolveTaskRef("vision", { models: { vision: { provider: "openai", model: "" } } })
-    ).toThrow("Set the Vision model in Settings → AI → Models by task")
+    ).toThrow("Set the Vision model in Settings → Models")
   })
 })
 

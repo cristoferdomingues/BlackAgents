@@ -305,7 +305,7 @@ describe("POST /api/chat agent persona", () => {
     })
     const missing = await POST(chatRequest("reviewer"))
     expect(missing.status).toBe(412)
-    expect((await missing.json()).error).toBe("Set the Vision model in Settings → AI → Models by task")
+    expect((await missing.json()).error).toBe("Set the Vision model in Settings → Models")
 
     await updateAiSettings({ models: { vision: { provider: "openai", model: "gpt-4o" } } })
     const fetchMock = vi.fn().mockResolvedValue({

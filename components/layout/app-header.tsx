@@ -2,11 +2,13 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Check, ChevronsUpDown, FolderOpen, PanelLeft, Plus, RefreshCw, Settings, Sparkles } from "lucide-react"
+import { Check, ChevronsUpDown, FolderOpen, FolderPlus, PanelLeft, Plus, RefreshCw, Settings, Sparkles } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST } from "@/lib/artifacts/constants"
+import { settingsHref } from "@/lib/settings/sections"
 import { useWorkspace } from "@/components/providers/workspace-provider"
+import { useWorkspaceDialogs } from "@/components/features/workspace/workspace-dialogs"
 import { useSidebar } from "@/components/layout/sidebar-provider"
 import { ProjectSwitcher } from "@/components/layout/project-switcher"
 import { Button } from "@/components/ui/button"
@@ -28,6 +30,7 @@ import {
 export function AppHeader() {
   const { workspace, workspaces, setActive, loadingArtifacts, refresh } =
     useWorkspace()
+  const { openCreate, openExisting } = useWorkspaceDialogs()
   const { open: sidebarOpen, toggle: toggleSidebar } = useSidebar()
   const sidebarLabel = sidebarOpen ? "Hide sidebar" : "Show sidebar"
 
@@ -94,14 +97,16 @@ export function AppHeader() {
                 )
               })}
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings?tab=create" className="gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  New workspace…
-                </Link>
+              <DropdownMenuItem onSelect={openCreate} className="gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                New workspace…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openExisting} className="gap-2">
+                <FolderPlus className="h-4 w-4" />
+                Open folder…
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings?tab=open" className="gap-2">
+                <Link href={settingsHref("workspaces")} className="gap-2">
                   <Settings className="h-4 w-4" />
                   Manage workspaces
                 </Link>
@@ -118,17 +123,18 @@ export function AppHeader() {
           </>
         ) : (
           <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-              <Link href="/settings?tab=create">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                New workspace
-              </Link>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={openCreate}>
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              New workspace
             </Button>
-            <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
-              <Link href="/settings?tab=open">
-                <FolderOpen className="h-3.5 w-3.5" />
-                Open folder
-              </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-xs text-muted-foreground"
+              onClick={openExisting}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Open folder
             </Button>
           </div>
         )}

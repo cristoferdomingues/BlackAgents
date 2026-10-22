@@ -23,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
     const config = await readConfig()
     if (!config.currentPath) return fail("Select a workspace first", 400)
     const resolved = await loadDecisionClient()
-    if (!resolved) return fail("Turn on Jev in Settings → AI to check this skill", 412)
+    if (!resolved) return fail("Turn on Jev in Settings → Jev to check this skill", 412)
 
     const artifacts = await scanWorkspace(config.currentPath)
     const result = await evaluateSkillTriggers({
@@ -37,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     })
     if (result.kind === "error") return fail(result.message, 502)
     if (result.kind === "unavailable") {
-      return fail("Turn on Jev in Settings → AI to check this skill", 412)
+      return fail("Turn on Jev in Settings → Jev to check this skill", 412)
     }
     return ok(result.report)
   })

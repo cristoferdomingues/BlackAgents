@@ -116,7 +116,7 @@ export async function healBrowserStep(params: {
       const message =
         err instanceof ModelRefError
           ? err.message
-          : "Set the Fast model in Settings → AI → Models by task"
+          : "Set the Fast model in Settings → Models"
       return { ok: false, error: message }
     }
   }

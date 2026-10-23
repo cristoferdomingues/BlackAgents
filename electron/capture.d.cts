@@ -1,3 +1,2 @@
-export function allowsMeetingPermission(permission: string): boolean
-
-export function systemAudioMode(platform: string): "loopback" | "unavailable" | "picker"
+export function allowsAppPermission(permission: string): boolean
+export function systemAudioMode(platform: NodeJS.Platform): "loopback" | "unavailable" | "picker"

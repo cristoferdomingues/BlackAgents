@@ -22,7 +22,7 @@ const {
   waitForServer,
 } = require("./server-utils.cjs")
 const { detectCallApp } = require("./call-apps.cjs")
-const { allowsMeetingPermission, systemAudioMode } = require("./capture.cjs")
+const { allowsAppPermission, systemAudioMode } = require("./capture.cjs")
 const { trayIconPath, trayMenuTemplate } = require("./tray.cjs")
 
 let applicationServer = null
@@ -124,7 +124,7 @@ function setTrayListening(on) {
 
 function allowMeetingCapture() {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
-    callback(allowsMeetingPermission(permission))
+    callback(allowsAppPermission(permission))
   })
   if (systemAudioMode(process.platform) !== "loopback") return
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {

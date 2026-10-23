@@ -1,8 +1,20 @@
-const MEDIA_PERMISSIONS = new Set(["media", "microphone", "audioCapture", "display-capture"])
+const ALLOWED_PERMISSIONS = new Set([
+  "media",
+  "microphone",
+  "audioCapture",
+  "display-capture",
+  // navigator.clipboard.writeText() asks for this in Electron. Allow writes
+  // (the copy buttons) but keep clipboard reads denied.
+  "clipboard-sanitized-write",
+])
 
-/** Media permissions the meeting listener may ask for. */
-function allowsMeetingPermission(permission) {
-  return MEDIA_PERMISSIONS.has(permission)
+/**
+ * Permissions the app may request. Meeting capture needs the media entries;
+ * the Assistant's copy buttons need sanitized clipboard writes. Everything
+ * else (including clipboard reads) stays denied.
+ */
+function allowsAppPermission(permission) {
+  return ALLOWED_PERMISSIONS.has(permission)
 }
 
 /**
@@ -17,6 +29,6 @@ function systemAudioMode(platform) {
 }
 
 module.exports = {
-  allowsMeetingPermission,
+  allowsAppPermission,
   systemAudioMode,
 }

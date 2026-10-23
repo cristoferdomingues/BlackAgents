@@ -121,6 +121,14 @@ package separate prevents the complete frontend dependency tree from being
 copied twice. The current unpacked macOS application is approximately 325 MB;
 the compressed DMG/ZIP is approximately 129 MB.
 
+The shell's runtime dependencies must be installed in `electron/node_modules`
+before packaging. `npm run desktop:deps` does this, and `desktop:dev`,
+`desktop:dir`, and `desktop:pack` call it automatically. Without that directory,
+electron-builder silently falls back to the web app's `node_modules`, and the
+installer crashes at launch with `Cannot find module 'electron-log/main'`.
+`electron/verify-packaged-deps.cjs` (the `afterPack` hook) inspects the generated
+`app.asar` and fails the build when a declared shell dependency is missing.
+
 ### Build commands
 
 ```bash

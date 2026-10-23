@@ -1,6 +1,6 @@
 {
   "name": "black-agents",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": false,
   "license": "MIT",
   "description": "Local-first manager for AI agent artifacts",
@@ -9,10 +9,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "desktop:dev": "concurrently -k -s first \"cross-env BLACK_AGENTS_DESKTOP=1 npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 BLACK_AGENTS_DESKTOP=1 electron .\"",
+    "desktop:deps": "node scripts/ensure-electron-deps.cjs",
+    "desktop:dev": "npm run desktop:deps && concurrently -k -s first \"cross-env BLACK_AGENTS_DESKTOP=1 npm:dev\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 BLACK_AGENTS_DESKTOP=1 electron .\"",
     "desktop:install-browser": "npx playwright install chromium",
-    "desktop:dir": "npm run build && electron-builder --dir",
-    "desktop:pack": "npm run build && electron-builder",
+    "desktop:dir": "npm run desktop:deps && npm run build && electron-builder --dir",
+    "desktop:pack": "npm run desktop:deps && npm run build && electron-builder",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
@@ -65,6 +66,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.5",
     "@types/react": "^19.2.2",
@@ -95,8 +97,10 @@
       "app": "electron",
       "output": "dist-electron"
     },
+    "afterPack": "electron/verify-packaged-deps.cjs",
     "files": [
-      "**/*"
+      "**/*",
+      "!verify-packaged-deps.cjs"
     ],
     "extraResources": [
       {

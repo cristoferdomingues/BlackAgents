@@ -79,7 +79,7 @@ jobs:
         run: npm ci
 
       - name: Install desktop shell dependencies
-        run: npm ci --prefix electron
+        run: npm run desktop:deps
 
       - name: Package the desktop app
         # Publish in the release job. On a tag, electron-builder would

@@ -63,7 +63,7 @@ test("opens a code folder and reads a file", async ({ page }) => {
 
   await page.goto("/k0ding")
   await page.getByLabel("Path to a code folder").fill("/tmp/server")
-  await page.getByRole("button", { name: "Open" }).click()
+  await page.getByRole("button", { name: "Open", exact: true }).click()
   await page.getByRole("button", { name: "index.ts", exact: true }).click()
   await expect(page.getByText("export const hi = 1")).toBeVisible()
   await page.getByRole("button", { name: "long.ts", exact: true }).click()

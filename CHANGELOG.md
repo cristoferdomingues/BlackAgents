@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.7.0...v0.8.0) (2026-10-23)
+
+
+### Features
+
+* **export:** add OpenCode as an export target ([58013df](https://github.com/cristoferdomingues/BlackAgents/commit/58013df39b93d20cc97fc1206068ba4e9e33e844))
+
+
+### Bug Fixes
+
+* **desktop:** allow clipboard writes from the renderer ([0f4f813](https://github.com/cristoferdomingues/BlackAgents/commit/0f4f8132dc38ec7d688a8a15e6e0e6bce1865bf3))
+
 ## [0.7.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.6.0...v0.7.0) (2026-10-23)
 
 

@@ -284,6 +284,15 @@ export function ExportPage() {
                 <code className="rounded bg-muted px-1">{targetRoot(platform)}/</code>{" "}
                 in the destination folder. Rule activation and frontmatter keys are
                 translated per platform.
+                {platform === "opencode" ? (
+                  <>
+                    {" "}
+                    OpenCode rules are written as plain instruction files — list{" "}
+                    <code className="rounded bg-muted px-1">.opencode/rules/*.md</code>{" "}
+                    under <code className="rounded bg-muted px-1">instructions</code>{" "}
+                    in <code className="rounded bg-muted px-1">opencode.json</code>.
+                  </>
+                ) : null}
               </>
             )}
           </CardDescription>

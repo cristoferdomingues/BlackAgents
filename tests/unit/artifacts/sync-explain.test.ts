@@ -16,8 +16,9 @@ describe("sync-explain", () => {
   })
 
   it("lists every platform with its folder", () => {
-    expect(PLATFORM_ORDER).toEqual(["cursor", "claude", "windsurf", "antigravity"])
+    expect(PLATFORM_ORDER).toEqual(["cursor", "claude", "windsurf", "antigravity", "opencode"])
     expect(platformFolder("claude")).toBe(".claude/")
+    expect(platformFolder("opencode")).toBe(".opencode/")
   })
 
   it("explains every status", () => {

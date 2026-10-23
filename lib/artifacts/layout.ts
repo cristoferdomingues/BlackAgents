@@ -85,6 +85,24 @@ export const PLATFORM_LAYOUTS: Record<Platform, PlatformLayout> = {
       },
     },
   },
+  opencode: {
+    root: ".opencode",
+    label: "OpenCode",
+    types: {
+      // V2 prefers the plural directories; it still discovers the V1 singular ones.
+      agent: { dir: ".opencode/agents", ext: ".md", nested: false },
+      command: { dir: ".opencode/commands", ext: ".md", nested: false },
+      // OpenCode has no rule folder of its own: these are instruction files
+      // referenced from `instructions` in opencode.json(c).
+      rule: { dir: ".opencode/rules", ext: ".md", nested: false },
+      skill: {
+        dir: ".opencode/skills",
+        ext: ".md",
+        nested: true,
+        entryFile: "SKILL.md",
+      },
+    },
+  },
 }
 
 /** Platforms scanned/managed in v1 (Cursor is primary). */

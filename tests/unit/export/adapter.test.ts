@@ -97,6 +97,48 @@ describe("frontmatterFor", () => {
     const skillFm = frontmatterFor("antigravity", artifact("skill", "s"))
     expect(skillFm).toMatchObject({ name: "s", description: "s desc" })
   })
+
+  it("opencode derives ids from filenames and maps mode", () => {
+    const agentFm = frontmatterFor("opencode", artifact("agent", "a"))
+    expect(agentFm).toMatchObject({ description: "a desc", mode: "all" })
+    expect(agentFm.name).toBeUndefined()
+
+    const parallelFm = frontmatterFor(
+      "opencode",
+      artifact("agent", "a", { parallel: true })
+    )
+    expect(parallelFm.mode).toBe("subagent")
+
+    const commandFm = frontmatterFor("opencode", artifact("command", "c"))
+    expect(commandFm).toMatchObject({ description: "c desc" })
+    expect(commandFm.name).toBeUndefined()
+
+    const skillFm = frontmatterFor("opencode", artifact("skill", "s"))
+    expect(skillFm).toMatchObject({ name: "s", description: "s desc" })
+  })
+
+  it("opencode qualifies agent models as provider/model", () => {
+    expect(
+      frontmatterFor("opencode", artifact("agent", "a", { model: "gpt-4o", provider: "openai" }))
+        .model
+    ).toBe("openai/gpt-4o")
+    expect(
+      frontmatterFor("opencode", artifact("agent", "a", { model: "anthropic/claude-sonnet-5-5" }))
+        .model
+    ).toBe("anthropic/claude-sonnet-5-5")
+    // Aliases, task refs, and ids without a provider are not OpenCode refs.
+    expect(frontmatterFor("opencode", artifact("agent", "a", { model: "sonnet" })).model).toBeUndefined()
+    expect(frontmatterFor("opencode", artifact("agent", "a", { model: "task:vision" })).model).toBeUndefined()
+    expect(frontmatterFor("opencode", artifact("agent", "a", { model: "gpt-4o" })).model).toBeUndefined()
+  })
+
+  it("opencode rules are plain instruction bodies", () => {
+    const fm = frontmatterFor(
+      "opencode",
+      artifact("rule", "r", { alwaysApply: true, globs: ["a/**"] })
+    )
+    expect(fm).toEqual({})
+  })
 })
 
 describe("artifactToFile", () => {
@@ -116,6 +158,29 @@ describe("artifactToFile", () => {
 
     const ruleFile = artifactToFile(artifact("rule", "my-rule"), "antigravity")
     expect(ruleFile.path).toBe(".agents/rules/my-rule.md")
+  })
+
+  it("emits OpenCode paths and leaves rule bodies unfenced", () => {
+    const agentFile = artifactToFile(
+      artifact("agent", "reviewer", { model: "claude-sonnet-5-5", provider: "anthropic" }),
+      "opencode"
+    )
+    expect(agentFile.path).toBe(".opencode/agents/reviewer.md")
+    expect(matter(agentFile.content).data).toMatchObject({
+      description: "reviewer desc",
+      mode: "all",
+      model: "anthropic/claude-sonnet-5-5",
+    })
+
+    const skillFile = artifactToFile(artifact("skill", "my-skill"), "opencode")
+    expect(skillFile.path).toBe(".opencode/skills/my-skill/SKILL.md")
+
+    const commandFile = artifactToFile(artifact("command", "my-command"), "opencode")
+    expect(commandFile.path).toBe(".opencode/commands/my-command.md")
+
+    const ruleFile = artifactToFile(artifact("rule", "my-rule"), "opencode")
+    expect(ruleFile.path).toBe(".opencode/rules/my-rule.md")
+    expect(ruleFile.content).toBe("body text\n")
   })
 })
 

@@ -54,6 +54,29 @@ describe("typeLayout", () => {
       nested: false,
     })
   })
+
+  it("maps opencode artifacts to the V2 .opencode layout", () => {
+    expect(typeLayout("opencode", "agent")).toMatchObject({
+      dir: ".opencode/agents",
+      ext: ".md",
+      nested: false,
+    })
+    expect(typeLayout("opencode", "command")).toMatchObject({
+      dir: ".opencode/commands",
+      ext: ".md",
+      nested: false,
+    })
+    expect(typeLayout("opencode", "rule")).toMatchObject({
+      dir: ".opencode/rules",
+      ext: ".md",
+      nested: false,
+    })
+    expect(typeLayout("opencode", "skill")).toMatchObject({
+      dir: ".opencode/skills",
+      nested: true,
+      entryFile: "SKILL.md",
+    })
+  })
 })
 
 describe("artifactRelPath", () => {
@@ -72,6 +95,21 @@ describe("artifactRelPath", () => {
   it("nests skills under their own directory", () => {
     expect(artifactRelPath("cursor", "skill", "code-review")).toBe(
       ".cursor/skills/code-review/SKILL.md"
+    )
+  })
+
+  it("builds OpenCode paths from the plural directories", () => {
+    expect(artifactRelPath("opencode", "agent", "reviewer")).toBe(
+      ".opencode/agents/reviewer.md"
+    )
+    expect(artifactRelPath("opencode", "command", "ship")).toBe(
+      ".opencode/commands/ship.md"
+    )
+    expect(artifactRelPath("opencode", "rule", "no-secrets")).toBe(
+      ".opencode/rules/no-secrets.md"
+    )
+    expect(artifactRelPath("opencode", "skill", "code-review")).toBe(
+      ".opencode/skills/code-review/SKILL.md"
     )
   })
 })

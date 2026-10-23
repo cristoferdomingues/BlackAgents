@@ -57,6 +57,7 @@ The internal model is platform-agnostic, so the same artifacts can be exported t
 | **Claude** | `.claude/` | Keeps `name` + `description`; no rule-activation keys. |
 | **Windsurf** | `.windsurf/` | Maps rule activation onto `trigger`; commands become workflows. |
 | **Antigravity** | `.agents/` | Keeps `name` + `description`; rules keep `alwaysApply` / `globs`; commands become workflows. |
+| **OpenCode** | `.opencode/` | Uses `agents/`, `commands/`, and `skills/`; rules are instruction files under `rules/` (reference them from `instructions`); agent models are qualified as `provider/model`. |
 
 ## Tech stack
 
@@ -164,6 +165,11 @@ Create distributable installers for the current operating system:
 ```bash
 npm run desktop:pack
 ```
+
+The desktop shell keeps its runtime dependencies (for example `electron-log`) in
+`electron/package.json` instead of the web app's dependency tree. The build
+scripts install them automatically with `npm run desktop:deps`; if you invoke
+`electron-builder` directly, run that first.
 
 The packaged app starts a private Next.js standalone server on an available loopback port. It keeps the same local workspace and `~/.black-agents` configuration as the browser version. Distributables are written to `dist-electron/`. macOS packages are unsigned until signing credentials are configured.
 

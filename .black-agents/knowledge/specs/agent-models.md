@@ -65,7 +65,7 @@ provider: anthropic   # optional; without it the caller's provider is used
 | One key (`openai/gpt-4o`) or two keys? | **Two keys.** OpenRouter ids already contain `/`, so splitting one key is ambiguous. |
 | Chat: agent model or header picker? | **Agent wins.** The header model picker is disabled while that agent is selected, with the tooltip: "This agent picks its own model. Edit the agent to change it." The provider picker stays as is. |
 | Missing key for the agent's provider? | 412 with the message from [Model Routing](./model-routing.md#errors-all-callers). No silent fallback. |
-| Export | Cursor and Claude: write `model` only when it is a real id (`kind: "id"`). Never write `provider` or `task:` refs (BlackAgents-only). Windsurf and Antigravity: drop both. |
+| Export | Cursor and Claude: write `model` only when it is a real id (`kind: "id"`). Never write `provider` or `task:` refs (BlackAgents-only). OpenCode: qualify it as `provider/model` (a bare id or alias is dropped). Windsurf and Antigravity: drop both. |
 
 ## Design
 

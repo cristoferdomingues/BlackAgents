@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
+import matter from "gray-matter"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { GET, POST } from "@/app/api/export/route"
@@ -103,6 +104,80 @@ describe("OKF export", () => {
     expect((await preview("nope")).status).toBe(400)
     const cursor = await call({ platform: "cursor", mode: "dry-run" })
     expect((await cursor.json()).data.summary.total).toBe(0)
+  })
+})
+
+describe("OpenCode export", () => {
+  beforeEach(async () => {
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/artifacts/agents/reviewer.md",
+      "---\nname: reviewer\ndescription: Reviews code.\nmodel: claude-sonnet-5-5\nprovider: anthropic\nparallel: true\n---\nReview the diff.\n"
+    )
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/artifacts/commands/ship.md",
+      "---\nname: ship\ndescription: Ships a release.\n---\nShip it.\n"
+    )
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/artifacts/rules/no-secrets.md",
+      "---\ndescription: Never print secrets.\nalwaysApply: true\n---\nNever print secrets.\n"
+    )
+    await seedArtifact(
+      env.workspace,
+      ".black-agents/artifacts/skills/code-review/SKILL.md",
+      "---\nname: code-review\ndescription: Reviews code.\n---\nReview carefully.\n"
+    )
+  })
+
+  it("previews the V2 layout, then writes it", async () => {
+    const res = await preview("opencode")
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.files.map((file: { path: string }) => file.path)).toEqual([
+      ".opencode/agents/reviewer.md",
+      ".opencode/commands/ship.md",
+      ".opencode/rules/no-secrets.md",
+      ".opencode/skills/code-review/SKILL.md",
+    ])
+
+    const agent = json.data.files.find(
+      (file: { path: string }) => file.path === ".opencode/agents/reviewer.md"
+    )
+    expect(matter(agent.content).data).toMatchObject({
+      description: "Reviews code.",
+      mode: "subagent",
+      model: "anthropic/claude-sonnet-5-5",
+    })
+
+    const dry = await call({ platform: "opencode", mode: "dry-run" })
+    expect((await dry.json()).data.summary).toMatchObject({
+      create: 4,
+      overwrite: 0,
+      unchanged: 0,
+      written: 0,
+    })
+    await expect(
+      readFile(path.join(env.workspace, ".opencode/agents/reviewer.md"), "utf8")
+    ).rejects.toThrow()
+
+    const wrote = await call({ platform: "opencode", mode: "write" })
+    expect((await wrote.json()).data.summary.written).toBe(4)
+    expect(
+      await readFile(path.join(env.workspace, ".opencode/agents/reviewer.md"), "utf8")
+    ).toContain("Review the diff.")
+    expect(
+      await readFile(path.join(env.workspace, ".opencode/rules/no-secrets.md"), "utf8")
+    ).toBe("Never print secrets.\n")
+
+    const again = await call({ platform: "opencode", mode: "write" })
+    expect((await again.json()).data.summary).toMatchObject({
+      create: 0,
+      overwrite: 0,
+      unchanged: 4,
+      written: 0,
+    })
   })
 })
 

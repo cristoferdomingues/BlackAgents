@@ -46,6 +46,10 @@ describe("platformSchema", () => {
   it("rejects unknown platforms", () => {
     expect(platformSchema.safeParse("emacs").success).toBe(false)
   })
+
+  it("accepts opencode", () => {
+    expect(platformSchema.parse("opencode")).toBe("opencode")
+  })
 })
 
 describe("artifactInputSchema", () => {

@@ -2,13 +2,13 @@
  * Platform-agnostic domain model for AI agent artifacts.
  *
  * The internal model is intentionally decoupled from any single tool's folder
- * layout so that multi-platform export (.cursor / .claude / .windsurf) can be
- * implemented later as a thin adapter over these types.
+ * layout so that multi-platform export (.cursor / .claude / .windsurf / …) can
+ * be implemented as a thin adapter over these types.
  */
 
 export type ArtifactType = "agent" | "command" | "rule" | "skill"
 
-export type Platform = "cursor" | "claude" | "windsurf" | "antigravity"
+export type Platform = "cursor" | "claude" | "windsurf" | "antigravity" | "opencode"
 
 export interface ArtifactFrontmatter {
   name?: string

@@ -294,7 +294,8 @@ Follow the \`workflow-guardrails\` rule and \`browser-automation-guardrails\` ru
 - Relevant memories are automatically injected into Assistant and Workflow step context, and new learnings can be proposed from chat feedback or workflow \`selfAssess: true\`.
 
 ### 5. Multi-Platform Export & Drift (\`/export\` & \`/sync\`)
-- Exports canonical workspace artifacts (\`.cursor/\`) to **Claude Code** (\`.claude/\`, \`CLAUDE.md\`), **Windsurf** (\`.windsurf/\`), and **Universal Agents** (\`.agents/\`, \`AGENTS.md\`), and detects cross-platform drift.
+- Exports canonical workspace artifacts (\`.cursor/\`) to **Claude Code** (\`.claude/\`, \`CLAUDE.md\`), **Windsurf** (\`.windsurf/\`), **Universal Agents** (\`.agents/\`, \`AGENTS.md\`), and **OpenCode** (\`.opencode/\`), and detects cross-platform drift.
+- OpenCode uses \`.opencode/agents/\`, \`.opencode/commands/\`, and \`.opencode/skills/<name>/SKILL.md\`; rules are written as plain instruction files under \`.opencode/rules/\` (reference them from \`instructions\` in \`opencode.json\`).
 
 ## How to Use
 
@@ -400,7 +401,7 @@ const BROWSER_TOPIC_RE =
   /\b(browser\s+flows?|browser\s+automation|automated\s+browsing|playwright|browser_run_flow|browser_file_upload|browser_click|browser_navigate|browser_snapshot|record(?:ing)?\s+a?\s*flow|headless|self-?heal(?:ing)?|web\s+automation|browser\s+profile)\b/i
 
 const PLATFORM_TOPIC_RE =
-  /\b(media\s*(?:&|and)\s*files|workspace\s+files|@file:|mcp\s+servers?|mcp\.json|second\s+brain|task\s+models?|task:(?:fast|reasoning|vision|voice)|jev\b|settings\s*->|drift|export\s+to\s+(?:claude|windsurf|cursor))\b/i
+  /\b(media\s*(?:&|and)\s*files|workspace\s+files|@file:|mcp\s+servers?|mcp\.json|second\s+brain|task\s+models?|task:(?:fast|reasoning|vision|voice)|jev\b|settings\s*->|drift|export\s+to\s+(?:claude|windsurf|cursor|antigravity|opencode))\b/i
 
 /**
  * Detect when a user message in Assistant asks about BlackAgents Workflows,

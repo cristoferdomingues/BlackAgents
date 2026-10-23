@@ -39,6 +39,29 @@ function exportedAgentModel(type: Artifact["type"], frontmatter: ArtifactFrontma
 }
 
 /**
+ * OpenCode wants a fully-qualified `provider/model` reference (optionally with
+ * a `#variant`). Aliases and `task:` refs are BlackAgents-only; a bare model id
+ * is only usable when the artifact also names its provider. Ids that already
+ * contain `/` are kept as written.
+ */
+function exportedOpenCodeModel(frontmatter: ArtifactFrontmatter): string | undefined {
+  if (typeof frontmatter.model !== "string") return undefined
+  const model = frontmatter.model.trim()
+  if (!model || model === "inherit" || isAgentModelAlias(model)) return undefined
+  let ref
+  try {
+    ref = parseModelRef(model, undefined)
+  } catch {
+    return undefined
+  }
+  if (ref.kind !== "id") return undefined
+  if (ref.model.includes("/")) return ref.model
+  const provider =
+    typeof frontmatter.provider === "string" ? frontmatter.provider.trim() : ""
+  return provider ? `${provider}/${ref.model}` : undefined
+}
+
+/**
  * Re-express an artifact's frontmatter in the target platform's conventions.
  *
  * Canonical fields (`name`, `description`) plus the type-specific extras
@@ -105,6 +128,23 @@ export function frontmatterFor(
       return fm
     }
 
+    case "opencode": {
+      // Rules are instruction files: OpenCode injects them verbatim, so
+      // frontmatter would become part of the prompt. Keep the body alone.
+      if (type === "rule") return fm
+      // Agent and command ids come from the filename; V2 does not use `name`.
+      if (type === "skill") fm.name = name
+      if (description) fm.description = description
+      if (type === "agent") {
+        // `all` keeps an agent usable as a primary or a subagent; agents marked
+        // parallel are review workers meant to run as subagents.
+        fm.mode = frontmatter.parallel ? "subagent" : "all"
+        const openCodeModel = exportedOpenCodeModel(frontmatter)
+        if (openCodeModel) fm.model = openCodeModel
+      }
+      return fm
+    }
+
     default:
       return fm
   }
@@ -122,6 +162,7 @@ const MANAGED_KEYS = new Set([
   "trigger",
   "tools",
   "mcpServers",
+  "mode",
   // BlackAgents-only bookkeeping: never leak scope into IDE frontmatter.
   "scope",
 ])
@@ -141,7 +182,14 @@ export function artifactToFile(
 ): ExportFile {
   const data = exportedFrontmatter(targetPlatform, artifact)
   const body = artifact.body.trim()
-  const content = matter.stringify(body ? `\n${body}\n` : "\n", data)
+  // OpenCode instruction files carry no frontmatter; keep the body clean
+  // instead of letting gray-matter prepend a blank line.
+  const content =
+    Object.keys(data).length > 0
+      ? matter.stringify(body ? `\n${body}\n` : "\n", data)
+      : body
+        ? `${body}\n`
+        : ""
   return {
     path: artifactRelPath(targetPlatform, artifact.type, artifact.name),
     content,

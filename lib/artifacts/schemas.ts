@@ -16,7 +16,7 @@ export const nameSchema = z
 
 export const artifactTypeSchema = z.enum(["agent", "command", "rule", "skill"])
 export const platformSchema = z
-  .enum(["cursor", "claude", "windsurf", "antigravity"])
+  .enum(["cursor", "claude", "windsurf", "antigravity", "opencode"])
   .default("cursor")
 
 /**

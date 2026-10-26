@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
 `lib/artifacts/`:
 - `types.ts` — `Artifact`, `ArtifactType`, `Platform`, `ArtifactFrontmatter` (tool-agnostic).
-- `layout.ts` — `PLATFORM_LAYOUTS` + `artifactRelPath()` / `artifactDeletePath()`; the only place that knows a platform's folders/extensions. `ACTIVE_PLATFORMS = ["cursor", "claude"]`, default `cursor`.
+- `layout.ts` — `PLATFORM_LAYOUTS` + `artifactRelPath()` / `artifactDeletePath()`; the only place that knows a platform's folders/extensions. `ACTIVE_PLATFORMS` lists every supported platform (all their IDE folders are scanned for IDE-only artifacts and auto-detected as export targets), default `cursor`.
 - `parser.ts` — `scanWorkspace(root)` and `parseArtifact` (via `gray-matter`); skills are a `<name>/SKILL.md` dir walked recursively.
 - `serializer.ts` — `serializeArtifact(input)` writes frontmatter + body; **rules omit `name`** (identified by filename).
 - `schemas.ts` — `nameSchema` (kebab-case), `artifactInputSchema`, `normalizeExtra` (per-type frontmatter).

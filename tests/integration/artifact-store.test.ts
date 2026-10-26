@@ -55,6 +55,17 @@ describe("export targets", () => {
     expect((await readExportTargets(env.workspace)).targets).toEqual(["claude"])
   })
 
+  it("detects an existing OpenCode project as an export target", async () => {
+    await mkdir(path.join(env.workspace, ".opencode"))
+    expect((await readExportTargets(env.workspace)).targets).toEqual(["opencode"])
+  })
+
+  it("detects existing Windsurf and Antigravity folders as export targets", async () => {
+    await mkdir(path.join(env.workspace, ".windsurf"))
+    await mkdir(path.join(env.workspace, ".agents"))
+    expect((await readExportTargets(env.workspace)).targets).toEqual(["windsurf", "antigravity"])
+  })
+
   it("saves the targets in order and without duplicates", async () => {
     await writeExportTargets(env.workspace, ["windsurf", "cursor", "cursor"])
     expect(await readExportTargets(env.workspace)).toEqual({ targets: ["cursor", "windsurf"], saved: true })

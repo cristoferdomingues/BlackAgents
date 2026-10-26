@@ -60,6 +60,24 @@ describe("scanWorkspace", () => {
     expect(skill.supportingFiles).not.toContain("SKILL.md")
   })
 
+  it("scans every supported IDE folder, not just cursor and claude", async () => {
+    await seedArtifact(
+      env.workspace,
+      ".windsurf/workflows/release.md",
+      "---\nname: release\ndescription: Ships.\n---\n\nbody\n"
+    )
+    await seedArtifact(
+      env.workspace,
+      ".agents/skills/ops/SKILL.md",
+      "---\nname: ops\ndescription: Runs ops.\n---\n\n# Ops\n"
+    )
+    const artifacts = await scanWorkspace(env.workspace)
+    expect(artifacts.map((a) => `${a.type}:${a.name}:${a.platform}`)).toEqual([
+      "command:release:windsurf",
+      "skill:ops:antigravity",
+    ])
+  })
+
   it("dedupes the same type+name across platforms, preferring cursor", async () => {
     await seedArtifact(
       env.workspace,

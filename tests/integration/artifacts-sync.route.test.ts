@@ -54,6 +54,36 @@ describe("POST /api/artifacts/sync", () => {
     expect(report.platforms[0]).toMatchObject({ platform: "cursor", target: true, summary: { "in-sync": 1 } })
   })
 
+  it("detects an existing OpenCode project and moves its artifacts into BlackAgents", async () => {
+    await seedArtifact(
+      env.workspace,
+      ".opencode/agents/reviewer.md",
+      "---\ndescription: Reviews code.\nmode: all\n---\nReview the diff.\n"
+    )
+
+    const before = (await (await drift()).json()).data
+    expect(before.ideOnly).toEqual([
+      {
+        id: "agent:reviewer",
+        name: "reviewer",
+        type: "agent",
+        platform: "opencode",
+        path: ".opencode/agents/reviewer.md",
+      },
+    ])
+    expect(before.targets).toEqual(["opencode"])
+    expect(before.platforms.find((p: { platform: string }) => p.platform === "opencode")).toMatchObject({
+      target: true,
+    })
+
+    const json = await (await sync(jsonRequest("http://t/api/artifacts/sync", "POST", { action: "import" }))).json()
+    expect(json.data.imported).toEqual(["agent:reviewer"])
+
+    const after = (await (await drift()).json()).data
+    expect(after.ideOnly).toEqual([])
+    expect(after.sourceCount).toBe(1)
+  })
+
   it("returns 404 for a missing IDE copy", async () => {
     const res = await sync(
       jsonRequest("http://t/api/artifacts/sync", "POST", {

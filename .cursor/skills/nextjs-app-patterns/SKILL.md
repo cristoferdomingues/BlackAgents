@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
 `lib/artifacts/`:
 - `types.ts` — `Artifact`, `ArtifactType`, `Platform`, `ArtifactFrontmatter` (tool-agnostic).
-- `layout.ts` — `PLATFORM_LAYOUTS` + `artifactRelPath()` / `artifactDeletePath()`; the only place that knows a platform's folders/extensions. `ACTIVE_PLATFORMS = ["cursor", "claude"]`, default `cursor`.
+- `layout.ts` — `PLATFORM_LAYOUTS` + `artifactRelPath()` / `artifactDeletePath()`; the only place that knows a platform's folders/extensions. `ACTIVE_PLATFORMS` lists every supported platform (all their IDE folders are scanned for IDE-only artifacts and auto-detected as export targets), default `cursor`.
 - `source.ts` — `.black-agents/artifacts/` is the **source of truth** (`agents/`, `commands/`, `rules/*.md`, `skills/<name>/SKILL.md`). IDE folders are export targets.
 - `parser.ts` — `scanWorkspace(root)` reads the source first, then IDE folders (`managed: false` = only in an IDE folder); skills are a `<name>/SKILL.md` dir walked recursively.
 - `serializer.ts` — `serializeArtifact(input)` builds the source file (frontmatter + body); **rules omit `name`** (identified by filename).

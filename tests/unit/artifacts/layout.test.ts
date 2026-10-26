@@ -129,8 +129,8 @@ describe("artifactDeletePath", () => {
 })
 
 describe("platform constants", () => {
-  it("scans cursor and claude, defaults to cursor", () => {
-    expect(ACTIVE_PLATFORMS).toEqual(["cursor", "claude"])
+  it("scans every supported platform, defaults to cursor", () => {
+    expect(ACTIVE_PLATFORMS).toEqual(["cursor", "claude", "windsurf", "antigravity", "opencode"])
     expect(DEFAULT_PLATFORM).toBe("cursor")
   })
 })

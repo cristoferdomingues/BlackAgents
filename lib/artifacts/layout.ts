@@ -105,8 +105,19 @@ export const PLATFORM_LAYOUTS: Record<Platform, PlatformLayout> = {
   },
 }
 
-/** Platforms scanned/managed in v1 (Cursor is primary). */
-export const ACTIVE_PLATFORMS: Platform[] = ["cursor", "claude"]
+/**
+ * Platforms whose IDE folders are scanned for artifacts and auto-detected as
+ * export targets. Cursor is primary; every supported layout is scanned so an
+ * existing IDE project (`.opencode/`, `.windsurf/`, `.agents/`, …) is reported
+ * as IDE-only and can be moved in.
+ */
+export const ACTIVE_PLATFORMS: Platform[] = [
+  "cursor",
+  "claude",
+  "windsurf",
+  "antigravity",
+  "opencode",
+]
 
 export const DEFAULT_PLATFORM: Platform = "cursor"
 

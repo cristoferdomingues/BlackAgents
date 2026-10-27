@@ -90,6 +90,11 @@ describe("meetings API", () => {
     expect(proposals).toHaveLength(1)
     expect(proposals[0]?.source.kind).toBe("meeting")
     expect(proposals[0]?.content).toContain("We ship on Friday.")
+    expect(proposals[0]?.content).not.toContain("## Transcript")
+    expect(proposals[0]?.content).toContain(`.black-agents/meetings/${id}.json`)
+    expect(proposals[0]?.concept?.sources).toEqual([
+      { resource: `.black-agents/meetings/${id}.json`, title: "Standup" },
+    ])
 
     const again = await bodyOf(
       await KNOWLEDGE(new Request(`http://t/api/meetings/${id}/knowledge`, { method: "POST" }), {

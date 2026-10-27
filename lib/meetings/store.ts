@@ -14,10 +14,11 @@ import {
   type Meeting,
   type MeetingImport,
 } from "./schema"
-import { MEETING_LIMITS } from "./limits"
+import { MEETING_LIMITS, MEETINGS_DIR } from "./limits"
+import { meetingRelPath } from "./notes"
 import { renameMeetingSpeakers, withSpeakerNames } from "./speakers"
 
-export const MEETINGS_DIR = ".black-agents/meetings"
+export { MEETINGS_DIR }
 
 export class MeetingError extends Error {
   readonly status: number
@@ -31,7 +32,7 @@ export class MeetingError extends Error {
 
 function meetingFileRel(id: string, scope?: string): string {
   if (!meetingIdSchema.safeParse(id).success) throw new MeetingError("Invalid meeting id")
-  return scope ? `${MEETINGS_DIR}/${scope}/${id}.json` : `${MEETINGS_DIR}/${id}.json`
+  return meetingRelPath({ id, scope })
 }
 
 async function findMeetingFile(root: string, id: string): Promise<string | null> {

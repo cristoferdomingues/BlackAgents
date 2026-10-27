@@ -25,7 +25,7 @@ export const MEETINGS_STEPS = [
 export const IMPORT_EFFECT = "Reads the meeting and writes notes. Nothing is saved as knowledge yet."
 
 export const SAVE_EFFECT =
-  "Sends this note to Brain. You approve it there, then it is saved as knowledge."
+  "Sends the summary and decisions to Brain. The transcript stays with this meeting. You approve the note in Brain, then it is saved as knowledge."
 
 export const BUILD_EFFECT = "Opens a draft in the editor. Nothing is saved until you press Save there."
 

@@ -4,6 +4,8 @@ import {
   extractMeetingNotes,
   knowledgeFilePath,
   meetingConceptId,
+  meetingKnowledgeSource,
+  meetingRelPath,
   notesUserPrompt,
   renderMeetingBody,
 } from "@/lib/meetings/notes"
@@ -74,5 +76,24 @@ describe("meeting notes", () => {
     expect(body).toContain("- Ana: Escrever a nota (sexta)")
     expect(body).toContain("## Open questions")
     expect(body).toContain("- None noted.")
+  })
+
+  it("points at the meeting file instead of copying the transcript", () => {
+    const long: Meeting = {
+      ...meeting,
+      segments: Array.from({ length: 400 }, (_, index) => ({
+        at: index,
+        speaker: "Ana",
+        text: `Line ${index}: ${"x".repeat(80)}`,
+      })),
+    }
+    const body = renderMeetingBody(long, notes)
+    const path = meetingRelPath(long)
+    expect(path).toBe(`.black-agents/meetings/myhealthcare/${long.id}.json`)
+    expect(meetingKnowledgeSource(long)).toEqual({ resource: path, title: long.title })
+    expect(body).toContain(`Full transcript: \`${path}\``)
+    expect(body).not.toContain("## Transcript")
+    expect(body).not.toContain("Line 0:")
+    expect(body.length).toBeLessThan(20_000)
   })
 })

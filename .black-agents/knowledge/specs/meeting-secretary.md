@@ -149,6 +149,7 @@ interface MeetingNotes {
 | `myhealthcare` | `.black-agents/knowledge/meeting/myhealthcare/<date>-<title>.md` |
 
   `<project-id>` is the project folder name (kebab-case, same as `project.json.id`). Knowledge stays a workspace store (see [Project Scopes](../architecture/project-scopes.md)); the subfolder only groups the notes. The review screen shows the path before saving.
+- The knowledge note is the **secretary output** (summary, decisions, action items, people, open questions). The full transcript stays in the meeting JSON. The concept's `sources` point at that file so a long call does not blow the Brain 20 000-character body cap, and later chat turns do not ingest the whole recording.
 - Artifacts and workflows built from a project meeting are created in that project by default.
 - **Audio is not kept** by default. A setting can keep it for a few days.
 - All input (imports, model output) is checked with zod. Notes are parsed with the fenced-JSON protocol and the existing retry.

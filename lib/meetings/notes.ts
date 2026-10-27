@@ -1,6 +1,7 @@
 import { findFencedJson } from "@/lib/llm/fenced-json"
+import type { OkfSource } from "@/lib/knowledge/schema"
 
-import { MEETING_LIMITS } from "./limits"
+import { MEETING_LIMITS, MEETINGS_DIR } from "./limits"
 import { meetingNotesSchema, type Meeting, type MeetingNotes, type MeetingSegment } from "./schema"
 
 export const MEETING_NOTES_FENCE = "meeting"
@@ -121,20 +122,34 @@ export function knowledgeFilePath(meeting: Pick<Meeting, "id" | "title" | "start
   return `.black-agents/knowledge/${meetingConceptId(meeting)}.md`
 }
 
+/** Raw meeting file that keeps the full transcript. */
+export function meetingRelPath(meeting: Pick<Meeting, "id" | "scope">): string {
+  return meeting.scope
+    ? `${MEETINGS_DIR}/${meeting.scope}/${meeting.id}.json`
+    : `${MEETINGS_DIR}/${meeting.id}.json`
+}
+
+/** OKF source pointing at the meeting file, not a copy of the transcript. */
+export function meetingKnowledgeSource(meeting: Pick<Meeting, "id" | "title" | "scope">): OkfSource {
+  return { resource: meetingRelPath(meeting), title: meeting.title }
+}
+
 function bullets(items: string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ["- None noted."]
 }
 
-/** Markdown body of the knowledge note. Headings stay in English; the text stays in the call language. */
+/**
+ * Markdown body of the knowledge note: distilled secretary output only.
+ * The transcript stays in the meeting file so a long call does not blow the
+ * Brain 20k body cap or get injected into later prompts.
+ */
 export function renderMeetingBody(meeting: Meeting, notes: MeetingNotes): string {
   const actions = notes.actionItems.map((item) => {
     const who = item.owner ? `${item.owner}: ` : ""
     const due = item.due ? ` (${item.due})` : ""
     return `${who}${item.task}${due}`
   })
-  const transcript = meeting.segments.map(
-    (segment) => `- ${formatStamp(segment.at)} ${segment.speaker}: ${segment.text}`
-  )
+  const source = meetingKnowledgeSource(meeting)
   return [
     notes.summary,
     "",
@@ -150,11 +165,9 @@ export function renderMeetingBody(meeting: Meeting, notes: MeetingNotes): string
     "## People",
     ...bullets(notes.people),
     "",
-    "## Transcript",
-    ...transcript,
-    "",
     "## Sources",
     `- Meeting "${meeting.title}" (${meeting.startedAt.slice(0, 10)})`,
+    `- Full transcript: \`${source.resource}\``,
     "",
   ].join("\n")
 }

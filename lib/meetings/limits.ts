@@ -3,6 +3,9 @@
  * numbers the server enforces.
  */
 
+/** Workspace folder for raw meetings (transcript + notes). */
+export const MEETINGS_DIR = ".black-agents/meetings"
+
 export const MEETING_LIMITS = {
   /** Characters of pasted or file text. */
   transcriptChars: 200_000,

@@ -1,7 +1,12 @@
 import { fail, handle, ok } from "@/lib/api-response"
 import { ProposalError, proposeConcept } from "@/lib/brain/learn"
 import { readConfig } from "@/lib/config"
-import { knowledgeFilePath, meetingConceptId, renderMeetingBody } from "@/lib/meetings/notes"
+import {
+  knowledgeFilePath,
+  meetingConceptId,
+  meetingKnowledgeSource,
+  renderMeetingBody,
+} from "@/lib/meetings/notes"
 import { MeetingError, readMeeting, saveMeeting } from "@/lib/meetings/store"
 
 interface RouteContext {
@@ -42,6 +47,7 @@ export async function POST(_req: Request, ctx: RouteContext) {
           description: meeting.notes.summary.slice(0, 500),
           content: renderMeetingBody(meeting, meeting.notes),
           tags: ["meeting", ...(meeting.scope ? [meeting.scope] : [])],
+          sources: [meetingKnowledgeSource(meeting)],
         },
         "meeting"
       )

@@ -100,7 +100,8 @@
     "afterPack": "electron/verify-packaged-deps.cjs",
     "files": [
       "**/*",
-      "!verify-packaged-deps.cjs"
+      "!verify-packaged-deps.cjs",
+      "!installer.nsh"
     ],
     "extraResources": [
       {
@@ -108,7 +109,9 @@
         "to": "server",
         "filter": [
           "**/*",
-          "!node_modules/**/*"
+          "!node_modules/**/*",
+          "!dist-electron/**/*",
+          "!.git/**/*"
         ]
       },
       {
@@ -140,6 +143,9 @@
         "dmg",
         "zip"
       ]
+    },
+    "nsis": {
+      "include": "electron/installer.nsh"
     },
     "win": {
       "target": "nsis"

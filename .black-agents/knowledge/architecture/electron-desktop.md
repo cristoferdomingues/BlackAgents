@@ -146,6 +146,25 @@ by Git. Current targets:
 - Windows: NSIS installer
 - Linux: AppImage
 
+### Windows installer hooks
+
+`package.json` points `build.nsis.include` at `electron/installer.nsh`. The
+custom macros there solve two upgrade problems:
+
+- `customCheckAppRunning` matches the app executable by name instead of by
+  install-directory prefix. The stock template also matches helpers stored in
+  `resources/`, so it claimed the app was running when no window existed, and
+  users were told to close it manually.
+- `customInit` deletes legacy `resources/server/dist-electron` trees that early
+  packages embedded. Their paths exceed Windows `MAX_PATH`, which made the old
+  uninstaller abort and blocked every upgrade.
+
+`outputFileTracingExcludes` cannot prevent that: Next resolves the exclude globs
+with `path.join`, so on Windows the pattern contains backslashes and picomatch
+never matches. Instead, the `.next/standalone` `extraResources` filter in
+`package.json` drops `dist-electron/**` and `.git/**` while copying, so the
+installer never ships a nested build.
+
 ## How Source Changes Reach Desktop Users
 
 | How BlackAgents is running | Are source changes automatic? |

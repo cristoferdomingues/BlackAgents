@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.7.0...v0.8.0) (2026-10-27)
+
+
+### Features
+
+* add OpenCode as an export target ([58013df](https://github.com/cristoferdomingues/BlackAgents/commit/58013df39b93d20cc97fc1206068ba4e9e33e844))
+* scan every supported IDE folder as an export target ([7d235c3](https://github.com/cristoferdomingues/BlackAgents/commit/7d235c3f179eda0a57c85dc532dbd1babd536583))
+
+
+### Bug Fixes
+
+* allow clipboard writes from the renderer ([0f4f813](https://github.com/cristoferdomingues/BlackAgents/commit/0f4f8132dc38ec7d688a8a15e6e0e6bce1865bf3))
+* keep the transcript out of knowledge notes ([5efc594](https://github.com/cristoferdomingues/BlackAgents/commit/5efc5946bee49fd91eb0d37088f9074a208d6aad))
+
 ## [0.7.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.6.0...v0.7.0) (2026-10-23)
 
 

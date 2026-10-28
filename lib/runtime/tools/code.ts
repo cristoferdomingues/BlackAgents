@@ -16,6 +16,7 @@ import { readForModel } from "@/lib/k0ding/read-file"
 import type { CodeRoot, StagedChange } from "@/lib/k0ding/schema"
 import { isSecretPath } from "@/lib/k0ding/secrets"
 
+import { hostShell } from "../host-shell"
 import type { RuntimeTool, ToolOutcome } from "../types"
 import { toolArgsError } from "./args"
 import { SHELL_DEFAULT_TIMEOUT_MS, SHELL_MAX_TIMEOUT_MS } from "./shell"
@@ -105,6 +106,7 @@ function tool(partial: Omit<RuntimeTool, "server" | "source" | "originalName"> &
 
 export function codingTools(buffer: CodingBuffer): RuntimeTool[] {
   const root = buffer.root
+  const shellHost = hostShell()
   return [
     tool({
       name: "code_note_propose",
@@ -291,13 +293,16 @@ export function codingTools(buffer: CodingBuffer): RuntimeTool[] {
       risk: "exec",
       timeoutMs: SHELL_MAX_TIMEOUT_MS + 5_000,
       description:
-        "Run a command in the code folder and return its exit code, stdout, and stderr. " +
+        `Run a command in the code folder and return its exit code, stdout, and stderr. ${shellHost.guidance} ` +
         "The working directory is always the project root. Do not start dev servers or watch mode. " +
         "Git commit, push, and branch changes are refused. The user approves every new command.",
       parameters: {
         type: "object",
         properties: {
-          command: { type: "string", description: "One command line, for example npm test" },
+          command: {
+            type: "string",
+            description: `One command line for ${shellHost.interpreter}, for example npm test`,
+          },
           timeoutMs: { type: "number", description: `Default ${SHELL_DEFAULT_TIMEOUT_MS}` },
         },
         required: ["command"],

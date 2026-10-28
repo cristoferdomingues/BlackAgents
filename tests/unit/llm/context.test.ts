@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 
+import { hostShell } from "@/lib/runtime/host-shell"
 import {
   buildAgentPersonaContext,
   buildProjectSection,
   buildSystemContext,
+  workspaceToolsGuide,
 } from "@/lib/llm/context"
 import { DEFAULT_STANDARDS_MD } from "@/lib/standards/default-standards"
 import { makeTempEnv, seedArtifact, type TempEnv } from "../../helpers/workspace"
@@ -24,6 +26,7 @@ describe("buildSystemContext", () => {
     expect(context).toContain("Authoring standards")
     expect(context).toContain("fs_write")
     expect(context).toContain("shell_run")
+    expect(context).toContain(hostShell().guidance)
     expect(context).toContain("Do not stop at a plan")
   })
 
@@ -146,6 +149,14 @@ describe("buildSystemContext", () => {
       context.indexOf("## Selected workspace agent")
     )
     expect(context).toContain("typed OKF concept, not a free-form note")
+    expect(context).toContain(hostShell().guidance)
+  })
+
+  it("tells a Windows agent to use cmd.exe instead of probing other shells", () => {
+    const guide = workspaceToolsGuide(hostShell("win32", "C:\\Windows\\System32\\cmd.exe"))
+    expect(guide).toContain("This computer is Windows")
+    expect(guide).toContain("already run in cmd.exe")
+    expect(guide).toContain("Do not look for bash, Git Bash, WSL, or PowerShell.")
   })
 
   it("tells the assistant how to offer clickable choices", async () => {

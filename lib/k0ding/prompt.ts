@@ -1,3 +1,5 @@
+import { hostShell } from "@/lib/runtime/host-shell"
+
 import { K0dingError } from "./errors"
 import { K0DING_LIMITS } from "./limits"
 import { readForModel } from "./read-file"
@@ -11,6 +13,7 @@ export const K0DING_SYSTEM = [
   "A staged file must be 1 MB or smaller. If it would be bigger, split the change.",
   "Paths are relative to the project root. Do not use .. or an absolute path.",
   "Use shell_run to run a check such as npm test or npx tsc --noEmit. The command always runs in the project root. Do not commit, push, or change git branches.",
+  hostShell().guidance,
   "Use code_note_propose when useful project knowledge should be saved. It only stages a draft; the user decides whether to save it.",
   "When you are done, write a short summary of what you staged. The user reviews every file before it is written.",
 ].join("\n")

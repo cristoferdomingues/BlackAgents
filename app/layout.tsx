@@ -9,6 +9,7 @@ import { AppHeader } from "@/components/layout/app-header"
 import { SidebarProvider } from "@/components/layout/sidebar-provider"
 import { WorkspaceDialogsProvider } from "@/components/features/workspace/workspace-dialogs"
 import { Toaster } from "@/components/ui/sonner"
+import { APP_VERSION } from "@/lib/app-version"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
@@ -38,7 +39,7 @@ export default function RootLayout({
               <WorkspaceDialogsProvider>
                 <SidebarProvider>
                   <div className="flex h-screen overflow-hidden">
-                    <AppSidebar />
+                    <AppSidebar version={APP_VERSION} />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <AppHeader />
                       <main className="flex-1 overflow-y-auto scrollbar-thin">

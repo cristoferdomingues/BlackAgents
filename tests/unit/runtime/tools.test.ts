@@ -15,7 +15,8 @@ import {
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, builtinTools, buildToolset } from "@/lib/runtime/tools"
 import { brainProposeReverificationTool } from "@/lib/runtime/tools/brain"
 import { mcpToolName, toRuntimeTool } from "@/lib/runtime/tools/mcp"
-import { isCommandLine, runProcess, shellRunTool } from "@/lib/runtime/tools/shell"
+import { hostShell } from "@/lib/runtime/host-shell"
+import { isCommandLine, runProcess, shellFailureMessage, shellRunTool } from "@/lib/runtime/tools/shell"
 import type { Artifact } from "@/lib/artifacts/types"
 import { listProposals } from "@/lib/brain/store"
 
@@ -199,7 +200,10 @@ describe("shell tool", () => {
 
   it("runs a full command line through the shell, inside the workspace", async () => {
     const outcome = await shellRunTool.execute(
-      { command: "printf one > out.txt && cat out.txt | tr a-z A-Z" },
+      {
+        command:
+          "node -e \"require('fs').writeFileSync('out.txt','one')\" && node -e \"process.stdout.write(require('fs').readFileSync('out.txt','utf8').toUpperCase())\"",
+      },
       ctx()
     )
     expect(outcome.error).toBeUndefined()
@@ -209,9 +213,14 @@ describe("shell tool", () => {
 
   it("runs in a sub folder and keeps cwd inside the workspace", async () => {
     await mkdir(path.join(env.workspace, "app"))
-    const outcome = await shellRunTool.execute({ command: "pwd", cwd: "app" }, ctx())
-    expect(String((outcome.result as { stdout: string }).stdout).trim().endsWith("/app")).toBe(true)
-    await expect(shellRunTool.execute({ command: "pwd", cwd: "../" }, ctx())).rejects.toThrow(/escapes/)
+    const outcome = await shellRunTool.execute(
+      { command: "node", args: ["-e", "process.stdout.write(process.cwd())"], cwd: "app" },
+      ctx()
+    )
+    expect(String((outcome.result as { stdout: string }).stdout).trim().endsWith(`${path.sep}app`)).toBe(true)
+    await expect(
+      shellRunTool.execute({ command: "node", args: ["-e", "process.cwd()"], cwd: "../" }, ctx())
+    ).rejects.toThrow(/escapes/)
   })
 
   it("reports failures and missing programs", async () => {
@@ -235,11 +244,12 @@ describe("shell tool", () => {
 
   it("stops a command when the run is cancelled", async () => {
     const controller = new AbortController()
-    const pending = runProcess("sleep 5", [], {
+    const shell = process.platform !== "win32"
+    const pending = runProcess(shell ? "sleep 5" : "node", shell ? [] : ["-e", "setTimeout(() => {}, 8000)"], {
       cwd: env.workspace,
       timeoutMs: 10_000,
       signal: controller.signal,
-      shell: true,
+      shell,
     })
     setTimeout(() => controller.abort(), 50)
     const result = await pending
@@ -252,6 +262,27 @@ describe("shell tool", () => {
       timeoutMs: 100,
     })
     expect(result.timedOut).toBe(true)
+  })
+
+  it("names the host shell in the tool the model sees", () => {
+    const host = hostShell()
+    const command = (shellRunTool.parameters.properties as { command?: { description?: string } }).command
+    expect(shellRunTool.description).toContain(host.guidance)
+    expect(command?.description).toContain(host.interpreter)
+  })
+
+  it("tells the model to rewrite a Unix command when cmd.exe rejected it", () => {
+    const message = shellFailureMessage(
+      {
+        exitCode: 1,
+        stderr: "'ls' is not recognized as an internal or external command,\r\noperable program or batch file.",
+        timedOut: false,
+      },
+      "ls",
+      "cmd.exe"
+    )
+    expect(message).toContain("this shell is cmd.exe")
+    expect(message).toContain("Do not try another shell.")
   })
 
   it("summarizes the command for approvals", () => {

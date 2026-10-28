@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
+import { agentToolkitLabel } from "@/lib/shell/explain"
 import { cn } from "@/lib/utils"
 import { ARTIFACT_TYPE_LIST } from "@/lib/artifacts/constants"
 import { useWorkspace } from "@/components/providers/workspace-provider"
@@ -74,7 +75,8 @@ function NavLink({
   )
 }
 
-export function AppSidebar() {
+export function AppSidebar({ version }: { version: string }) {
+  const toolkitLabel = agentToolkitLabel(version)
   const pathname = usePathname()
   const { workspace, byType } = useWorkspace()
   const { open } = useSidebar()
@@ -101,9 +103,11 @@ export function AppSidebar() {
             alt="BlackAgents"
             className="h-8 w-8 shrink-0 rounded-md object-contain"
           />
-          <div className="leading-tight">
+          <div className="min-w-0 leading-tight">
             <p className="text-sm font-semibold">BlackAgents</p>
-            <p className="text-[11px] text-muted-foreground">Agent toolkit</p>
+            <p className="truncate text-[11px] text-muted-foreground" title={toolkitLabel}>
+              {toolkitLabel}
+            </p>
           </div>
         </div>
 

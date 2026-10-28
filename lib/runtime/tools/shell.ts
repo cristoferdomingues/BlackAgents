@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { resolveInWorkspace } from "@/lib/fs-service"
 
+import { hostShell, unixOnlyCommand } from "../host-shell"
 import { commandEnv } from "../shell-env"
 import type { RuntimeTool } from "../types"
 import { toolArgsError } from "./args"
@@ -118,14 +119,35 @@ export function runProcess(
   })
 }
 
-function errorFor(result: ShellResult, command: string): string | undefined {
+/** Why a finished command failed, including a rewrite hint when the shell was wrong. */
+export function shellFailureMessage(
+  result: Pick<ShellResult, "exitCode" | "stderr" | "timedOut">,
+  command: string,
+  interpreter: string = hostShell().interpreter
+): string | undefined {
   if (result.exitCode === 0) return undefined
   if (result.timedOut) return "Command timed out"
-  if ((result.exitCode === null && /ENOENT/.test(result.stderr)) || result.exitCode === 127) {
+  const name = command.trim().split(/\s+/)[0] ?? command
+  const unrecognizedCmd =
+    interpreter === "cmd.exe" && /is not recognized as an internal or external command/i.test(result.stderr)
+  const unrecognizedPowerShell =
+    interpreter === "PowerShell" && /is not recognized as the name of a cmdlet/i.test(result.stderr)
+  if ((unrecognizedCmd || unrecognizedPowerShell) && unixOnlyCommand(name)) {
+    const syntax = interpreter === "cmd.exe" ? "cmd.exe syntax (dir, type, findstr)" : "PowerShell syntax"
+    return `Command exited with code ${String(result.exitCode)}. '${name}' is a Unix command and this shell is ${interpreter}. Rewrite it with ${syntax}. Do not try another shell.`
+  }
+  if (
+    (result.exitCode === null && /ENOENT/.test(result.stderr)) ||
+    result.exitCode === 127 ||
+    unrecognizedCmd ||
+    unrecognizedPowerShell
+  ) {
     return `Program not found: ${command}. Install it or check the PATH.`
   }
   return `Command exited with code ${String(result.exitCode)}`
 }
+
+const runningHost = hostShell()
 
 export const shellRunTool: RuntimeTool = {
   name: "shell_run",
@@ -136,14 +158,19 @@ export const shellRunTool: RuntimeTool = {
   timeoutMs: SHELL_MAX_TIMEOUT_MS + 5_000,
   description:
     "Run a terminal command inside the workspace and get its exit code, stdout and stderr. " +
+    `${runningHost.guidance} ` +
     "Pass a full command line, e.g. {\"command\":\"npm install && npm test\"} (pipes, &&, redirects work), " +
     "or a program with args, e.g. {\"command\":\"node\",\"args\":[\"--version\"]}. " +
+    "A program plus args runs directly, with no shell, and works the same on every operating system. " +
     "`cwd` is a folder relative to the workspace root. Commands must finish on their own: do not start " +
     "dev servers or watch modes (use build/test commands instead). The user approves every call.",
   parameters: {
     type: "object",
     properties: {
-      command: { type: "string", description: "A full command line, or a program name when args are given" },
+      command: {
+        type: "string",
+        description: `A full command line for ${runningHost.interpreter}, or a program name when args are given`,
+      },
       args: { type: "array", items: { type: "string" } },
       cwd: { type: "string", description: "Folder relative to the workspace root" },
       timeoutMs: { type: "number", description: `Default ${SHELL_DEFAULT_TIMEOUT_MS}, max ${SHELL_MAX_TIMEOUT_MS}` },
@@ -171,6 +198,6 @@ export const shellRunTool: RuntimeTool = {
       shell,
       env: await commandEnv(),
     })
-    return { result, error: errorFor(result, shell ? command.split(/\s+/)[0] : command) }
+    return { result, error: shellFailureMessage(result, shell ? command.split(/\s+/)[0] ?? command : command) }
   },
 }

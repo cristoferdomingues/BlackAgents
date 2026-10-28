@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.8.0...v0.9.0) (2026-10-28)
+
+
+### Features
+
+* name the host shell and show the app version in the sidebar ([5d014d2](https://github.com/cristoferdomingues/BlackAgents/commit/5d014d2d144a86dee558f5ce1f78f246c38c5cdf))
+
+
 ## [0.8.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.7.0...v0.8.0) (2026-10-27)
 
 

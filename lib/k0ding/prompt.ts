@@ -1,3 +1,4 @@
+import { HONEST_OUTCOME } from "@/lib/llm/honest-outcome"
 import { hostShell } from "@/lib/runtime/host-shell"
 
 import { K0dingError } from "./errors"
@@ -16,6 +17,7 @@ export const K0DING_SYSTEM = [
   hostShell().guidance,
   "Use code_note_propose when useful project knowledge should be saved. It only stages a draft; the user decides whether to save it.",
   "When you are done, write a short summary of what you staged. The user reviews every file before it is written.",
+  HONEST_OUTCOME,
 ].join("\n")
 
 export function projectNotesPrompt(notes: string): string {

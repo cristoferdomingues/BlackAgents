@@ -6,10 +6,22 @@ import type { McpTool } from "@/lib/mcp/types"
 
 import type { RuntimeTool, ToolRisk } from "../types"
 
-const TRUST_RISK: Record<McpTrust, ToolRisk> = {
-  trusted: "read",
-  ask: "write",
-  risky: "exec",
+/**
+ * Risk of one MCP tool call. The workspace trust level sets the default, and
+ * the server's own annotations refine it:
+ *
+ * - `destructiveHint` always asks, even for a trusted server.
+ * - `readOnlyHint` runs directly under the default `ask` trust.
+ *
+ * Annotations are only hints from the server, so a `risky` server ignores them
+ * and `destructiveHint` outranks every trust level.
+ */
+export function mcpRisk(tool: McpTool, trust: McpTrust): ToolRisk {
+  if (tool.annotations?.destructiveHint) return "exec"
+  if (trust === "trusted") return "read"
+  if (trust === "risky") return "exec"
+  if (tool.annotations?.readOnlyHint) return "read"
+  return "write"
 }
 
 const MAX_TOOL_NAME = 64
@@ -29,7 +41,7 @@ export function toRuntimeTool(tool: McpTool, trust: McpTrust): RuntimeTool {
     originalName: tool.name,
     server: tool.server,
     source: "mcp",
-    risk: TRUST_RISK[trust],
+    risk: mcpRisk(tool, trust),
     description: `[MCP server: ${tool.server}] ${tool.description ?? ""}`.trim(),
     parameters: tool.inputSchema,
     summarize: (args) => `${tool.server} → ${tool.name}(${JSON.stringify(args).slice(0, 200)})`,
@@ -42,8 +54,9 @@ export function toRuntimeTool(tool: McpTool, trust: McpTrust): RuntimeTool {
 
 /**
  * Connect to the workspace MCP servers (all, or only `servers`) and wrap their
- * tools with the risk level from the MCP trust policy. Failing servers are
- * skipped so one broken server never blocks a chat or a run.
+ * tools with the risk level from the MCP trust policy and the tool's own
+ * annotations. Failing servers are skipped so one broken server never blocks a
+ * chat or a run.
  */
 export async function loadMcpRuntimeTools(
   workspaceRoot: string,

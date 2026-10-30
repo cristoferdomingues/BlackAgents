@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bell, BellOff, Check, Loader2, ShieldAlert, X } from "lucide-react"
+import { Bell, BellOff, Check, Loader2, ShieldAlert, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiFetch } from "@/lib/api"
@@ -13,7 +13,7 @@ import {
 } from "@/lib/audio/approval-alert"
 import { cn } from "@/lib/utils"
 import { isFileWriteTool } from "@/lib/runtime/tool-names"
-import type { ApprovalRequest, FileWritePermission } from "@/lib/runtime/types"
+import type { ApprovalRequest, ApprovalTrustHint, FileWritePermission } from "@/lib/runtime/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
@@ -21,6 +21,12 @@ const RISK_LABEL: Record<ApprovalRequest["risk"], string> = {
   read: "Read",
   write: "Writes files",
   exec: "Runs a program",
+}
+
+function trustLabel(hint: ApprovalTrustHint): string {
+  return hint.kind === "mcp"
+    ? `Always trust ${hint.server}`
+    : `Always allow ${hint.programs.join(", ")}`
 }
 
 /**
@@ -39,7 +45,9 @@ export function ApprovalCard({
   onResolved?: (approved: boolean, fileWritePermission?: FileWritePermission) => void
   className?: string
 }) {
-  const [busy, setBusy] = React.useState<"approve" | "deny" | "remember" | "message" | "session" | null>(null)
+  const [busy, setBusy] = React.useState<
+    "approve" | "deny" | "remember" | "message" | "session" | "trust" | null
+  >(null)
   const [muted, setMuted] = React.useState(isApprovalSoundMuted)
   const calls = approval.calls ?? []
   const batch = calls.length > 1
@@ -80,6 +88,8 @@ export function ApprovalCard({
     : 0
   const risks = new Set(calls.map((call) => call.risk))
   const riskLabel = batch && risks.size > 1 ? "Mixed" : RISK_LABEL[approval.risk]
+  // One grant the whole card can remember, when every call shares it.
+  const trustHint = approval.trust ?? (calls.length === 1 ? calls[0].trust : undefined)
 
   async function decide(
     approved: boolean,
@@ -116,6 +126,36 @@ export function ApprovalCard({
     } finally {
       setBusy(null)
     }
+  }
+
+  /**
+   * Save the grant, then approve this turn's calls. The running turn already
+   * loaded its policy, so these calls still need the decision; the next turn
+   * skips the card.
+   */
+  async function trustAndApprove(hint: ApprovalTrustHint) {
+    setBusy("trust")
+    try {
+      await apiFetch(hint.kind === "mcp" ? "/api/mcp/policy" : "/api/trust", {
+        method: "PUT",
+        body: JSON.stringify(
+          hint.kind === "mcp"
+            ? { server: hint.server, trust: "trusted" }
+            : { shellCommands: hint.programs, trusted: true }
+        ),
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the trust setting")
+      setBusy(null)
+      return
+    }
+    toast.success(
+      hint.kind === "mcp"
+        ? `${hint.server} tools will not ask again`
+        : `${hint.programs.join(", ")} will not ask again`
+    )
+    setBusy(null)
+    await decide(true, false, undefined, batchDecisions)
   }
 
   return (
@@ -223,6 +263,26 @@ export function ApprovalCard({
                   : `Approve ${selectedCount} of ${calls.length}`
                 : "Approve"}
             </Button>
+            {trustHint ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => trustAndApprove(trustHint)}
+                disabled={busy !== null || (batch && selectedCount === 0)}
+                title={
+                  trustHint.kind === "mcp"
+                    ? `Run ${trustHint.server} tools without asking from now on`
+                    : "Allow these commands without asking from now on"
+                }
+              >
+                {busy === "trust" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                {trustLabel(trustHint)}
+              </Button>
+            ) : null}
             {!batch && approval.risk === "exec" ? (
               <Button
                 size="sm"

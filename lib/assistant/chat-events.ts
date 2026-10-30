@@ -18,6 +18,11 @@ export const toolTraceSchema = z.object({
   durationMs: z.number().optional(),
 })
 
+export const approvalTrustSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("mcp"), server: z.string() }),
+  z.object({ kind: z.literal("shell"), programs: z.array(z.string()) }),
+])
+
 export const approvalCallSchema = z.object({
   id: z.string(),
   tool: z.string(),
@@ -25,6 +30,7 @@ export const approvalCallSchema = z.object({
   risk: z.enum(["read", "write", "exec"]),
   summary: z.string(),
   args: z.record(z.unknown()),
+  trust: approvalTrustSchema.optional(),
 })
 
 export const approvalRequestSchema = z.object({
@@ -36,6 +42,8 @@ export const approvalRequestSchema = z.object({
   args: z.record(z.unknown()),
   /** Present when one card covers every call a turn wants to run. */
   calls: z.array(approvalCallSchema).optional(),
+  /** Set when every call in the card shares one persistent trust grant. */
+  trust: approvalTrustSchema.optional(),
   scope: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("chat") }),
     z.object({ kind: z.literal("run"), runId: z.string(), stepId: z.string(), workflow: z.string() }),

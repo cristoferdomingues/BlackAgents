@@ -17,7 +17,9 @@ import {
   createRegistryApprover,
   createRegistryBatchApprover,
   denyAllApprover,
+  trustHintForTool,
 } from "@/lib/runtime/ask-user"
+import { shellRunTool } from "@/lib/runtime/tools/shell"
 import type { ApprovalRequest } from "@/lib/runtime/types"
 
 import { fakeTool } from "../../helpers/runtime"
@@ -89,6 +91,52 @@ describe("approval policy", () => {
     expect(callKey(tool, { a: 1, b: [1, { c: 2, d: 3 }] })).toBe(
       callKey(tool, { b: [1, { d: 3, c: 2 }], a: 1 })
     )
+  })
+
+  it("runs read-only shell commands and asks before the rest", () => {
+    expect(needsApproval(shellRunTool, { command: "git status" }, createApprovalPolicy())).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm test" }, createApprovalPolicy())).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm install" }, createApprovalPolicy())).toBe(true)
+  })
+
+  it("skips a trusted write-risk shell command but never an exec one", () => {
+    const policy = createApprovalPolicy()
+    policy.trustedShellCommands.add("mkdir")
+    expect(needsApproval(shellRunTool, { command: "mkdir -p out" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "mkdir out > log" }, policy)).toBe(true)
+    expect(needsApproval(shellRunTool, { command: "git push" }, policy)).toBe(true)
+  })
+
+  it("covers every program in a trusted sequence", () => {
+    const policy = createApprovalPolicy()
+    policy.trustedShellCommands.add("mkdir")
+    expect(needsApproval(shellRunTool, { command: "mkdir out && cp a b" }, policy)).toBe(true)
+    policy.trustedShellCommands.add("cp")
+    expect(needsApproval(shellRunTool, { command: "mkdir out && cp a b" }, policy)).toBe(false)
+  })
+
+  it("offers a shell trust hint only for plain write commands", () => {
+    expect(trustHintForTool(shellRunTool, { command: "mkdir -p out" })).toEqual({
+      kind: "shell",
+      programs: ["mkdir"],
+    })
+    expect(trustHintForTool(shellRunTool, { command: "mkdir out && cp a b" })).toEqual({
+      kind: "shell",
+      programs: ["cp", "mkdir"],
+    })
+    expect(trustHintForTool(shellRunTool, { command: "mkdir out > log" })).toBeUndefined()
+    expect(trustHintForTool(shellRunTool, { command: "git push" })).toBeUndefined()
+    expect(trustHintForTool(shellRunTool, { command: "git status" })).toBeUndefined()
+  })
+
+  it("offers server trust for write-risk MCP calls only", () => {
+    const write = {
+      ...fakeTool("do_thing", "write"),
+      source: "mcp" as const,
+      server: "github",
+    }
+    expect(trustHintForTool(write, {})).toEqual({ kind: "mcp", server: "github" })
+    expect(trustHintForTool({ ...write, risk: "exec" as const }, {})).toBeUndefined()
   })
 })
 
@@ -181,5 +229,45 @@ describe("approval registry", () => {
     await expect(approve([{ id: "c1", tool, args: { path: "a" } }])).resolves.toEqual({
       c1: { approved: true, fileWritePermission: "message" },
     })
+  })
+
+  it("adds one trust hint when every call shares it", async () => {
+    let request: ApprovalRequest | undefined
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (pending) => {
+        request = pending
+        resolveApproval(pending.id, { approved: true })
+      },
+    })
+
+    await approve([
+      { id: "c1", tool: shellRunTool, args: { command: "mkdir a" } },
+      { id: "c2", tool: shellRunTool, args: { command: "mkdir b" } },
+    ])
+
+    expect(request?.trust).toEqual({ kind: "shell", programs: ["mkdir"] })
+    expect(request?.calls?.map((call) => call.trust)).toEqual([
+      { kind: "shell", programs: ["mkdir"] },
+      { kind: "shell", programs: ["mkdir"] },
+    ])
+  })
+
+  it("drops the trust hint when the calls disagree", async () => {
+    let request: ApprovalRequest | undefined
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (pending) => {
+        request = pending
+        resolveApproval(pending.id, { approved: true })
+      },
+    })
+
+    await approve([
+      { id: "c1", tool: shellRunTool, args: { command: "mkdir a" } },
+      { id: "c2", tool: fakeTool("fs_write", "write"), args: { path: "a" } },
+    ])
+
+    expect(request?.trust).toBeUndefined()
   })
 })

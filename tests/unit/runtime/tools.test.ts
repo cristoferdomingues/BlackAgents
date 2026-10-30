@@ -421,4 +421,25 @@ describe("tool scope", () => {
     expect(toRuntimeTool(mcp, "ask").risk).toBe("write")
     expect(toRuntimeTool(mcp, "risky").risk).toBe("exec")
   })
+
+  it("uses MCP annotations to refine the trust default", () => {
+    const readOnly = {
+      server: "docs",
+      name: "search",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    }
+    expect(toRuntimeTool(readOnly, "ask").risk).toBe("read")
+
+    const destructive = {
+      server: "docs",
+      name: "wipe",
+      inputSchema: {},
+      annotations: { destructiveHint: true },
+    }
+    expect(toRuntimeTool(destructive, "trusted").risk).toBe("exec")
+
+    const plain = { server: "docs", name: "write", inputSchema: {} }
+    expect(toRuntimeTool(plain, "ask").risk).toBe("write")
+  })
 })

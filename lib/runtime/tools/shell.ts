@@ -7,6 +7,7 @@ import { hostShell, unixOnlyCommand } from "../host-shell"
 import { commandEnv } from "../shell-env"
 import type { RuntimeTool } from "../types"
 import { toolArgsError } from "./args"
+import { analyzeShellCommand } from "./shell-risk"
 
 export const SHELL_OUTPUT_CAP = 20_000
 export const SHELL_DEFAULT_TIMEOUT_MS = 120_000
@@ -156,6 +157,7 @@ export const shellRunTool: RuntimeTool = {
   source: "builtin",
   risk: "exec",
   timeoutMs: SHELL_MAX_TIMEOUT_MS + 5_000,
+  riskFor: (args) => analyzeShellCommand(args.command, args.args).risk,
   description:
     "Run a terminal command inside the workspace and get its exit code, stdout and stderr. " +
     `${runningHost.guidance} ` +
@@ -163,7 +165,8 @@ export const shellRunTool: RuntimeTool = {
     "or a program with args, e.g. {\"command\":\"node\",\"args\":[\"--version\"]}. " +
     "A program plus args runs directly, with no shell, and works the same on every operating system. " +
     "`cwd` is a folder relative to the workspace root. Commands must finish on their own: do not start " +
-    "dev servers or watch modes (use build/test commands instead). The user approves every call.",
+    "dev servers or watch modes (use build/test commands instead). Read-only commands run directly; " +
+    "anything that writes, installs, or runs arbitrary code asks the user first.",
   parameters: {
     type: "object",
     properties: {

@@ -50,7 +50,7 @@ export const BUILTIN_TOOL_LABELS: Record<BuiltinToolName, { label: string; hint:
   fs_search: { label: "Search in files", hint: "Read-only. Comes with read access" },
   fs_write: { label: "Write files", hint: "Needs approval unless writes are allowed" },
   fs_edit: { label: "Edit files", hint: "Same approval as Write files. Comes with write access" },
-  shell_run: { label: "Run commands", hint: "Needs approval for every command" },
+  shell_run: { label: "Run commands", hint: "Read-only commands run directly; the rest ask first" },
   browser_run_flow: {
     label: "Run browser flow",
     hint: "Replay a saved flow. Turn on Run without asking to skip approval.",

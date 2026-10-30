@@ -90,11 +90,20 @@ export const mcpConfigSchema = z.object({
 
 export type McpConfig = z.infer<typeof mcpConfigSchema>
 
+/** Hints a server may attach to a tool (MCP `annotations`). They are advisory only. */
+export interface McpToolAnnotations {
+  readOnlyHint?: boolean
+  destructiveHint?: boolean
+  idempotentHint?: boolean
+  openWorldHint?: boolean
+}
+
 export interface McpTool {
   server: string
   name: string
   description?: string
   inputSchema: Record<string, unknown>
+  annotations?: McpToolAnnotations
 }
 
 export interface ToolCall {

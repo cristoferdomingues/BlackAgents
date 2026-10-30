@@ -1,4 +1,5 @@
 import { isFileWriteTool } from "./tool-names"
+import { analyzeShellCommand } from "./tools/shell-risk"
 import type { RuntimeTool, ToolRisk } from "./types"
 
 /** Per-request (chat) or per-run (workflow) approval state. */
@@ -13,6 +14,8 @@ export interface ApprovalPolicy {
   autoAcceptFlows: Set<string>
   /** Exact tool + args already approved as part of a saved flow. */
   autoAcceptedCalls: Set<string>
+  /** Programs whose plain write-risk shell commands run without asking. */
+  trustedShellCommands: Set<string>
 }
 
 export function createApprovalPolicy(allowWrites = false, allowFileWrites = false): ApprovalPolicy {
@@ -22,6 +25,7 @@ export function createApprovalPolicy(allowWrites = false, allowFileWrites = fals
     allowedCalls: new Set(),
     autoAcceptFlows: new Set(),
     autoAcceptedCalls: new Set(),
+    trustedShellCommands: new Set(),
   }
 }
 
@@ -50,6 +54,26 @@ export function riskOf(tool: RuntimeTool, args: Record<string, unknown>): ToolRi
   return tool.riskFor ? tool.riskFor(args) : tool.risk
 }
 
+/**
+ * A shell call the workspace remembers: a plain sequence of write-risk
+ * programs the user trusted, with no redirect or substitution. `exec`
+ * commands are never trustable, so trusting `git` never covers `git push`.
+ */
+function isTrustedShellCall(
+  tool: RuntimeTool,
+  args: Record<string, unknown>,
+  policy: ApprovalPolicy
+): boolean {
+  if (policy.trustedShellCommands.size === 0) return false
+  if (tool.source !== "builtin" || tool.originalName !== "shell_run") return false
+  const analysis = analyzeShellCommand(args.command, args.args)
+  return (
+    analysis.trustable &&
+    analysis.programs.length > 0 &&
+    analysis.programs.every((program) => policy.trustedShellCommands.has(program))
+  )
+}
+
 export function needsApproval(
   tool: RuntimeTool,
   args: Record<string, unknown>,
@@ -65,6 +89,7 @@ export function needsApproval(
   if (policy.autoAcceptedCalls.has(preapprovedCallKey(tool.originalName, args))) {
     return false
   }
+  if (isTrustedShellCall(tool, args, policy)) return false
   const risk = riskOf(tool, args)
   if (risk === "read") return false
   if (risk === "write" && policy.allowWrites) return false

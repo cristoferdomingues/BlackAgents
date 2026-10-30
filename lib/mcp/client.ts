@@ -307,6 +307,7 @@ export async function testMcpServer(
         type: "object",
         properties: {},
       },
+      ...(t.annotations ? { annotations: t.annotations } : {}),
     }))
 
     return {

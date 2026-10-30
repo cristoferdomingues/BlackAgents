@@ -1,11 +1,13 @@
 import { riskOf } from "./approval-policy"
 import { requestApproval } from "./approvals"
 import { isFileWriteTool } from "./tool-names"
+import { analyzeShellCommand } from "./tools/shell-risk"
 import type {
   ApprovalCall,
   ApprovalDecision,
   ApprovalRequest,
   ApprovalScope,
+  ApprovalTrustHint,
   BatchApprovalCall,
   RuntimeTool,
   ToolRisk,
@@ -33,6 +35,46 @@ function highestRisk(calls: readonly BatchApprovalCall[]): ToolRisk {
   }, "read")
 }
 
+/**
+ * A persistent trust grant the approval card may offer for this call.
+ *
+ * MCP: trusting a server turns its `write` calls into reads; `exec` calls
+ * always ask, so there is nothing useful to offer there. Shell: only a plain
+ * sequence of write-risk programs can be remembered — redirects, substitutions
+ * and `exec` commands never are.
+ */
+export function trustHintForTool(
+  tool: RuntimeTool,
+  args: Record<string, unknown>
+): ApprovalTrustHint | undefined {
+  if (tool.source === "mcp") {
+    return riskOf(tool, args) === "write" ? { kind: "mcp", server: tool.server } : undefined
+  }
+  if (tool.source === "builtin" && tool.originalName === "shell_run") {
+    const analysis = analyzeShellCommand(args.command, args.args)
+    if (analysis.trustable && analysis.programs.length > 0) {
+      return { kind: "shell", programs: [...new Set(analysis.programs)].sort() }
+    }
+  }
+  return undefined
+}
+
+function trustHintKey(hint: ApprovalTrustHint): string {
+  return hint.kind === "mcp" ? `mcp:${hint.server}` : `shell:${hint.programs.join(",")}`
+}
+
+/** The single grant every call in the card shares, if there is one. */
+function commonTrustHint(
+  hints: readonly (ApprovalTrustHint | undefined)[]
+): ApprovalTrustHint | undefined {
+  const first = hints[0]
+  if (!first) return undefined
+  const key = trustHintKey(first)
+  return hints.every((hint) => hint !== undefined && trustHintKey(hint) === key)
+    ? first
+    : undefined
+}
+
 /** One approval card for every call a turn wants to run. */
 export function createRegistryBatchApprover(options: {
   scope: ApprovalScope
@@ -46,14 +88,20 @@ export function createRegistryBatchApprover(options: {
   return async (calls) => {
     if (calls.length === 0) return {}
     const single = calls.length === 1
-    const requestCalls: ApprovalCall[] = calls.map((call) => ({
-      id: call.id,
-      tool: call.tool.originalName,
-      server: call.tool.server,
-      risk: riskOf(call.tool, call.args),
-      summary: summarize(call.tool, call.args),
-      args: call.args,
-    }))
+    const trustHints = calls.map((call) => trustHintForTool(call.tool, call.args))
+    const requestCalls: ApprovalCall[] = calls.map((call, index) => {
+      const trust = trustHints[index]
+      return {
+        id: call.id,
+        tool: call.tool.originalName,
+        server: call.tool.server,
+        risk: riskOf(call.tool, call.args),
+        summary: summarize(call.tool, call.args),
+        args: call.args,
+        ...(trust ? { trust } : {}),
+      }
+    })
+    const trust = commonTrustHint(trustHints)
     const handle = requestApproval(
       {
         tool: single ? requestCalls[0].tool : "batch",
@@ -62,6 +110,7 @@ export function createRegistryBatchApprover(options: {
         summary: single ? requestCalls[0].summary : `${calls.length} tool calls need approval`,
         args: single ? requestCalls[0].args : {},
         calls: requestCalls,
+        ...(trust ? { trust } : {}),
         scope: options.scope,
       },
       { signal: options.signal }
@@ -97,6 +146,7 @@ export function createRegistryApprover(options: {
   onResolved?: (request: ApprovalRequest, decision: ApprovalDecision) => void | Promise<void>
 }): Approver {
   return async (tool, args) => {
+    const trust = trustHintForTool(tool, args)
     const handle = requestApproval(
       {
         tool: tool.originalName,
@@ -104,6 +154,7 @@ export function createRegistryApprover(options: {
         risk: riskOf(tool, args),
         summary: tool.summarize?.(args) ?? `${tool.originalName}(${JSON.stringify(args)})`,
         args,
+        ...(trust ? { trust } : {}),
         scope: options.scope,
       },
       { signal: options.signal }

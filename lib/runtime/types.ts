@@ -49,6 +49,15 @@ export type ApprovalScope =
   | { kind: "chat" }
   | { kind: "run"; runId: string; stepId: string; workflow: string }
 
+/**
+ * A persistent trust grant the approval card can offer:
+ * - `mcp`   — trust the whole server (`Always trust <server>`).
+ * - `shell` — allow these plain write-risk programs (`Always allow mkdir`).
+ */
+export type ApprovalTrustHint =
+  | { kind: "mcp"; server: string }
+  | { kind: "shell"; programs: string[] }
+
 /** One tool call inside a batch approval (the model's call id maps the decision back). */
 export interface ApprovalCall {
   id: string
@@ -57,6 +66,8 @@ export interface ApprovalCall {
   risk: ToolRisk
   summary: string
   args: Record<string, unknown>
+  /** Present when the card can remember this call's trust across chats. */
+  trust?: ApprovalTrustHint
 }
 
 export interface ApprovalRequest {
@@ -68,6 +79,8 @@ export interface ApprovalRequest {
   args: Record<string, unknown>
   /** Present when one card covers every call a turn wants to run. */
   calls?: ApprovalCall[]
+  /** Set when every call in the card shares one persistent trust grant. */
+  trust?: ApprovalTrustHint
   scope: ApprovalScope
   createdAt: string
 }

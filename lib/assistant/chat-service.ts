@@ -39,6 +39,7 @@ import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval
 import { runAgentLoop, type AgentLoopResult } from "@/lib/runtime/agent-loop"
 import type { Approver, BatchApprover } from "@/lib/runtime/ask-user"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, buildToolset } from "@/lib/runtime/tools"
+import { readWorkspaceTrust } from "@/lib/runtime/trust"
 import type { AgentLoopEvent, RuntimeTool } from "@/lib/runtime/types"
 
 import { foldConversation } from "./conversation-memory"
@@ -326,11 +327,15 @@ export async function runChat(
   const systemContext = memory ? `${chat.systemContext}\n\n${renderMemorySection(memory)}` : chat.systemContext
   const policy = createApprovalPolicy(Boolean(chat.request.allowWrites), chat.allowFileWrites)
   if (chat.workspaceRoot) {
-    const grants = await loadAutoAcceptedFlows(chat.workspaceRoot)
+    const [grants, trust] = await Promise.all([
+      loadAutoAcceptedFlows(chat.workspaceRoot),
+      readWorkspaceTrust(chat.workspaceRoot),
+    ])
     for (const name of grants.flowNames) policy.autoAcceptFlows.add(name)
     for (const call of grants.calls) {
       policy.autoAcceptedCalls.add(preapprovedCallKey(call.tool, call.args))
     }
+    for (const program of trust.shellCommands) policy.trustedShellCommands.add(program)
   }
   const result = await runAgentLoop({
     provider: chat.provider,

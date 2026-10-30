@@ -110,7 +110,7 @@ Auth tokens entered in **Settings → MCP Servers** are stored in `~/.black-agen
 
 - **Transports**: a local command (`npx`, `uvx`, `python`, `node`), streamable HTTP (POST), or SSE. A URL with no transport is treated as HTTP. HTTP and SSE send resolved headers (including secret-backed bearer tokens).
 - **Autonomous Tool Execution**: When chatting with an agent persona (e.g. `portfolio-rebalancer`), the agent discovers available tools from enabled servers and can call them inside a bounded loop (8 turns by default, up to 20 in **Settings → AI**).
-- **Trust**: each server is `trusted` (treated as a read), `ask` (needs approval, the default), or `risky` (needs approval every time). The choice is stored in `.black-agents/mcp-policy.json`.
+- **Trust**: each server is `trusted` (write calls run as reads), `ask` (needs approval, the default), or `risky` (needs approval every time). A tool that declares `destructiveHint` always asks, while a `readOnlyHint` tool runs directly under `ask`. The choice is stored in `.black-agents/mcp-policy.json`. Shell commands are classified by content: read-only ones (`git status`, `npm test`) run directly, writes ask, and **Always allow** remembers a program in `.black-agents/approval-trust.json`.
 - **Settings & Tool Diagnostics**: Navigate to **Settings → MCP Servers** to view live connection statuses (Connected / Error / Disabled), inspect tool signatures, test server responsiveness with timeout boundaries, or add new servers.
 - **Visual Execution Traces**: In the Assistant chat, assistant responses display collapsible execution trace cards showing tool name, arguments, elapsed duration in milliseconds, and structured JSON results or errors.
 

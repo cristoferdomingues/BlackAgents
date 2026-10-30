@@ -37,7 +37,7 @@ import { readAiSettings } from "@/lib/settings"
 import { loadAutoAcceptedFlows } from "@/lib/browser"
 import { createApprovalPolicy, preapprovedCallKey } from "@/lib/runtime/approval-policy"
 import { runAgentLoop, type AgentLoopResult } from "@/lib/runtime/agent-loop"
-import type { Approver } from "@/lib/runtime/ask-user"
+import type { Approver, BatchApprover } from "@/lib/runtime/ask-user"
 import { agentToolScope, ASSISTANT_TOOL_SCOPE, buildToolset } from "@/lib/runtime/tools"
 import type { AgentLoopEvent, RuntimeTool } from "@/lib/runtime/types"
 
@@ -312,6 +312,8 @@ export async function runChat(
   chat: PreparedChat,
   options: {
     approve: Approver
+    /** One approval card per turn instead of one per call. */
+    approveBatch?: BatchApprover
     onEvent?: (event: AgentLoopEvent) => void
     signal?: AbortSignal
     /** Called before older messages are summarized (an extra model call). */
@@ -343,6 +345,7 @@ export async function runChat(
     workspaceRoot: chat.workspaceRoot ?? process.cwd(),
     policy,
     approve: options.approve,
+    ...(options.approveBatch ? { approveBatch: options.approveBatch } : {}),
     onEvent: options.onEvent,
     signal: options.signal,
   })

@@ -9,6 +9,8 @@ const decisionSchema = z.object({
   approved: z.boolean(),
   remember: z.boolean().optional(),
   fileWritePermission: z.enum(FILE_WRITE_PERMISSIONS).optional(),
+  /** Batch card: one boolean per `ApprovalCall.id`. */
+  callDecisions: z.record(z.boolean()).optional(),
 })
 
 interface RouteContext {
@@ -24,19 +26,43 @@ export async function POST(req: Request, ctx: RouteContext) {
     const pending = getPendingApproval(id)
     if (!pending) return fail("This approval is no longer pending", 404)
     const remember = parsed.data.approved && pending.risk === "exec" && Boolean(parsed.data.remember)
+    const fileWriteOnly = pending.calls
+      ? pending.calls.length > 0 &&
+        pending.calls.every(
+          (call) =>
+            call.server === "builtin" &&
+            isFileWriteTool(call.tool) &&
+            call.risk === "write"
+        )
+      : pending.server === "builtin" &&
+        isFileWriteTool(pending.tool) &&
+        pending.risk === "write"
     const fileWritePermission: FileWritePermission | undefined =
-      parsed.data.approved &&
-      pending.scope.kind === "chat" &&
-      pending.server === "builtin" &&
-      isFileWriteTool(pending.tool) &&
-      pending.risk === "write"
+      parsed.data.approved && pending.scope.kind === "chat" && fileWriteOnly
         ? parsed.data.fileWritePermission
         : undefined
+    // A batch card sends one boolean per call; a missing entry follows the
+    // card-level decision, so "Approve" with no list still approves the batch.
+    const callDecisions = pending.calls
+      ? Object.fromEntries(
+          pending.calls.map((call) => [
+            call.id,
+            parsed.data.callDecisions?.[call.id] ?? parsed.data.approved,
+          ])
+        )
+      : undefined
     resolveApproval(id, {
       approved: parsed.data.approved,
       remember,
       ...(fileWritePermission ? { fileWritePermission } : {}),
+      ...(callDecisions ? { callDecisions } : {}),
     })
-    return ok({ id, approved: parsed.data.approved, remember, fileWritePermission })
+    return ok({
+      id,
+      approved: parsed.data.approved,
+      remember,
+      fileWritePermission,
+      callDecisions,
+    })
   })
 }

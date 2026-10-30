@@ -261,6 +261,47 @@ describe("POST /api/chat streaming", () => {
     await expect(shell.decision).resolves.toEqual({ approved: true, remember: false })
   })
 
+  it("maps a batch card's per-call decisions", async () => {
+    const batch = requestApproval({
+      tool: "batch",
+      server: "batch",
+      risk: "exec",
+      summary: "2 tool calls need approval",
+      args: {},
+      calls: [
+        {
+          id: "c1",
+          tool: "fs_write",
+          server: "builtin",
+          risk: "write",
+          summary: "Write a.md",
+          args: { path: "a.md" },
+        },
+        {
+          id: "c2",
+          tool: "shell_run",
+          server: "builtin",
+          risk: "exec",
+          summary: "$ ls",
+          args: { command: "ls" },
+        },
+      ],
+      scope: { kind: "chat" },
+    })
+    const res = await DECIDE(
+      jsonRequest(`http://t/api/approvals/${batch.request.id}`, "POST", {
+        approved: true,
+        callDecisions: { c1: true, c2: false },
+      }),
+      { params: Promise.resolve({ id: batch.request.id }) }
+    )
+    expect((await res.json()).data.callDecisions).toEqual({ c1: true, c2: false })
+    await expect(batch.decision).resolves.toMatchObject({
+      approved: true,
+      callDecisions: { c1: true, c2: false },
+    })
+  })
+
   it("auto-approves writes when allowWrites is set", async () => {
     vi.stubGlobal(
       "fetch",

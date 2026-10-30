@@ -49,6 +49,16 @@ export type ApprovalScope =
   | { kind: "chat" }
   | { kind: "run"; runId: string; stepId: string; workflow: string }
 
+/** One tool call inside a batch approval (the model's call id maps the decision back). */
+export interface ApprovalCall {
+  id: string
+  tool: string
+  server: string
+  risk: ToolRisk
+  summary: string
+  args: Record<string, unknown>
+}
+
 export interface ApprovalRequest {
   id: string
   tool: string
@@ -56,6 +66,8 @@ export interface ApprovalRequest {
   risk: ToolRisk
   summary: string
   args: Record<string, unknown>
+  /** Present when one card covers every call a turn wants to run. */
+  calls?: ApprovalCall[]
   scope: ApprovalScope
   createdAt: string
 }
@@ -66,12 +78,22 @@ export type FileWritePermission = (typeof FILE_WRITE_PERMISSIONS)[number]
 
 export interface ApprovalDecision {
   approved: boolean
+  /** Batch only: per-call overrides keyed by `ApprovalCall.id`. Missing = `approved`. */
+  callDecisions?: Record<string, boolean>
   /** Exec only: allow this exact call again for the rest of the run. */
   remember?: boolean
   /** `fs_write` only: allow later file writes for this reply, or this chat. */
   fileWritePermission?: FileWritePermission
   /** Why the call was denied (shown to the model). */
   reason?: string
+}
+
+/** A call the loop wants to ask about, paired with its runtime tool. */
+export interface BatchApprovalCall {
+  /** The model's tool_call id. */
+  id: string
+  tool: RuntimeTool
+  args: Record<string, unknown>
 }
 
 export type AgentLoopEvent =

@@ -19,6 +19,7 @@ import {
 import type {
   AgentLoopEvent,
   ApprovalDecision,
+  BatchApprovalCall,
   LlmExchange,
   RuntimeTool,
   ToolExecutionTrace,
@@ -53,6 +54,11 @@ export interface AgentLoopOptions {
   policy: ApprovalPolicy
   /** Ask the user about a call that needs approval. */
   approve: (tool: RuntimeTool, args: Record<string, unknown>) => Promise<ApprovalDecision>
+  /**
+   * Ask once for every call in a turn that needs approval, instead of one card
+   * per call. Missing decisions deny that call; the loop never asks twice.
+   */
+  approveBatch?: (calls: BatchApprovalCall[]) => Promise<Record<string, ApprovalDecision>>
   onEvent?: (event: AgentLoopEvent) => void
   /** Full prompt/reply for audit logs; not sent on the chat SSE. */
   onLlmExchange?: (exchange: LlmExchange) => void
@@ -174,7 +180,8 @@ async function runTool(
   callId: string,
   name: string,
   args: Record<string, unknown>,
-  options: AgentLoopOptions
+  options: AgentLoopOptions,
+  preapproved?: ApprovalDecision
 ): Promise<ToolExecutionTrace> {
   const started = Date.now()
   const base = {
@@ -187,17 +194,8 @@ async function runTool(
     return { ...base, error: `Unknown tool "${name}"`, durationMs: 0 }
   }
 
-  options.onEvent?.({
-    type: "tool_call",
-    id: callId,
-    tool: tool.originalName,
-    server: tool.server,
-    args,
-    risk: riskOf(tool, args),
-  })
-
   if (needsApproval(tool, args, options.policy)) {
-    const decision = await options.approve(tool, args)
+    const decision = preapproved ?? (await options.approve(tool, args))
     checkAborted(options.signal)
     if (!decision.approved) {
       return {
@@ -399,14 +397,46 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     if (selected.calls.length > 0) {
       messages.push({ role: "assistant", content, tool_calls: selected.calls })
     }
+    // Announce every call first, then ask once for the ones that need approval.
+    for (const call of selected.calls) {
+      const tool = toolMap.get(call.name)
+      if (!tool) continue
+      options.onEvent?.({
+        type: "tool_call",
+        id: call.id,
+        tool: tool.originalName,
+        server: tool.server,
+        args: call.arguments,
+        risk: riskOf(tool, call.arguments),
+      })
+    }
+    const pending: BatchApprovalCall[] = selected.calls.flatMap((call) => {
+      const tool = toolMap.get(call.name)
+      return tool && needsApproval(tool, call.arguments, options.policy)
+        ? [{ id: call.id, tool, args: call.arguments }]
+        : []
+    })
+    const batchDecisions =
+      pending.length > 0 && options.approveBatch
+        ? await options.approveBatch(pending)
+        : undefined
+    checkAborted(options.signal)
+
     for (const call of selected.calls) {
       checkAborted(options.signal)
+      const preapproved = batchDecisions
+        ? batchDecisions[call.id] ?? {
+            approved: false,
+            reason: "No approval decision was recorded for this call",
+          }
+        : undefined
       const trace = await runTool(
         toolMap.get(call.name),
         call.id,
         call.name,
         call.arguments,
-        options
+        options,
+        preapproved
       )
       toolExecutions.push(trace)
       options.onEvent?.({ type: "tool_result", trace })

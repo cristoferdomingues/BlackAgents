@@ -6,7 +6,11 @@ import { markInvalidOnAuthFailure } from "@/lib/llm/credentials"
 import { modelPrice } from "@/lib/llm/pricing"
 import { ProviderError } from "@/lib/llm/types"
 import { AgentContextLimitError, LoopAbortedError } from "@/lib/runtime/agent-loop"
-import { createRegistryApprover, denyAllApprover } from "@/lib/runtime/ask-user"
+import {
+  createRegistryApprover,
+  createRegistryBatchApprover,
+  denyAllApprover,
+} from "@/lib/runtime/ask-user"
 import { sseResponse } from "@/lib/sse"
 
 const CONTEXT_LIMIT_MESSAGE =
@@ -75,6 +79,16 @@ export async function POST(req: Request) {
             onRequest: (approval) => send("approval_required", { approval }),
             onResolved: (approval, decision) =>
               send("approval_resolved", { id: approval.id, approved: decision.approved }),
+          }),
+          approveBatch: createRegistryBatchApprover({
+            scope: { kind: "chat" },
+            signal,
+            onRequest: (approval) => send("approval_required", { approval }),
+            onResolved: (approval, decisions) =>
+              send("approval_resolved", {
+                id: approval.id,
+                approved: Object.values(decisions).every((decision) => decision.approved),
+              }),
           }),
           onEvent: (event) => send(event.type, event),
           onMemoryFolding: () => send("memory_folding", {}),

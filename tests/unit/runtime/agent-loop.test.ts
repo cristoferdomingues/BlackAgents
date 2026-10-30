@@ -131,6 +131,52 @@ describe("runAgentLoop", () => {
     expect(result.toolExecutions[1].error).toBe("The user denied this tool call")
   })
 
+  it("asks once for every call in a turn and honors per-call denials", async () => {
+    const write = fakeTool("write", "write")
+    const exec = fakeTool("exec", "exec")
+    const provider = scriptedProvider([
+      { toolCalls: [call("a", "write"), call("b", "exec")] },
+      { content: "ok" },
+    ])
+    const approve = vi.fn()
+    const approveBatch = vi.fn().mockResolvedValue({
+      a: { approved: true },
+      b: { approved: false, reason: "no" },
+    })
+
+    const result = await runAgentLoop(
+      options({ provider, tools: [write, exec], approve, approveBatch })
+    )
+
+    expect(approveBatch).toHaveBeenCalledTimes(1)
+    expect(approveBatch.mock.calls[0][0]).toMatchObject([
+      { id: "a", tool: write },
+      { id: "b", tool: exec },
+    ])
+    expect(approve).not.toHaveBeenCalled()
+    expect(write.calls).toHaveLength(1)
+    expect(exec.calls).toHaveLength(0)
+    expect(result.toolExecutions[1].error).toBe("no")
+  })
+
+  it("denies a pending call the batch did not decide", async () => {
+    const write = fakeTool("write", "write")
+    const provider = scriptedProvider([
+      { toolCalls: [call("a", "write")] },
+      { content: "ok" },
+    ])
+    const approve = vi.fn()
+    const approveBatch = vi.fn().mockResolvedValue({})
+
+    const result = await runAgentLoop(
+      options({ provider, tools: [write], approve, approveBatch })
+    )
+
+    expect(approve).not.toHaveBeenCalled()
+    expect(write.calls).toHaveLength(0)
+    expect(result.toolExecutions[0].error).toMatch(/No approval decision/)
+  })
+
   it("auto-approves writes when allowed but still asks for exec", async () => {
     const write = fakeTool("write", "write")
     const exec = fakeTool("exec", "exec")

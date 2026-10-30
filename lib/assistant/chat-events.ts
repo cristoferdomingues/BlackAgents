@@ -18,6 +18,15 @@ export const toolTraceSchema = z.object({
   durationMs: z.number().optional(),
 })
 
+export const approvalCallSchema = z.object({
+  id: z.string(),
+  tool: z.string(),
+  server: z.string(),
+  risk: z.enum(["read", "write", "exec"]),
+  summary: z.string(),
+  args: z.record(z.unknown()),
+})
+
 export const approvalRequestSchema = z.object({
   id: z.string(),
   tool: z.string(),
@@ -25,6 +34,8 @@ export const approvalRequestSchema = z.object({
   risk: z.enum(["read", "write", "exec"]),
   summary: z.string(),
   args: z.record(z.unknown()),
+  /** Present when one card covers every call a turn wants to run. */
+  calls: z.array(approvalCallSchema).optional(),
   scope: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("chat") }),
     z.object({ kind: z.literal("run"), runId: z.string(), stepId: z.string(), workflow: z.string() }),

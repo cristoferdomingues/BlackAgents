@@ -13,7 +13,12 @@ import {
   requestApproval,
   resolveApproval,
 } from "@/lib/runtime/approvals"
-import { createRegistryApprover, denyAllApprover } from "@/lib/runtime/ask-user"
+import {
+  createRegistryApprover,
+  createRegistryBatchApprover,
+  denyAllApprover,
+} from "@/lib/runtime/ask-user"
+import type { ApprovalRequest } from "@/lib/runtime/types"
 
 import { fakeTool } from "../../helpers/runtime"
 
@@ -134,5 +139,47 @@ describe("approval registry", () => {
     const decision = await denyAllApprover(fakeTool("x", "exec"), {})
     expect(decision.approved).toBe(false)
     expect(decision.reason).toMatch(/streaming chat/)
+  })
+
+  it("batches calls into one request and maps per-call decisions", async () => {
+    const calls = [
+      { id: "c1", tool: fakeTool("fs_write", "write"), args: { path: "a.md" } },
+      { id: "c2", tool: fakeTool("shell_run", "exec"), args: { command: "npm test" } },
+    ]
+    let request: ApprovalRequest | undefined
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (pending) => {
+        request = pending
+        resolveApproval(pending.id, {
+          approved: true,
+          callDecisions: { c1: true, c2: false },
+        })
+      },
+    })
+
+    const decisions = await approve(calls)
+
+    expect(request?.calls).toHaveLength(2)
+    expect(request?.risk).toBe("exec")
+    expect(request?.summary).toBe("2 tool calls need approval")
+    expect(decisions.c1).toEqual({ approved: true })
+    expect(decisions.c2).toMatchObject({ approved: false })
+  })
+
+  it("keeps a single call on the familiar shape", async () => {
+    const tool = fakeTool("fs_write", "write")
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (request) => {
+        expect(request.tool).toBe("fs_write")
+        expect(request.calls).toHaveLength(1)
+        resolveApproval(request.id, { approved: true, fileWritePermission: "message" })
+      },
+    })
+
+    await expect(approve([{ id: "c1", tool, args: { path: "a" } }])).resolves.toEqual({
+      c1: { approved: true, fileWritePermission: "message" },
+    })
   })
 })

@@ -23,7 +23,11 @@ const RISK_LABEL: Record<ApprovalRequest["risk"], string> = {
   exec: "Runs a program",
 }
 
-/** Approve / deny one tool call that is waiting for the user. */
+/**
+ * Approve / deny one tool call, or every call a turn wants to run. A batch
+ * card lists each call with a checkbox so one decision covers the whole plan
+ * instead of asking again for every call.
+ */
 export function ApprovalCard({
   approval,
   rememberLabel = "Allow this exact call again in this run",
@@ -37,6 +41,11 @@ export function ApprovalCard({
 }) {
   const [busy, setBusy] = React.useState<"approve" | "deny" | "remember" | "message" | "session" | null>(null)
   const [muted, setMuted] = React.useState(isApprovalSoundMuted)
+  const calls = approval.calls ?? []
+  const batch = calls.length > 1
+  const [selected, setSelected] = React.useState<Record<string, boolean>>(() =>
+    Object.fromEntries(calls.map((call) => [call.id, true]))
+  )
 
   React.useEffect(() => {
     void alertForApproval(approval.id)
@@ -48,16 +57,35 @@ export function ApprovalCard({
     setMuted(next)
     if (!next) void playApprovalChime()
   }
+  const allFileWrites =
+    calls.length > 0 &&
+    calls.every(
+      (call) =>
+        call.server === "builtin" &&
+        isFileWriteTool(call.tool) &&
+        call.risk === "write"
+    )
   const fileWriteChoice =
     approval.scope.kind === "chat" &&
-    approval.server === "builtin" &&
-    isFileWriteTool(approval.tool) &&
-    approval.risk === "write"
+    (batch
+      ? allFileWrites
+      : approval.server === "builtin" &&
+        isFileWriteTool(approval.tool) &&
+        approval.risk === "write")
+  const batchDecisions = batch
+    ? Object.fromEntries(calls.map((call) => [call.id, selected[call.id] !== false]))
+    : undefined
+  const selectedCount = batch
+    ? calls.filter((call) => selected[call.id] !== false).length
+    : 0
+  const risks = new Set(calls.map((call) => call.risk))
+  const riskLabel = batch && risks.size > 1 ? "Mixed" : RISK_LABEL[approval.risk]
 
   async function decide(
     approved: boolean,
     remember = false,
-    fileWritePermission?: FileWritePermission
+    fileWritePermission?: FileWritePermission,
+    callDecisions?: Record<string, boolean>
   ) {
     const action = !approved
       ? "deny"
@@ -74,7 +102,12 @@ export function ApprovalCard({
         `/api/approvals/${encodeURIComponent(approval.id)}`,
         {
           method: "POST",
-          body: JSON.stringify({ approved, remember, fileWritePermission }),
+          body: JSON.stringify({
+            approved,
+            remember,
+            fileWritePermission,
+            ...(callDecisions ? { callDecisions } : {}),
+          }),
         }
       )
       onResolved?.(approved, result.fileWritePermission)
@@ -88,7 +121,9 @@ export function ApprovalCard({
   return (
     <div
       role="alert"
-      aria-label={`Approval needed for ${approval.tool}`}
+      aria-label={
+        batch ? `Approval needed for ${calls.length} tool calls` : `Approval needed for ${approval.tool}`
+      }
       className={cn(
         "space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-left text-sm",
         className
@@ -96,11 +131,15 @@ export function ApprovalCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <ShieldAlert className="h-4 w-4 text-amber-500" />
-        <span className="font-medium">Approval needed</span>
-        <Badge variant="outline">{RISK_LABEL[approval.risk]}</Badge>
-        <span className="text-xs text-muted-foreground">
-          {approval.server === "builtin" ? approval.tool : `${approval.server} → ${approval.tool}`}
+        <span className="font-medium">
+          {batch ? `${calls.length} tool calls need approval` : "Approval needed"}
         </span>
+        <Badge variant="outline">{riskLabel}</Badge>
+        {batch ? null : (
+          <span className="text-xs text-muted-foreground">
+            {approval.server === "builtin" ? approval.tool : `${approval.server} → ${approval.tool}`}
+          </span>
+        )}
         <Button
           type="button"
           size="icon"
@@ -114,21 +153,57 @@ export function ApprovalCard({
           {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
         </Button>
       </div>
-      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/60 p-2 font-mono text-xs">
-        {approval.summary}
-      </pre>
+      {batch ? (
+        <ul className="max-h-80 space-y-1 overflow-auto">
+          {calls.map((call) => (
+            <li
+              key={call.id}
+              className="flex items-start gap-2 rounded-md border bg-background/60 p-2"
+            >
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-amber-500"
+                checked={selected[call.id] !== false}
+                onChange={(event) =>
+                  setSelected((prev) => ({ ...prev, [call.id]: event.target.checked }))
+                }
+                aria-label={`Include ${call.tool} in this approval`}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{RISK_LABEL[call.risk]}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {call.server === "builtin" ? call.tool : `${call.server} → ${call.tool}`}
+                  </span>
+                </div>
+                <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/60 p-2 font-mono text-xs">
+                  {call.summary}
+                </pre>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/60 p-2 font-mono text-xs">
+          {approval.summary}
+        </pre>
+      )}
       <div className="flex flex-wrap gap-2">
         {fileWriteChoice ? (
           <>
-            <Button size="sm" onClick={() => decide(true, false, "message")} disabled={busy !== null}>
+            <Button
+              size="sm"
+              onClick={() => decide(true, false, "message", batchDecisions)}
+              disabled={busy !== null || (batch && selectedCount === 0)}
+            >
               {busy === "message" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Allow for this message
             </Button>
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => decide(true, false, "session")}
-              disabled={busy !== null}
+              onClick={() => decide(true, false, "session", batchDecisions)}
+              disabled={busy !== null || (batch && selectedCount === 0)}
             >
               {busy === "session" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Allow for this session
@@ -136,11 +211,19 @@ export function ApprovalCard({
           </>
         ) : (
           <>
-            <Button size="sm" onClick={() => decide(true)} disabled={busy !== null}>
+            <Button
+              size="sm"
+              onClick={() => decide(true, false, undefined, batchDecisions)}
+              disabled={busy !== null || (batch && selectedCount === 0)}
+            >
               {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Approve
+              {batch
+                ? selectedCount === calls.length
+                  ? `Approve all ${calls.length}`
+                  : `Approve ${selectedCount} of ${calls.length}`
+                : "Approve"}
             </Button>
-            {approval.risk === "exec" ? (
+            {!batch && approval.risk === "exec" ? (
               <Button
                 size="sm"
                 variant="secondary"

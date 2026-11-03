@@ -14,10 +14,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:58Z'
+status: draft
 ---
 
 # Architecture Overview
@@ -153,3 +153,4 @@ Pages fetch through `lib/api.ts`; mutations POST/PUT/DELETE to the same routes a
 - [Agent Runtime & Approvals](./agent-runtime-approvals.md) · [MCP Servers](./mcp-servers.md) · [Jev Decision Engine](./jev-decision-engine.md) · [Workflows](./workflows.md) · [Second Brain](./second-brain.md)
 - [Electron Desktop](./electron-desktop.md) · [Browser Automation](../specs/browser-automation.md)
 - [API Reference](../api/api-reference.md)
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

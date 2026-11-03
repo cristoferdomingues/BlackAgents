@@ -1,7 +1,9 @@
 ---
 type: Spec
 title: Meeting Secretary
-description: listen to a call in any app, take notes, and turn them into knowledge or artifacts
+description: >-
+  listen to a call in any app, take notes, and turn them into knowledge or
+  artifacts
 tags:
   - blackagents
   - spec
@@ -184,3 +186,4 @@ interface MeetingNotes {
 - [Assisted Artifact Drafting](./assisted-artifact-drafting.md) — the draft flow "Build from this meeting" reuses
 - [LLM Integration](../architecture/llm-integration.md) — providers, transcription, and the fenced-JSON protocol
 - [Future Phases](../roadmap/future-phases.md) — where this sits on the roadmap
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

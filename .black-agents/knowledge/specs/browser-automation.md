@@ -18,10 +18,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:45Z'
+status: draft
 ---
 
 # Browser Automation
@@ -195,3 +195,4 @@ Blank workspace template also seeds `time-registrar`, the `time-registration` sk
 - [Workflows](../architecture/workflows.md) — daily scheduler while the app is open
 - [API Reference](../api/api-reference.md) — `/api/browser*`
 - [UI Overview](../ui/ui-overview.md) — Settings → Browser tab
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

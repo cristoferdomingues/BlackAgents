@@ -140,3 +140,4 @@ The `@` menu lists workflows as their own group and inserts `@workflow:<name>`.
 - [Jev Decision Engine](./jev-decision-engine.md)
 - [Second Brain](./second-brain.md)
 - [API Reference](../api/api-reference.md) — `/api/workflows`, `/api/runs`
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

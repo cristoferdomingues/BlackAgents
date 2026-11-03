@@ -15,10 +15,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:46Z'
+status: draft
 ---
 
 # Agent Models (phase 2)
@@ -178,3 +178,4 @@ Filesystem tests use `makeTempEnv`; never touch the real workspace or `~/.black-
 - [Workflow Step Models](./workflow-step-models.md) — next phase
 - [Artifact Mentions](./artifact-mentions.md) — another agent-editor feature
 - [LLM Integration](../architecture/llm-integration.md)
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

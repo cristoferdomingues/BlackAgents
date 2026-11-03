@@ -1,7 +1,9 @@
 ---
 type: Spec
 title: K0ding
-description: open a code project, see its file tree, read files, and ask the LLM to implement changes that you review before they are written
+description: >-
+  open a code project, see its file tree, read files, and ask the LLM to
+  implement changes that you review before they are written
 tags:
   - blackagents
   - spec
@@ -208,3 +210,4 @@ All routes use the standard envelope (`ok` / `fail` / `handle`), return 412 when
 - [Meeting Secretary](./meeting-secretary.md) — the same module shape (lib, API, page, model picker)
 - [MCP Servers](../architecture/mcp-servers.md) — where a server built in K0ding is added to test it
 - [Future Phases](../roadmap/future-phases.md) — where this sits on the roadmap
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

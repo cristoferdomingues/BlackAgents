@@ -15,10 +15,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:44Z'
+status: draft
 ---
 
 # Model Routing
@@ -140,3 +140,4 @@ Never put API keys in errors or logs.
 - [LLM Integration](../architecture/llm-integration.md) — providers, credentials, voice model
 - [Workflows](../architecture/workflows.md) — runner and executor
 - [Future Phases](../roadmap/future-phases.md) — roadmap
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

@@ -14,10 +14,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:16:00Z'
+status: draft
 ---
 
 # BlackAgents — Overview
@@ -81,3 +81,4 @@ BlackAgents is a generic evolution of the `edu-sidekick` toolkit. Sidekick prove
 - [Getting Started](./getting-started.md)
 - [Architecture Overview](../architecture/architecture-overview.md)
 - [Future Phases](../roadmap/future-phases.md)
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

@@ -16,10 +16,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:57Z'
+status: draft
 ---
 
 # Electron Desktop
@@ -264,3 +264,4 @@ Code signing is also a prerequisite for a trustworthy automatic-update flow.
 - [Workspace & Filesystem Safety](./workspace-filesystem-safety.md)
 - [Testing](../overview/testing.md)
 - [Releases](../devops/releases.md)
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

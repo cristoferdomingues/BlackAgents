@@ -14,10 +14,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:52Z'
+status: draft
 ---
 
 # Agents
@@ -70,3 +70,5 @@ Each agent also has its own memory in the [Second Brain](../architecture/second-
 - [Skills](./skills.md) — what agents read
 - [Rules](./rules.md) — what agents obey
 - [Authoring Standards](./authoring-standards.md)
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
+- [BlackAgent evolving](../meeting/2026-10-30-blackagent-evolving-dec6.md)

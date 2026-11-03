@@ -16,10 +16,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:57Z'
+status: draft
 ---
 
 # Jev Decision Engine
@@ -97,3 +97,4 @@ If the description has no “Use when”, “Read when”, “when the user”, 
 - [Second Brain](./second-brain.md) — learning decisions and note relevance
 - [LLM Integration](./llm-integration.md)
 - [Skills](../artifacts/skills.md) — the description is the trigger Jev reads
+- [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)

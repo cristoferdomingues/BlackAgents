@@ -10,7 +10,7 @@ const putSchema = z.object({
   trusted: z.boolean(),
 })
 
-/** Shell approval trust for the active workspace (`.black-agents/approval-trust.json`). */
+/** Shell approval trust for the active workspace (`~/.black-agents/approval-trust.json`). */
 export async function GET() {
   return handle(async () => {
     const config = await readConfig()

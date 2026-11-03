@@ -66,6 +66,10 @@ export interface ApprovalCall {
   risk: ToolRisk
   summary: string
   args: Record<string, unknown>
+  /** True when a shell command runs code defined by the workspace. */
+  projectCode?: boolean
+  /** True when a shell command points outside the workspace. */
+  escapesWorkspace?: boolean
   /** Present when the card can remember this call's trust across chats. */
   trust?: ApprovalTrustHint
 }
@@ -77,6 +81,10 @@ export interface ApprovalRequest {
   risk: ToolRisk
   summary: string
   args: Record<string, unknown>
+  /** True when a shell command runs code defined by the workspace. */
+  projectCode?: boolean
+  /** True when a shell command points outside the workspace. */
+  escapesWorkspace?: boolean
   /** Present when one card covers every call a turn wants to run. */
   calls?: ApprovalCall[]
   /** Set when every call in the card shares one persistent trust grant. */

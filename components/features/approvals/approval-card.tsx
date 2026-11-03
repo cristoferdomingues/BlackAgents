@@ -23,6 +23,18 @@ const RISK_LABEL: Record<ApprovalRequest["risk"], string> = {
   exec: "Runs a program",
 }
 
+type RiskFlags = {
+  risk: ApprovalRequest["risk"]
+  projectCode?: boolean
+  escapesWorkspace?: boolean
+}
+
+function riskLabelOf(call: RiskFlags): string {
+  if (call.projectCode) return "Runs project code"
+  if (call.escapesWorkspace) return "Outside workspace"
+  return RISK_LABEL[call.risk]
+}
+
 function trustLabel(hint: ApprovalTrustHint): string {
   return hint.kind === "mcp"
     ? `Always trust ${hint.server}`
@@ -86,8 +98,8 @@ export function ApprovalCard({
   const selectedCount = batch
     ? calls.filter((call) => selected[call.id] !== false).length
     : 0
-  const risks = new Set(calls.map((call) => call.risk))
-  const riskLabel = batch && risks.size > 1 ? "Mixed" : RISK_LABEL[approval.risk]
+  const labels = new Set(calls.map(riskLabelOf))
+  const riskLabel = batch && labels.size > 1 ? "Mixed" : riskLabelOf(approval)
   // One grant the whole card can remember, when every call shares it.
   const trustHint = approval.trust ?? (calls.length === 1 ? calls[0].trust : undefined)
 
@@ -211,7 +223,7 @@ export function ApprovalCard({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{RISK_LABEL[call.risk]}</Badge>
+                  <Badge variant="outline">{riskLabelOf(call)}</Badge>
                   <span className="text-xs text-muted-foreground">
                     {call.server === "builtin" ? call.tool : `${call.server} → ${call.tool}`}
                   </span>

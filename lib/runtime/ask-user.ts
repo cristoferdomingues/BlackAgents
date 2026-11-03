@@ -1,4 +1,4 @@
-import { riskOf } from "./approval-policy"
+import { riskOf, shellAnalysisOf } from "./approval-policy"
 import { requestApproval } from "./approvals"
 import { isFileWriteTool } from "./tool-names"
 import { analyzeShellCommand } from "./tools/shell-risk"
@@ -89,8 +89,10 @@ export function createRegistryBatchApprover(options: {
     if (calls.length === 0) return {}
     const single = calls.length === 1
     const trustHints = calls.map((call) => trustHintForTool(call.tool, call.args))
+    const analyses = calls.map((call) => shellAnalysisOf(call.tool, call.args))
     const requestCalls: ApprovalCall[] = calls.map((call, index) => {
       const trust = trustHints[index]
+      const analysis = analyses[index]
       return {
         id: call.id,
         tool: call.tool.originalName,
@@ -98,10 +100,13 @@ export function createRegistryBatchApprover(options: {
         risk: riskOf(call.tool, call.args),
         summary: summarize(call.tool, call.args),
         args: call.args,
+        ...(analysis?.projectCode ? { projectCode: true } : {}),
+        ...(analysis?.escapesWorkspace ? { escapesWorkspace: true } : {}),
         ...(trust ? { trust } : {}),
       }
     })
     const trust = commonTrustHint(trustHints)
+    const singleAnalysis = single ? analyses[0] : undefined
     const handle = requestApproval(
       {
         tool: single ? requestCalls[0].tool : "batch",
@@ -109,6 +114,8 @@ export function createRegistryBatchApprover(options: {
         risk: highestRisk(calls),
         summary: single ? requestCalls[0].summary : `${calls.length} tool calls need approval`,
         args: single ? requestCalls[0].args : {},
+        ...(singleAnalysis?.projectCode ? { projectCode: true } : {}),
+        ...(singleAnalysis?.escapesWorkspace ? { escapesWorkspace: true } : {}),
         calls: requestCalls,
         ...(trust ? { trust } : {}),
         scope: options.scope,
@@ -147,6 +154,7 @@ export function createRegistryApprover(options: {
 }): Approver {
   return async (tool, args) => {
     const trust = trustHintForTool(tool, args)
+    const analysis = shellAnalysisOf(tool, args)
     const handle = requestApproval(
       {
         tool: tool.originalName,
@@ -154,6 +162,8 @@ export function createRegistryApprover(options: {
         risk: riskOf(tool, args),
         summary: tool.summarize?.(args) ?? `${tool.originalName}(${JSON.stringify(args)})`,
         args,
+        ...(analysis?.projectCode ? { projectCode: true } : {}),
+        ...(analysis?.escapesWorkspace ? { escapesWorkspace: true } : {}),
         ...(trust ? { trust } : {}),
         scope: options.scope,
       },

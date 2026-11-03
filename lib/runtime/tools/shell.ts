@@ -166,7 +166,8 @@ export const shellRunTool: RuntimeTool = {
     "A program plus args runs directly, with no shell, and works the same on every operating system. " +
     "`cwd` is a folder relative to the workspace root. Commands must finish on their own: do not start " +
     "dev servers or watch modes (use build/test commands instead). Read-only commands run directly; " +
-    "anything that writes, installs, or runs arbitrary code asks the user first.",
+    "anything that writes, runs project code (tests, builds, linters), reads outside the workspace, " +
+    "installs, or runs arbitrary code asks the user first.",
   parameters: {
     type: "object",
     properties: {

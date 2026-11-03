@@ -95,8 +95,19 @@ describe("approval policy", () => {
 
   it("runs read-only shell commands and asks before the rest", () => {
     expect(needsApproval(shellRunTool, { command: "git status" }, createApprovalPolicy())).toBe(false)
-    expect(needsApproval(shellRunTool, { command: "npm test" }, createApprovalPolicy())).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm test" }, createApprovalPolicy())).toBe(true)
     expect(needsApproval(shellRunTool, { command: "npm install" }, createApprovalPolicy())).toBe(true)
+  })
+
+  it("does not let allowWrites skip project code or reads outside the workspace", () => {
+    const policy = createApprovalPolicy(true)
+    expect(needsApproval(shellRunTool, { command: "mkdir out" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "cp a b" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm test" }, policy)).toBe(true)
+    expect(needsApproval(shellRunTool, { command: "cat /etc/passwd" }, policy)).toBe(true)
+    // Git commits can run repository hooks; plain staging cannot.
+    expect(needsApproval(shellRunTool, { command: "git add ." }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "git commit -m x" }, policy)).toBe(true)
   })
 
   it("skips a trusted write-risk shell command but never an exec one", () => {
@@ -115,6 +126,18 @@ describe("approval policy", () => {
     expect(needsApproval(shellRunTool, { command: "mkdir out && cp a b" }, policy)).toBe(false)
   })
 
+  it("trusts project-code programs but never escapes or installs", () => {
+    const policy = createApprovalPolicy()
+    policy.trustedShellCommands.add("npm")
+    expect(needsApproval(shellRunTool, { command: "npm test" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm run build" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "npm install" }, policy)).toBe(true)
+
+    policy.trustedShellCommands.add("cp")
+    expect(needsApproval(shellRunTool, { command: "cp a b" }, policy)).toBe(false)
+    expect(needsApproval(shellRunTool, { command: "cp a /tmp/b" }, policy)).toBe(true)
+  })
+
   it("offers a shell trust hint only for plain write commands", () => {
     expect(trustHintForTool(shellRunTool, { command: "mkdir -p out" })).toEqual({
       kind: "shell",
@@ -124,9 +147,14 @@ describe("approval policy", () => {
       kind: "shell",
       programs: ["cp", "mkdir"],
     })
+    expect(trustHintForTool(shellRunTool, { command: "npm test" })).toEqual({
+      kind: "shell",
+      programs: ["npm"],
+    })
     expect(trustHintForTool(shellRunTool, { command: "mkdir out > log" })).toBeUndefined()
     expect(trustHintForTool(shellRunTool, { command: "git push" })).toBeUndefined()
     expect(trustHintForTool(shellRunTool, { command: "git status" })).toBeUndefined()
+    expect(trustHintForTool(shellRunTool, { command: "cat /etc/passwd" })).toBeUndefined()
   })
 
   it("offers server trust for write-risk MCP calls only", () => {
@@ -229,6 +257,43 @@ describe("approval registry", () => {
     await expect(approve([{ id: "c1", tool, args: { path: "a" } }])).resolves.toEqual({
       c1: { approved: true, fileWritePermission: "message" },
     })
+  })
+
+  it("labels project-code and escaping shell calls on the card", async () => {
+    let request: ApprovalRequest | undefined
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (pending) => {
+        request = pending
+        resolveApproval(pending.id, { approved: true })
+      },
+    })
+
+    await approve([
+      { id: "c1", tool: shellRunTool, args: { command: "npm test" } },
+      { id: "c2", tool: shellRunTool, args: { command: "cat /etc/passwd" } },
+    ])
+
+    expect(request?.calls?.[0].projectCode).toBe(true)
+    expect(request?.calls?.[0].escapesWorkspace).toBeUndefined()
+    expect(request?.calls?.[1].escapesWorkspace).toBe(true)
+    expect(request?.calls?.[1].projectCode).toBeUndefined()
+  })
+
+  it("marks a single project-code call on the request", async () => {
+    let request: ApprovalRequest | undefined
+    const approve = createRegistryBatchApprover({
+      scope: { kind: "chat" },
+      onRequest: (pending) => {
+        request = pending
+        resolveApproval(pending.id, { approved: true })
+      },
+    })
+
+    await approve([{ id: "c1", tool: shellRunTool, args: { command: "npm test" } }])
+
+    expect(request?.projectCode).toBe(true)
+    expect(request?.calls?.[0].projectCode).toBe(true)
   })
 
   it("adds one trust hint when every call shares it", async () => {

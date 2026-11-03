@@ -30,6 +30,8 @@ export const approvalCallSchema = z.object({
   risk: z.enum(["read", "write", "exec"]),
   summary: z.string(),
   args: z.record(z.unknown()),
+  projectCode: z.boolean().optional(),
+  escapesWorkspace: z.boolean().optional(),
   trust: approvalTrustSchema.optional(),
 })
 
@@ -40,6 +42,8 @@ export const approvalRequestSchema = z.object({
   risk: z.enum(["read", "write", "exec"]),
   summary: z.string(),
   args: z.record(z.unknown()),
+  projectCode: z.boolean().optional(),
+  escapesWorkspace: z.boolean().optional(),
   /** Present when one card covers every call a turn wants to run. */
   calls: z.array(approvalCallSchema).optional(),
   /** Set when every call in the card shares one persistent trust grant. */

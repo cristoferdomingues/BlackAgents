@@ -1,45 +1,71 @@
+import { promises as fs } from "node:fs"
+import path from "node:path"
 import { z } from "zod"
 
-import { pathExists, readText, resolveInWorkspace, writeText } from "@/lib/fs-service"
+import { configDir } from "@/lib/config"
 
 import { normalizeShellProgram } from "./tools/shell-risk"
 
 /**
- * Approval trust a workspace remembers across chats. Kept next to the other
- * workspace policy files so it travels with the project:
+ * Approval trust the user remembers across chats, stored at the user level
+ * (`~/.black-agents/approval-trust.json`) rather than inside the workspace.
+ * Keeping it out of the project means a cloned repository cannot ship
+ * pre-authorized shell commands.
  *
  * - `shellCommands` — programs whose plain write-risk commands run without a
- *   card (`mkdir`, `cp`). Read-only commands never needed one, and `exec`
- *   commands (redirects, installs, arbitrary code) always ask.
+ *   card (`mkdir`, `cp`, `npm`). Read-only commands never needed one, and
+ *   `exec` commands (redirects, installs, arbitrary code) always ask.
  *
  * MCP trust lives in `.black-agents/mcp-policy.json` (see `lib/mcp/policy`).
  */
+
+export const TRUST_FILENAME = "approval-trust.json"
+
 export const workspaceTrustSchema = z.object({
   shellCommands: z.array(z.string()).default([]),
 })
 export type WorkspaceTrust = z.infer<typeof workspaceTrustSchema>
 
-export const TRUST_PATH = ".black-agents/approval-trust.json"
+export const trustFileSchema = z.object({
+  workspaces: z.record(workspaceTrustSchema).default({}),
+})
+export type TrustFile = z.infer<typeof trustFileSchema>
 
-export async function readWorkspaceTrust(workspaceRoot: string): Promise<WorkspaceTrust> {
-  const abs = resolveInWorkspace(workspaceRoot, TRUST_PATH)
-  if (!(await pathExists(abs))) return { shellCommands: [] }
+/** Absolute path of the user-level trust file. */
+export function trustFilePath(): string {
+  return path.join(configDir(), TRUST_FILENAME)
+}
+
+function emptyTrustFile(): TrustFile {
+  return { workspaces: {} }
+}
+
+async function readTrustFile(): Promise<TrustFile> {
   try {
-    const parsed = workspaceTrustSchema.safeParse(JSON.parse(await readText(abs)) as unknown)
-    return parsed.success ? parsed.data : { shellCommands: [] }
+    const parsed = trustFileSchema.safeParse(
+      JSON.parse(await fs.readFile(trustFilePath(), "utf8")) as unknown
+    )
+    return parsed.success ? parsed.data : emptyTrustFile()
   } catch {
-    return { shellCommands: [] }
+    return emptyTrustFile()
   }
 }
 
-/** Add or remove programs from the workspace shell trust list. */
+/** Trust for one workspace, keyed by its absolute path. */
+export async function readWorkspaceTrust(workspaceRoot: string): Promise<WorkspaceTrust> {
+  const file = await readTrustFile()
+  return file.workspaces[path.resolve(workspaceRoot)] ?? { shellCommands: [] }
+}
+
+/** Add or remove programs from one workspace's shell trust list. */
 export async function setShellCommandsTrust(
   workspaceRoot: string,
   programs: readonly string[],
   trusted: boolean
 ): Promise<WorkspaceTrust> {
-  const trust = await readWorkspaceTrust(workspaceRoot)
-  const next = new Set(trust.shellCommands)
+  const key = path.resolve(workspaceRoot)
+  const file = await readTrustFile()
+  const next = new Set(file.workspaces[key]?.shellCommands ?? [])
   for (const value of programs) {
     const program = normalizeShellProgram(value)
     if (!program) continue
@@ -47,6 +73,14 @@ export async function setShellCommandsTrust(
     else next.delete(program)
   }
   const updated: WorkspaceTrust = { shellCommands: [...next].sort() }
-  await writeText(resolveInWorkspace(workspaceRoot, TRUST_PATH), `${JSON.stringify(updated, null, 2)}\n`)
+  const workspaces = { ...file.workspaces }
+  if (updated.shellCommands.length > 0) workspaces[key] = updated
+  else delete workspaces[key]
+  await fs.mkdir(configDir(), { recursive: true })
+  await fs.writeFile(
+    trustFilePath(),
+    `${JSON.stringify({ workspaces } satisfies TrustFile, null, 2)}\n`,
+    "utf8"
+  )
   return updated
 }

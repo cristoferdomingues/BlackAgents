@@ -7,11 +7,11 @@ import type { McpTool } from "@/lib/mcp/types"
 import type { RuntimeTool, ToolRisk } from "../types"
 
 /**
- * Risk of one MCP tool call. The workspace trust level sets the default, and
- * the server's own annotations refine it:
+ * Risk of one MCP tool call. The workspace trust level sets the default and the
+ * server's own annotations may only escalate it:
  *
  * - `destructiveHint` always asks, even for a trusted server.
- * - `readOnlyHint` runs directly under the default `ask` trust.
+ * - `readOnlyHint` is ignored: the server's word alone must not skip the card.
  *
  * Annotations are only hints from the server, so a `risky` server ignores them
  * and `destructiveHint` outranks every trust level.
@@ -20,7 +20,6 @@ export function mcpRisk(tool: McpTool, trust: McpTrust): ToolRisk {
   if (tool.annotations?.destructiveHint) return "exec"
   if (trust === "trusted") return "read"
   if (trust === "risky") return "exec"
-  if (tool.annotations?.readOnlyHint) return "read"
   return "write"
 }
 

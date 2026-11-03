@@ -422,14 +422,16 @@ describe("tool scope", () => {
     expect(toRuntimeTool(mcp, "risky").risk).toBe("exec")
   })
 
-  it("uses MCP annotations to refine the trust default", () => {
+  it("uses MCP annotations only to escalate risk", () => {
     const readOnly = {
       server: "docs",
       name: "search",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     }
-    expect(toRuntimeTool(readOnly, "ask").risk).toBe("read")
+    // A server's read-only hint must not skip the approval card.
+    expect(toRuntimeTool(readOnly, "ask").risk).toBe("write")
+    expect(toRuntimeTool(readOnly, "trusted").risk).toBe("read")
 
     const destructive = {
       server: "docs",

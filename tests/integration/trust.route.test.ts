@@ -1,7 +1,9 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { GET, PUT } from "@/app/api/trust/route"
-import { readWorkspaceTrust } from "@/lib/runtime/trust"
+import { readWorkspaceTrust, TRUST_FILENAME, trustFilePath } from "@/lib/runtime/trust"
 
 import { jsonRequest, makeTempEnv, type TempEnv } from "../helpers/workspace"
 
@@ -33,6 +35,12 @@ describe("/api/trust", () => {
     await expect(readWorkspaceTrust(env.workspace)).resolves.toEqual({
       shellCommands: ["cp", "mkdir"],
     })
+    const raw = JSON.parse(await readFile(trustFilePath(), "utf8")) as unknown
+    expect(raw).toEqual({
+      workspaces: {
+        [path.resolve(env.workspace)]: { shellCommands: ["cp", "mkdir"] },
+      },
+    })
   })
 
   it("removes a grant and rejects unusable names", async () => {
@@ -53,5 +61,16 @@ describe("/api/trust", () => {
       jsonRequest("http://t/api/trust", "PUT", { shellCommands: [], trusted: true })
     )
     expect(empty.status).toBe(400)
+  })
+
+  it("ignores a trust file shipped inside the workspace", async () => {
+    await mkdir(path.join(env.workspace, ".black-agents"), { recursive: true })
+    await writeFile(
+      path.join(env.workspace, ".black-agents", TRUST_FILENAME),
+      JSON.stringify({ shellCommands: ["rm"] }),
+      "utf8"
+    )
+    const res = await GET()
+    expect((await res.json()).data).toEqual({ shellCommands: [] })
   })
 })

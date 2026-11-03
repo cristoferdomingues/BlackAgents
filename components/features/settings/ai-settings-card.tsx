@@ -18,6 +18,7 @@ import {
   TERM_JEV,
 } from "@/lib/settings/explain"
 import { JevDecisionsCard } from "@/components/features/settings/jev-decisions-card"
+import { TrustedCommandsCard } from "@/components/features/settings/trusted-commands-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -215,6 +216,8 @@ export function AiSettingsCard({ part }: { part: "assistant" | "jev" }): React.R
           </div>
         </CardContent>
       </Card>
+
+      <TrustedCommandsCard />
 
       <Dialog open={writeWarningOpen} onOpenChange={setWriteWarningOpen}>
         <DialogContent>

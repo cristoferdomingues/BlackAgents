@@ -1,5 +1,5 @@
 import { isFileWriteTool } from "./tool-names"
-import { analyzeShellCommand } from "./tools/shell-risk"
+import { analyzeShellCommand, type ShellAnalysis } from "./tools/shell-risk"
 import type { RuntimeTool, ToolRisk } from "./types"
 
 /** Per-request (chat) or per-run (workflow) approval state. */
@@ -54,10 +54,20 @@ export function riskOf(tool: RuntimeTool, args: Record<string, unknown>): ToolRi
   return tool.riskFor ? tool.riskFor(args) : tool.risk
 }
 
+/** Classify a builtin `shell_run` call, or `undefined` for every other tool. */
+export function shellAnalysisOf(
+  tool: RuntimeTool,
+  args: Record<string, unknown>
+): ShellAnalysis | undefined {
+  if (tool.source !== "builtin" || tool.originalName !== "shell_run") return undefined
+  return analyzeShellCommand(args.command, args.args)
+}
+
 /**
  * A shell call the workspace remembers: a plain sequence of write-risk
- * programs the user trusted, with no redirect or substitution. `exec`
- * commands are never trustable, so trusting `git` never covers `git push`.
+ * programs the user trusted, with no redirect, substitution or workspace
+ * escape. `exec` commands are never trustable, so trusting `git` never covers
+ * `git push`.
  */
 function isTrustedShellCall(
   tool: RuntimeTool,
@@ -65,8 +75,8 @@ function isTrustedShellCall(
   policy: ApprovalPolicy
 ): boolean {
   if (policy.trustedShellCommands.size === 0) return false
-  if (tool.source !== "builtin" || tool.originalName !== "shell_run") return false
-  const analysis = analyzeShellCommand(args.command, args.args)
+  const analysis = shellAnalysisOf(tool, args)
+  if (!analysis) return false
   return (
     analysis.trustable &&
     analysis.programs.length > 0 &&
@@ -92,7 +102,12 @@ export function needsApproval(
   if (isTrustedShellCall(tool, args, policy)) return false
   const risk = riskOf(tool, args)
   if (risk === "read") return false
-  if (risk === "write" && policy.allowWrites) return false
+  const shell = shellAnalysisOf(tool, args)
+  // Running project code and reading outside the workspace are never covered
+  // by the blanket "allow writes" setting; the user must approve them or trust
+  // the exact program explicitly.
+  const guardedShell = Boolean(shell && (shell.projectCode || shell.escapesWorkspace))
+  if (risk === "write" && policy.allowWrites && !guardedShell) return false
   if (
     risk === "write" &&
     policy.allowFileWrites &&

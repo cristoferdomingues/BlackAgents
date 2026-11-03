@@ -187,3 +187,4 @@ interface MeetingNotes {
 - [LLM Integration](../architecture/llm-integration.md) — providers, transcription, and the fenced-JSON protocol
 - [Future Phases](../roadmap/future-phases.md) — where this sits on the roadmap
 - [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](brain-issues.md)

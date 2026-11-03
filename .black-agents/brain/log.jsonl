@@ -81,3 +81,20 @@
 {"at":"2026-10-30T19:11:29.932Z","event":"proposed","proposalId":"0b5494a5-cafb-4f86-b02a-43e58cbaf0df","kind":"new_concept"}
 {"at":"2026-10-30T19:33:26.308Z","event":"recorded","reason":"Jev found nothing important to keep"}
 {"at":"2026-11-03T12:59:55.528Z","event":"applied","proposalId":"0b5494a5-cafb-4f86-b02a-43e58cbaf0df","kind":"new_concept","target":"concept:meeting/2026-10-30-blackagent-evolving-dec6"}
+{"at":"2026-11-03T13:43:11.195Z","event":"proposed","proposalId":"f2b3e6c3-5fa3-46c2-9d02-5ecbde922c35","kind":"new_concept"}
+{"at":"2026-11-03T13:43:19.408Z","event":"applied","proposalId":"f2b3e6c3-5fa3-46c2-9d02-5ecbde922c35","kind":"new_concept","target":"concept:specs/brain-issues"}
+{"at":"2026-11-03T14:27:13.697Z","event":"proposed","proposalId":"000aa1a2-8966-45d4-9cf8-b2f008678208","kind":"update_concept"}
+{"at":"2026-11-03T14:29:15.846Z","event":"applied","proposalId":"000aa1a2-8966-45d4-9cf8-b2f008678208","kind":"update_concept","target":"concept:specs/brain-issues"}
+{"at":"2026-11-03T14:43:36.441Z","event":"proposed","proposalId":"a71bada2-9173-49b3-b22b-81edf33089a7","kind":"update_concept"}
+{"at":"2026-11-03T14:46:00.044Z","event":"rejected","proposalId":"a71bada2-9173-49b3-b22b-81edf33089a7","kind":"update_concept","target":"concept:specs/brain-issues"}
+{"at":"2026-11-03T14:46:04.322Z","event":"proposed","proposalId":"45433029-5e83-4d72-bf67-9965db6854a6","kind":"update_concept"}
+{"at":"2026-11-03T14:46:07.656Z","event":"applied","proposalId":"45433029-5e83-4d72-bf67-9965db6854a6","kind":"update_concept","target":"concept:specs/brain-issues"}
+{"at":"2026-11-03T14:56:17.044Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-11-03T16:12:19.193Z","event":"proposed","proposalId":"f7297473-dbff-4673-b844-b425717e27fa","kind":"new_concept"}
+{"at":"2026-11-03T16:12:42.862Z","event":"applied","proposalId":"f7297473-dbff-4673-b844-b425717e27fa","kind":"new_concept","target":"concept:proposals/blackagents-mcp-server"}
+{"at":"2026-11-03T16:12:46.919Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-11-03T16:26:07.550Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-11-03T16:27:47.170Z","event":"proposed","proposalId":"9b4f7da2-6af0-485f-ba3b-dd173e93a922","kind":"update_concept"}
+{"at":"2026-11-03T16:27:52.685Z","event":"applied","proposalId":"9b4f7da2-6af0-485f-ba3b-dd173e93a922","kind":"update_concept","target":"concept:specs/brain-issues"}
+{"at":"2026-11-03T16:28:11.806Z","event":"recorded","reason":"Jev found nothing important to keep"}
+{"at":"2026-11-03T18:02:28.243Z","event":"recorded","reason":"Jev found nothing important to keep"}

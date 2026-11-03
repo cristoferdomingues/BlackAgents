@@ -16,10 +16,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:56Z'
+status: draft
 ---
 
 # Knowledge (OKF)
@@ -114,3 +114,4 @@ Before a concept is queued or saved:
 - [Domain Model](./domain-model.md)
 - [API Reference](../api/api-reference.md)
 - [Future Phases](../roadmap/future-phases.md)
+- [BlackAgents as an MCP server (provide services, not just consume)](../proposals/blackagents-mcp-server.md)

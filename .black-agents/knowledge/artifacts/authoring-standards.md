@@ -14,10 +14,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:49Z'
+status: draft
 ---
 
 # Authoring Standards
@@ -99,3 +99,4 @@ flowchart LR
 - [Agents](./agents.md) · [Commands](./commands.md) · [Rules](./rules.md) · [Skills](./skills.md)
 - [UI Overview](../ui/ui-overview.md)
 - [Future Phases](../roadmap/future-phases.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](../specs/brain-issues.md)

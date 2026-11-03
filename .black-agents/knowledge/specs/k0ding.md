@@ -211,3 +211,4 @@ All routes use the standard envelope (`ok` / `fail` / `handle`), return 412 when
 - [MCP Servers](../architecture/mcp-servers.md) — where a server built in K0ding is added to test it
 - [Future Phases](../roadmap/future-phases.md) — where this sits on the roadmap
 - [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](brain-issues.md)

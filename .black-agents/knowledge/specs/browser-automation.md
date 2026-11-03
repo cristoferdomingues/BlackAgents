@@ -196,3 +196,5 @@ Blank workspace template also seeds `time-registrar`, the `time-registration` sk
 - [API Reference](../api/api-reference.md) — `/api/browser*`
 - [UI Overview](../ui/ui-overview.md) — Settings → Browser tab
 - [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](brain-issues.md)
+- [BlackAgents as an MCP server (provide services, not just consume)](../proposals/blackagents-mcp-server.md)

@@ -16,10 +16,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:59Z'
+status: draft
 ---
 
 # Agent Runtime & Approvals
@@ -139,3 +139,4 @@ Settings → MCP Servers has three choices: **stdio**, **HTTP**, and **SSE**. HT
 - [Jev Decision Engine](./jev-decision-engine.md) — picks which artifacts the loop sees
 - [API Reference](../api/api-reference.md) — `/api/chat` (SSE), `/api/approvals`, `/api/mcp`, `/api/browser`
 - [Workspace & Filesystem Safety](./workspace-filesystem-safety.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](../specs/brain-issues.md)

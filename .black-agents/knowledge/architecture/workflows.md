@@ -141,3 +141,4 @@ The `@` menu lists workflows as their own group and inserts `@workflow:<name>`.
 - [Second Brain](./second-brain.md)
 - [API Reference](../api/api-reference.md) — `/api/workflows`, `/api/runs`
 - [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
+- [BlackAgents as an MCP server (provide services, not just consume)](../proposals/blackagents-mcp-server.md)

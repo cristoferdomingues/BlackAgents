@@ -72,3 +72,5 @@ Each agent also has its own memory in the [Second Brain](../architecture/second-
 - [Authoring Standards](./authoring-standards.md)
 - [MCP LLM Gateway (proposal)](../proposals/mcp-llm-gateway.md)
 - [BlackAgent evolving](../meeting/2026-10-30-blackagent-evolving-dec6.md)
+- [Brain Issues — receiving reported issues in the BlackAgents Brain](../specs/brain-issues.md)
+- [BlackAgents as an MCP server (provide services, not just consume)](../proposals/blackagents-mcp-server.md)

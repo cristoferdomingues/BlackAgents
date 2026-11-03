@@ -14,10 +14,10 @@ sources:
 generated:
   by: 'process:obsidian-to-okf'
   at: '2026-10-16T16:05:00Z'
-status: draft
 verified:
   - by: 'human:local'
     at: '2026-10-16T16:15:48Z'
+status: draft
 ---
 
 # Rules
@@ -64,3 +64,4 @@ The editor shows an `alwaysApply` switch and a `globs` badge-input (`GlobsInput`
 - [Skills](./skills.md) — where deep content belongs
 - [Authoring Standards](./authoring-standards.md)
 - [Relationship Graph](../architecture/relationship-graph.md)
+- [BlackAgents as an MCP server (provide services, not just consume)](../proposals/blackagents-mcp-server.md)

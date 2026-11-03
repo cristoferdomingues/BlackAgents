@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.11.0...v0.12.0) (2026-11-03)
+
+
+### Features
+
+* **logs:** update brain log with new concepts and proposals ([77cebc9](https://github.com/cristoferdomingues/BlackAgents/commit/77cebc9ca9096d1c0ba831d089e9c8c1a1d91684))
+
 ## [0.11.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.10.0...v0.11.0) (2026-11-03)
 
 

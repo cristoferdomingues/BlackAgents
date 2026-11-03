@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.9.0...v0.10.0) (2026-11-03)
+
+
+### Features
+
+* batch tool approvals once per turn ([719f09d](https://github.com/cristoferdomingues/BlackAgents/commit/719f09d))
+* classify tool risk and remember scoped trust ([e5cfc00](https://github.com/cristoferdomingues/BlackAgents/commit/e5cfc00))
+
+
+### Bug Fixes
+
+* share one rule for what the model may call a success ([afeb214](https://github.com/cristoferdomingues/BlackAgents/commit/afeb214))
+* harden shell approvals and move trust out of the workspace ([2298477](https://github.com/cristoferdomingues/BlackAgents/commit/2298477))
+
+
 ## [0.9.0](https://github.com/cristoferdomingues/BlackAgents/compare/v0.8.0...v0.9.0) (2026-10-28)
 
 

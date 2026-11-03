@@ -6,6 +6,7 @@ import {
   Brain,
   Check,
   CheckCircle2,
+  Expand,
   HelpCircle,
   History,
   Inbox,
@@ -14,6 +15,7 @@ import {
   Loader2,
   MessageSquare,
   NotebookPen,
+  Pencil,
   Workflow,
   X,
   type LucideIcon,
@@ -24,6 +26,9 @@ import { cn } from "@/lib/utils"
 import { apiFetch } from "@/lib/api"
 import {
   approveEffect,
+  CONCEPT_TEXT_EDIT_HELP,
+  CONCEPT_TEXT_EXPAND_HELP,
+  CONCEPT_TEXT_READ_HELP,
   KIND_HELP,
   KIND_LABEL,
   LINKS_HELP,
@@ -36,16 +41,25 @@ import {
   scopeLabel,
 } from "@/lib/brain/explain"
 import type { BrainNote, BrainOverview, BrainProposal } from "@/lib/brain/types"
+import { withoutLeadingTitle } from "@/lib/knowledge/outline"
 import { useWorkspace } from "@/components/providers/workspace-provider"
 import { NoWorkspace } from "@/components/features/artifacts/no-workspace"
+import { KnowledgeTab } from "@/components/features/brain/knowledge-tab"
+import { MarkdownPreview } from "@/components/features/editor/markdown-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { KnowledgeTab } from "@/components/features/brain/knowledge-tab"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const INTRO_DISMISSED_KEY = "black-agents:brain-intro-dismissed"
@@ -561,6 +575,79 @@ function NotesCard({
   )
 }
 
+function ConceptText({
+  id,
+  title,
+  content,
+  onChange,
+}: {
+  id: string
+  title: string
+  content: string
+  onChange: (value: string) => void
+}): React.ReactElement {
+  const [editing, setEditing] = React.useState(false)
+  const [expanded, setExpanded] = React.useState(false)
+  const formatted = withoutLeadingTitle(content, title)
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label id={`${id}-label`} htmlFor={editing ? id : undefined}>
+          Concept text
+        </Label>
+        {editing ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>
+            <Check className="h-4 w-4" />
+            Save
+          </Button>
+        ) : (
+          <div className="flex items-center gap-1">
+            <Button type="button" size="sm" variant="outline" onClick={() => setExpanded(true)}>
+              <Expand className="h-4 w-4" />
+              Expand
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" />
+              Edit
+            </Button>
+          </div>
+        )}
+      </div>
+      {editing ? (
+        <Textarea
+          id={id}
+          rows={14}
+          className="font-mono text-xs"
+          value={content}
+          autoFocus
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <div
+          role="region"
+          aria-labelledby={`${id}-label`}
+          className="max-h-96 overflow-y-auto rounded-md border p-4 scrollbar-thin"
+        >
+          <MarkdownPreview content={formatted} variant="reader" />
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">{editing ? CONCEPT_TEXT_EDIT_HELP : CONCEPT_TEXT_READ_HELP}</p>
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent className="flex max-h-[85vh] w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden">
+          <DialogHeader className="pr-8">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{CONCEPT_TEXT_EXPAND_HELP}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[calc(85vh-8rem)] overflow-y-auto pr-1 scrollbar-thin">
+            <MarkdownPreview content={formatted} variant="reader" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDecided: () => void }): React.ReactElement {
   const [content, setContent] = React.useState(proposal.content)
   const [description, setDescription] = React.useState(proposal.description ?? "")
@@ -640,15 +727,16 @@ function ProposalCard({ proposal, onDecided }: { proposal: BrainProposal; onDeci
             <p className="text-xs font-medium">Why this needs review</p>
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">{proposal.content}</p>
           </div>
+        ) : isConceptWrite ? (
+          <ConceptText
+            id={`${proposal.id}-content`}
+            title={proposal.title}
+            content={content}
+            onChange={setContent}
+          />
         ) : (
           <div className="space-y-1.5">
-            <Label htmlFor={`${proposal.id}-content`}>
-              {proposal.kind === "new_concept" || proposal.kind === "update_concept"
-                ? "Concept text"
-                : isArtifact
-                  ? "New body"
-                  : "Note"}
-            </Label>
+            <Label htmlFor={`${proposal.id}-content`}>{isArtifact ? "New body" : "Note"}</Label>
             <Textarea
               id={`${proposal.id}-content`}
               rows={isArtifact ? 10 : 2}

@@ -31,6 +31,15 @@ export const LINKS_HELP =
 
 export const NO_LINKS = "No related notes were found in the saved knowledge."
 
+/** Inbox concept body: read as formatted text, edit as raw markdown. */
+export const CONCEPT_TEXT_READ_HELP =
+  "Shown as formatted text, like a saved concept. Edit to change the markdown before you approve. Expand opens a larger view."
+
+export const CONCEPT_TEXT_EDIT_HELP =
+  "Raw markdown. Save shows the formatted text again. Nothing is written until you approve."
+
+export const CONCEPT_TEXT_EXPAND_HELP = "A larger view of the same concept text."
+
 /** What Approve does to the other notes, in plain words. */
 export function linksEffect(count: number): string {
   if (count === 0) return "No other note will change."

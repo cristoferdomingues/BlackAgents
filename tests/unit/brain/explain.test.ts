@@ -4,6 +4,9 @@ import {
   approveEffect,
   KIND_HELP,
   KIND_LABEL,
+  CONCEPT_TEXT_EDIT_HELP,
+  CONCEPT_TEXT_EXPAND_HELP,
+  CONCEPT_TEXT_READ_HELP,
   LINKS_HELP,
   linksEffect,
   MEMORY_BUDGET_CHARS,
@@ -23,6 +26,13 @@ describe("related links copy", () => {
     expect(linksEffect(0)).toBe("No other note will change.")
     expect(linksEffect(1)).toBe("1 other note gets a link back to this one.")
     expect(linksEffect(3)).toBe("3 other notes get a link back to this one.")
+  })
+
+  it("explains reading and editing concept text", () => {
+    expect(CONCEPT_TEXT_READ_HELP).toContain("formatted text")
+    expect(CONCEPT_TEXT_EDIT_HELP).toContain("Raw markdown")
+    expect(CONCEPT_TEXT_EDIT_HELP).toContain("until you approve")
+    expect(CONCEPT_TEXT_EXPAND_HELP).toContain("larger view")
   })
 })
 

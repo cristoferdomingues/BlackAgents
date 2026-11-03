@@ -120,6 +120,73 @@ test.describe("brain", () => {
     expect(decision).toEqual({ action: "approve", edits: { links: ["crypto/portfolio-metrics"] } })
   })
 
+  test("reads concept text as formatted markdown and edits it as raw markdown", async ({ page }) => {
+    const original = "# Drawdown alerts\n\nAlert when **drawdown** passes 20 percent.\n\n## Goal\n\nWarn early."
+    const edited = "# Drawdown alerts\n\nAlert when drawdown passes 15 percent.\n\n## Goal\n\nWarn early."
+    const concept = {
+      id: "c2",
+      kind: "update_concept",
+      title: "Drawdown alerts",
+      rationale: "The user asked the Assistant to save this as durable knowledge.",
+      content: original,
+      target: { type: "concept", name: "crypto/drawdown-alerts" },
+      concept: { type: "Protocol", title: "Drawdown alerts", extra: {} },
+      source: { kind: "assistant", signal: "feedback" },
+      decision: { by: "feedback" },
+      status: "pending",
+      createdAt: "2026-10-21T15:00:00.000Z",
+    }
+    let approved = false
+    let decision: unknown
+    await page.route("**/api/brain", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            proposals: approved ? [] : [concept],
+            workspaceNotes: [],
+            agents: [],
+          },
+        },
+      })
+    )
+    await page.route("**/api/brain/proposals/c2", async (route) => {
+      decision = route.request().postDataJSON()
+      approved = true
+      await route.fulfill({ json: { success: true, data: { proposal: { ...concept, status: "approved" } } } })
+    })
+
+    await page.goto("/brain")
+    const preview = page.getByRole("region", { name: "Concept text" })
+    await expect(preview.getByRole("heading", { name: "Goal" })).toBeVisible()
+    await expect(preview.getByRole("heading", { name: "Drawdown alerts" })).toHaveCount(0)
+    await expect(preview.getByText("Alert when drawdown passes 20 percent.")).toBeVisible()
+    await expect(page.getByText("# Drawdown alerts")).toHaveCount(0)
+    await expect(page.getByRole("textbox", { name: "Concept text" })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Expand" }).click()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByRole("heading", { name: "Drawdown alerts" })).toBeVisible()
+    await expect(dialog.getByRole("heading", { name: "Goal" })).toBeVisible()
+    await expect(dialog.getByText("Alert when drawdown passes 20 percent.")).toBeVisible()
+    await expect(dialog.getByText("A larger view of the same concept text.")).toBeVisible()
+    await dialog.getByRole("button", { name: "Close" }).click()
+    await expect(dialog).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Edit" }).click()
+    const box = page.getByRole("textbox", { name: "Concept text" })
+    await expect(box).toHaveValue(original)
+    await box.fill(edited)
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByRole("textbox", { name: "Concept text" })).toHaveCount(0)
+    await expect(preview.getByText("Alert when drawdown passes 15 percent.")).toBeVisible()
+    await expect(preview.getByRole("heading", { name: "Goal" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Approve" }).click()
+    await expect(page.getByText("The inbox is empty", { exact: true })).toBeVisible()
+    expect(decision).toEqual({ action: "approve", edits: { content: edited } })
+  })
+
   test("explains how it works once, then remembers it was closed", async ({ page }) => {
     await page.route("**/api/brain", (route) =>
       route.fulfill({ json: { success: true, data: { proposals: [], workspaceNotes: [], agents: [] } } })
